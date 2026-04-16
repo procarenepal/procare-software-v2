@@ -1,0 +1,294 @@
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
+
+import { db } from "../config/firebase";
+import { IssuedItem } from "../types/models";
+
+const ISSUED_ITEMS_COLLECTION = "issuedItems";
+
+/**
+ * Service for managing issued items
+ */
+export const issuedItemService = {
+  /**
+   * Get all issued items for a specific clinic
+   */
+  async getIssuedItemsByClinic(
+    clinicId: string,
+    branchId?: string,
+  ): Promise<IssuedItem[]> {
+    try {
+      const issuedItemsRef = collection(db, ISSUED_ITEMS_COLLECTION);
+      let q = query(
+        issuedItemsRef,
+        where("clinicId", "==", clinicId),
+        orderBy("issuedDate", "desc"),
+      );
+
+      if (branchId) {
+        q = query(
+          issuedItemsRef,
+          where("clinicId", "==", clinicId),
+          where("branchId", "==", branchId),
+          orderBy("issuedDate", "desc"),
+        );
+      }
+
+      const querySnapshot = await getDocs(q);
+      const issuedItems: IssuedItem[] = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+
+        issuedItems.push({
+          id: doc.id,
+          ...data,
+          issuedDate: data.issuedDate?.toDate(),
+          returnDate: data.returnDate?.toDate(),
+          expectedReturnDate: data.expectedReturnDate?.toDate(),
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate(),
+        } as IssuedItem);
+      });
+
+      return issuedItems;
+    } catch (error) {
+      console.error("Error getting issued items by clinic:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get issued items by status
+   */
+  async getIssuedItemsByStatus(
+    clinicId: string,
+    status: "issued" | "returned" | "overdue",
+    branchId?: string,
+  ): Promise<IssuedItem[]> {
+    try {
+      const issuedItemsRef = collection(db, ISSUED_ITEMS_COLLECTION);
+      let q = query(
+        issuedItemsRef,
+        where("clinicId", "==", clinicId),
+        where("status", "==", status),
+        orderBy("issuedDate", "desc"),
+      );
+
+      if (branchId) {
+        q = query(
+          issuedItemsRef,
+          where("clinicId", "==", clinicId),
+          where("branchId", "==", branchId),
+          where("status", "==", status),
+          orderBy("issuedDate", "desc"),
+        );
+      }
+
+      const querySnapshot = await getDocs(q);
+      const issuedItems: IssuedItem[] = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+
+        issuedItems.push({
+          id: doc.id,
+          ...data,
+          issuedDate: data.issuedDate?.toDate(),
+          returnDate: data.returnDate?.toDate(),
+          expectedReturnDate: data.expectedReturnDate?.toDate(),
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate(),
+        } as IssuedItem);
+      });
+
+      return issuedItems;
+    } catch (error) {
+      console.error("Error getting issued items by status:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get a specific issued item by ID
+   */
+  async getIssuedItemById(issuedItemId: string): Promise<IssuedItem | null> {
+    try {
+      const issuedItemRef = doc(db, ISSUED_ITEMS_COLLECTION, issuedItemId);
+      const issuedItemSnap = await getDoc(issuedItemRef);
+
+      if (issuedItemSnap.exists()) {
+        const data = issuedItemSnap.data();
+
+        return {
+          id: issuedItemSnap.id,
+          ...data,
+          issuedDate: data.issuedDate?.toDate(),
+          returnDate: data.returnDate?.toDate(),
+          expectedReturnDate: data.expectedReturnDate?.toDate(),
+          createdAt: data.createdAt?.toDate(),
+          updatedAt: data.updatedAt?.toDate(),
+        } as IssuedItem;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error getting issued item by ID:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Issue a new item
+   */
+  async issueItem(
+    issuedItemData: Omit<IssuedItem, "id" | "createdAt" | "updatedAt">,
+  ): Promise<string> {
+    try {
+      const issuedItemsRef = collection(db, ISSUED_ITEMS_COLLECTION);
+      const now = Timestamp.now();
+
+      const docRef = await addDoc(issuedItemsRef, {
+        ...issuedItemData,
+        issuedDate: Timestamp.fromDate(issuedItemData.issuedDate),
+        expectedReturnDate: issuedItemData.expectedReturnDate
+          ? Timestamp.fromDate(issuedItemData.expectedReturnDate)
+          : null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Error issuing item:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Return an issued item
+   */
+  async returnItem(
+    issuedItemId: string,
+    returnedBy: string,
+    returnDate?: Date,
+  ): Promise<void> {
+    try {
+      const issuedItemRef = doc(db, ISSUED_ITEMS_COLLECTION, issuedItemId);
+
+      await updateDoc(issuedItemRef, {
+        status: "returned",
+        returnDate: Timestamp.fromDate(returnDate || new Date()),
+        returnedBy: returnedBy,
+        updatedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error("Error returning item:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update an issued item
+   */
+  async updateIssuedItem(
+    issuedItemId: string,
+    issuedItemData: Partial<Omit<IssuedItem, "id" | "createdAt" | "updatedAt">>,
+  ): Promise<void> {
+    try {
+      const issuedItemRef = doc(db, ISSUED_ITEMS_COLLECTION, issuedItemId);
+      const updateData: any = {
+        ...issuedItemData,
+        updatedAt: Timestamp.now(),
+      };
+
+      // Convert dates to Timestamp objects if provided
+      if (issuedItemData.issuedDate) {
+        updateData.issuedDate = Timestamp.fromDate(issuedItemData.issuedDate);
+      }
+      if (issuedItemData.returnDate) {
+        updateData.returnDate = Timestamp.fromDate(issuedItemData.returnDate);
+      }
+      if (issuedItemData.expectedReturnDate) {
+        updateData.expectedReturnDate = Timestamp.fromDate(
+          issuedItemData.expectedReturnDate,
+        );
+      }
+
+      await updateDoc(issuedItemRef, updateData);
+    } catch (error) {
+      console.error("Error updating issued item:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete an issued item
+   */
+  async deleteIssuedItem(issuedItemId: string): Promise<void> {
+    try {
+      const issuedItemRef = doc(db, ISSUED_ITEMS_COLLECTION, issuedItemId);
+
+      await deleteDoc(issuedItemRef);
+    } catch (error) {
+      console.error("Error deleting issued item:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update overdue items status
+   */
+  async updateOverdueItems(clinicId: string, branchId?: string): Promise<void> {
+    try {
+      const issuedItemsRef = collection(db, ISSUED_ITEMS_COLLECTION);
+      let q = query(
+        issuedItemsRef,
+        where("clinicId", "==", clinicId),
+        where("status", "==", "issued"),
+      );
+
+      if (branchId) {
+        q = query(
+          issuedItemsRef,
+          where("clinicId", "==", clinicId),
+          where("branchId", "==", branchId),
+          where("status", "==", "issued"),
+        );
+      }
+
+      const querySnapshot = await getDocs(q);
+      const now = new Date();
+      const batch = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+
+        if (data.expectedReturnDate && data.expectedReturnDate.toDate() < now) {
+          batch.push(
+            updateDoc(doc.ref, {
+              status: "overdue",
+              updatedAt: Timestamp.now(),
+            }),
+          );
+        }
+      });
+
+      await Promise.all(batch);
+    } catch (error) {
+      console.error("Error updating overdue items:", error);
+      throw error;
+    }
+  },
+};

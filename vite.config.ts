@@ -1,0 +1,53 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), tsconfigPaths()],
+  build: {
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Keep React in main vendor chunk
+          vendor: ["react", "react-dom"],
+          "vendor-router": ["react-router-dom"],
+          "vendor-heroui": [
+            "@heroui/react",
+            "@heroui/system",
+            "@heroui/theme",
+            "@heroui/modal",
+            "@heroui/select",
+          ],
+          "vendor-firebase": [
+            "firebase/app",
+            "firebase/auth",
+            "firebase/firestore",
+          ],
+          "vendor-charts": ["chart.js", "react-chartjs-2"],
+          "vendor-utils": ["date-fns", "crypto-js", "clsx", "uuid"],
+        },
+      },
+    },
+    // Ensure proper minification
+    minify: "esbuild",
+    // Prevent over-aggressive optimization that might break event handling
+    target: "es2020",
+  },
+  // Critical: Ensure React is properly resolved
+  resolve: {
+    dedupe: ["react", "react-dom"],
+  },
+  // Make sure React is available globally in production
+  define: {
+    "process.env.NODE_ENV": '"production"',
+  },
+  // Ensure proper event handling in production
+  esbuild: {
+    keepNames: true,
+    legalComments: "none",
+    // Remove console logs in production builds
+    drop: mode === "production" ? ["console", "debugger"] : [],
+  },
+}));

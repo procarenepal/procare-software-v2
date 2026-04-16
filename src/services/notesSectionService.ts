@@ -1,0 +1,229 @@
+import {
+  collection,
+  doc,
+  addDoc,
+  getDocs,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
+
+import { db } from "@/config/firebase";
+import { NotesSection } from "@/types/models";
+
+const COLLECTION_NAME = "notes_sections";
+
+export const notesSectionService = {
+  // Create a new notes section
+  async createSection(
+    sectionData: Omit<NotesSection, "id" | "createdAt" | "updatedAt">,
+  ): Promise<string> {
+    try {
+      const docData = {
+        ...sectionData,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
+
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), docData);
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating notes section:", error);
+      throw error;
+    }
+  },
+
+  // Get all sections for a clinic (alias for getSectionsByClinic)
+  async getSections(clinicId: string): Promise<NotesSection[]> {
+    return this.getSectionsByClinic(clinicId);
+  },
+
+  // Get all sections for a clinic
+  async getSectionsByClinic(clinicId: string): Promise<NotesSection[]> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where("clinicId", "==", clinicId),
+        orderBy("displayOrder", "asc"),
+        orderBy("createdAt", "desc"),
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      return querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as NotesSection[];
+    } catch (error) {
+      console.error("Error getting notes sections:", error);
+      throw error;
+    }
+  },
+
+  // Get active sections for a clinic
+  async getActiveSectionsByClinic(clinicId: string): Promise<NotesSection[]> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where("clinicId", "==", clinicId),
+        where("isActive", "==", true),
+        orderBy("displayOrder", "asc"),
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      return querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as NotesSection[];
+    } catch (error) {
+      console.error("Error getting active notes sections:", error);
+      throw error;
+    }
+  },
+
+  // Get a section by ID
+  async getSectionById(sectionId: string): Promise<NotesSection | null> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, sectionId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+          createdAt: docSnap.data().createdAt?.toDate() || new Date(),
+          updatedAt: docSnap.data().updatedAt?.toDate() || new Date(),
+        } as NotesSection;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error getting notes section:", error);
+      throw error;
+    }
+  },
+
+  // Update a section
+  async updateSection(
+    sectionId: string,
+    updateData: Partial<NotesSection>,
+  ): Promise<void> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, sectionId);
+      const dataToUpdate = {
+        ...updateData,
+        updatedAt: Timestamp.now(),
+      };
+
+      await updateDoc(docRef, dataToUpdate);
+    } catch (error) {
+      console.error("Error updating notes section:", error);
+      throw error;
+    }
+  },
+
+  // Delete a section
+  async deleteSection(sectionId: string): Promise<void> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, sectionId);
+
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting notes section:", error);
+      throw error;
+    }
+  },
+
+  // Check if a key is unique (alias for !isKeyExists)
+  async isKeyUnique(
+    clinicId: string,
+    key: string,
+    excludeSectionId?: string,
+  ): Promise<boolean> {
+    return !(await this.isKeyExists(clinicId, key, excludeSectionId));
+  },
+
+  // Check if a key exists in the clinic
+  async isKeyExists(
+    clinicId: string,
+    key: string,
+    excludeSectionId?: string,
+  ): Promise<boolean> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where("clinicId", "==", clinicId),
+        where("sectionKey", "==", key),
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      // If excludeSectionId is provided, check if any doc id matches it
+      if (excludeSectionId && querySnapshot.docs.length === 1) {
+        return querySnapshot.docs[0].id !== excludeSectionId;
+      }
+
+      return querySnapshot.docs.length > 0;
+    } catch (error) {
+      console.error("Error checking if key exists:", error);
+      throw error;
+    }
+  },
+
+  // Update section order (single section)
+  async updateSectionOrder(sectionId: string, newOrder: number): Promise<void> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, sectionId);
+
+      await updateDoc(docRef, {
+        displayOrder: newOrder,
+        updatedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error("Error updating section order:", error);
+      throw error;
+    }
+  },
+
+  // Update section orders (multiple sections)
+  async updateSectionOrders(
+    updates: { id: string; order: number }[],
+  ): Promise<void> {
+    try {
+      const promises = updates.map((update) => {
+        const docRef = doc(db, COLLECTION_NAME, update.id);
+
+        return updateDoc(docRef, {
+          displayOrder: update.order,
+          updatedAt: Timestamp.now(),
+        });
+      });
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Error updating section orders:", error);
+      throw error;
+    }
+  },
+
+  // Generate key from name
+  generateKeyFromName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, "") // Remove special characters
+      .replace(/\s+/g, "-") // Replace spaces with hyphens
+      .replace(/-+/g, "-") // Replace multiple hyphens with single
+      .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+  },
+};

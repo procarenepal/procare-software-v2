@@ -1,0 +1,51 @@
+---
+description: Sharing a single Firebase backend between main app and procarenepalnew, plus Netlify deployment conventions.
+alwaysApply: true
+---
+
+# Multi-project Firebase & Netlify Conventions
+
+- **Single Firebase project for both apps**
+  - The root app (`procaresoftt`) and the marketing/landing app (`procarenepalnew`) must both connect to the **same Firebase project** (same Firestore DB, Auth, Storage).
+  - Treat Firebase as a shared backend; multiple Netlify sites can safely use it as long as Firestore rules and Auth are configured correctly.
+
+- **Firebase config & env vars**
+  - Use **Vite-style env vars** for Firebase config in both apps:
+    - `VITE_FIREBASE_API_KEY`
+    - `VITE_FIREBASE_AUTH_DOMAIN`
+    - `VITE_FIREBASE_PROJECT_ID`
+    - `VITE_FIREBASE_STORAGE_BUCKET`
+    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+    - `VITE_FIREBASE_APP_ID`
+    - `VITE_FIREBASE_MEASUREMENT_ID` (optional)
+  - These values must be **identical** across:
+    - The main app env (.env / Netlify env)
+    - The `procarenepalnew` env (.env / Netlify env)
+  - Never hardcode Firebase config directly; always read from `import.meta.env`.
+
+- **Firebase setup in `procarenepalnew`**
+  - `procarenepalnew/src/firebase.js` initializes Firebase using the same env vars and exports `app`, `auth`, `db`, and `storage`.
+  - When adding Firebase usage in `procarenepalnew`, always import from this module instead of re-initializing Firebase:
+    - `import { db, auth } from '../firebase'`
+
+- **Netlify deployment layout**
+  - **Netlify Site 1 (main app)**:
+    - Base directory: repository root (`procaresoftt`).
+    - Build command: use the root `package.json` scripts (e.g. `npm run build`).
+    - Publish directory: `dist`.
+  - **Netlify Site 2 (`procarenepalnew`)**:
+    - Base directory: `procarenepalnew`.
+    - Build command: `npm run build` from that subproject.
+    - Publish directory: `dist`.
+  - Configure the **same `VITE_FIREBASE_*` variables in both Netlify sites** so they share the same Firebase backend.
+
+- **Auth & security expectations**
+  - Firestore security is enforced by `firestore.rules`, not by which Netlify site calls it.
+  - Firebase Auth must have **all Netlify domains and custom domains** added as authorized domains.
+  - Password reset links, custom domains, and dynamic links are handled in Firebase console and env (`VITE_PASSWORD_RESET_DOMAIN` etc.); do **not** duplicate that logic per site.
+
+- **Assistant behavior**
+  - When asked about deployment or database sharing:
+    - Assume both apps should keep using the **same Firebase project** unless explicitly told otherwise.
+    - Explain that Netlify sites are just frontends; the database/backend can be shared safely.
+

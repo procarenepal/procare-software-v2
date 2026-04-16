@@ -1,0 +1,239 @@
+{
+    "projectId": "procare-chat",
+    "endpoint": "https://fra.cloud.appwrite.io/v1",
+    "projectName": "ProcareSoft SMS Tester",
+    "settings": {
+        "services": {
+            "account": true,
+            "avatars": true,
+            "databases": true,
+            "locale": true,
+            "health": true,
+            "storage": true,
+            "teams": true,
+            "users": true,
+            "sites": true,
+            "functions": true,
+            "graphql": true,
+            "messaging": true
+        },
+        "auth": {
+            "methods": {
+                "jwt": true,
+                "phone": true,
+                "invites": true,
+                "anonymous": true,
+                "email-otp": true,
+                "magic-url": true,
+                "email-password": true
+            },
+            "security": {
+                "duration": 31536000,
+                "limit": 0,
+                "sessionsLimit": 10,
+                "passwordHistory": 0,
+                "passwordDictionary": false,
+                "personalDataCheck": false,
+                "sessionAlerts": false,
+                "mockNumbers": []
+            }
+        }
+    },
+    "functions": [
+        {
+            "$id": "sms-tester",
+            "execute": [],
+            "name": "sms-tester",
+            "enabled": true,
+            "logging": true,
+            "runtime": "node-18.0",
+            "scopes": [],
+            "events": [],
+            "schedule": "",
+            "timeout": 30,
+            "entrypoint": "src/main.js",
+            "commands": "",
+            "specification": "s-1vcpu-512mb",
+            "path": "functions/sms-tester",
+            "variables": {
+                "SMS_API_KEY": "567C3FE1B7509F",
+                "SMS_SENDER_ID": "SmsBit",
+                "SMS_API_URL": "https://samayasms.com.np/smsapi/index.php",
+                "DATABASE_ID": "sms_tester_db",
+                "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+                "APPWRITE_PROJECT_ID": "procare-chat",
+                "APPWRITE_API_KEY": "standard_579143de685af7cc7a95614554afa06aefa86b02b64d859be8e32ad4aa44ff2d3a7fad2b77cb193ce2933722dea66b8da3c8ae711bc4d60ee83fd8e0b76a3b9bd3ccf693a27f1c35b74dd58a8074be518c312f59d85a4f4bdd40696b86551cfeff8e1d39fb75c4e900c0bc0924fcf189fe8e1dbc726d23e947376d67d472e5db"
+            }
+        },
+        {
+            "$id": "sms-scheduler",
+            "execute": [],
+            "name": "sms-scheduler",
+            "enabled": true,
+            "logging": true,
+            "runtime": "node-18.0",
+            "scopes": [],
+            "events": [],
+            "schedule": "* * * * *",
+            "timeout": 30,
+            "entrypoint": "src/main.js",
+            "commands": "",
+            "specification": "s-1vcpu-512mb",
+            "path": "functions/sms-scheduler",
+            "variables": {
+                "SMS_API_KEY": "567C3FE1B7509F",
+                "SMS_SENDER_ID": "SmsBit",
+                "SMS_API_URL": "https://samayasms.com.np/smsapi/index.php",
+                "DATABASE_ID": "sms_tester_db",
+                "APPWRITE_ENDPOINT": "https://fra.cloud.appwrite.io/v1",
+                "APPWRITE_PROJECT_ID": "procare-chat",
+                "APPWRITE_API_KEY": "standard_579143de685af7cc7a95614554afa06aefa86b02b64d859be8e32ad4aa44ff2d3a7fad2b77cb193ce2933722dea66b8da3c8ae711bc4d60ee83fd8e0b76a3b9bd3ccf693a27f1c35b74dd58a8074be518c312f59d85a4f4bdd40696b86551cfeff8e1d39fb75c4e900c0bc0924fcf189fe8e1dbc726d23e947376d67d472e5db"
+            }
+        }
+    ],
+    "databases": [
+        {
+            "$id": "procare-chat",
+            "name": "procare-chat",
+            "enabled": true
+        },
+        {
+            "$id": "sms_tester_db",
+            "name": "SMS Tester Database",
+            "enabled": true
+        }
+    ],
+    "collections": [
+        {
+            "$id": "sms_test_logs",
+            "$permissions": [],
+            "databaseId": "sms_tester_db",
+            "name": "SMS Test Logs",
+            "enabled": true,
+            "documentSecurity": true,
+            "attributes": [
+                {
+                    "key": "phone_number",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "message",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 1000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "status",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 20,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "response",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 2000,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "error_message",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 500,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "test_type",
+                    "type": "string",
+                    "required": true,
+                    "array": false,
+                    "size": 50,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "scheduled_time",
+                    "type": "string",
+                    "required": false,
+                    "array": false,
+                    "size": 50,
+                    "default": null,
+                    "encrypt": false
+                },
+                {
+                    "key": "timestamp",
+                    "type": "datetime",
+                    "required": true,
+                    "array": false,
+                    "format": "",
+                    "default": null
+                }
+            ],
+            "indexes": [
+                {
+                    "key": "timestamp_index",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "timestamp"
+                    ],
+                    "orders": [
+                        "DESC"
+                    ]
+                },
+                {
+                    "key": "status_index",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "status"
+                    ],
+                    "orders": []
+                },
+                {
+                    "key": "test_type_index",
+                    "type": "key",
+                    "status": "available",
+                    "attributes": [
+                        "test_type"
+                    ],
+                    "orders": []
+                }
+            ]
+        }
+    ],
+    "buckets": [
+        {
+            "$id": "clinic-assets",
+            "$permissions": [
+                "create(\"any\")",
+                "read(\"any\")",
+                "update(\"any\")",
+                "delete(\"any\")"
+            ],
+            "fileSecurity": false,
+            "name": "clinic-assets",
+            "enabled": true,
+            "maximumFileSize": 5000000000,
+            "allowedFileExtensions": [],
+            "compression": "none",
+            "encryption": true,
+            "antivirus": true
+        }
+    ]
+}

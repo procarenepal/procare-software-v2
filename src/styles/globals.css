@@ -1,0 +1,1504 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Performance: avoid rendering offscreen content until needed */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 1000px 800px;
+}
+
+/* Hint the browser that scrolling containers will scroll */
+.will-scroll {
+  will-change: scroll-position;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CLINIC CLARITY — Design Language v2
+   Flat, no-shadow, compact. Depth via 1px borders + tinted backgrounds.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+
+  /* ── Restore heading scale erased by Tailwind Preflight ─────────────────
+     Preflight sets all headings to font-size: inherit; font-weight: inherit.
+     We re-introduce a clear visual hierarchy here in @layer base so that
+     any <h1>–<h4> without explicit utility classes still looks correct.    */
+  h1 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.03em;
+    color: var(--color-text, #0f172a);
+  }
+
+  h2 {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    color: var(--color-text, #0f172a);
+  }
+
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.01em;
+    color: var(--color-text, #0f172a);
+  }
+
+  h4 {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-text, #0f172a);
+  }
+
+  /* ── Base body — spec: 13px / 400 / -0.01em ──────────────────────────── */
+  body {
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+  }
+
+  :root {
+
+    /* ── Clinic Teal (primary) ──────────────────────────────────── */
+    --teal-50: 240 253 250;
+    --teal-100: 204 251 241;
+    --teal-200: 153 246 228;
+    --teal-300: 94 234 212;
+    --teal-400: 45 212 191;
+    --teal-500: 20 184 166;
+    --teal-600: 13 148 136;
+    --teal-700: 15 118 110;
+    --teal-800: 17 94 89;
+    --teal-900: 19 78 74;
+
+    /* ── Legacy Nepal Colors (backward compat) ──────────────────── */
+    --nepal-50: 240 249 255;
+    --nepal-100: 224 242 254;
+    --nepal-200: 186 230 253;
+    --nepal-300: 125 211 252;
+    --nepal-400: 56 189 248;
+    --nepal-500: 14 165 233;
+    --nepal-600: 2 132 199;
+    --nepal-700: 3 105 161;
+    --nepal-800: 7 89 133;
+    --nepal-900: 12 74 110;
+
+    /* ── Mountain (neutral slate) ───────────────────────────────── */
+    --mountain-50: 248 250 252;
+    --mountain-100: 241 245 249;
+    --mountain-200: 226 232 240;
+    --mountain-300: 203 213 225;
+    --mountain-400: 148 163 184;
+    --mountain-500: 100 116 139;
+    --mountain-600: 71 85 105;
+    --mountain-700: 51 65 85;
+    --mountain-800: 30 41 59;
+    --mountain-900: 15 23 42;
+
+    /* ── Health (green) ─────────────────────────────────────────── */
+    --health-50: 240 253 244;
+    --health-100: 220 252 231;
+    --health-200: 187 247 208;
+    --health-300: 134 239 172;
+    --health-400: 74 222 128;
+    --health-500: 34 197 94;
+    --health-600: 22 163 74;
+    --health-700: 21 128 61;
+    --health-800: 22 101 52;
+    --health-900: 20 83 45;
+
+    /* ── Saffron (amber warning) ────────────────────────────────── */
+    --saffron-50: 254 253 243;
+    --saffron-100: 254 250 230;
+    --saffron-200: 254 243 199;
+    --saffron-300: 253 230 138;
+    --saffron-400: 252 211 77;
+    --saffron-500: 245 158 11;
+    --saffron-600: 217 119 6;
+    --saffron-700: 180 83 9;
+    --saffron-800: 146 64 14;
+    --saffron-900: 120 53 15;
+
+    /* ── Scrollbar tokens (theme-aware) ────────────────────────── */
+    --scrollbar-thumb: 15 118 110;
+    /* teal-700 */
+    --scrollbar-track: 204 251 241;
+    /* teal-100 */
+    --scrollbar-border: 153 246 228;
+    /* teal-200 */
+    --scrollbar-hover: 13 148 136;
+    /* teal-600 */
+
+    /* ── Layout Tokens ──────────────────────────────────────────── */
+    --sidebar-width: 220px;
+    --header-height: 48px;
+    /* compact 48px header */
+    --content-padding: 1rem;
+    --card-radius: 0.375rem;
+    /* 6px — flat, not round */
+    --input-height: 32px;
+    /* compact input height */
+  }
+
+  /* ── Base typography ──────────────────────────────────────────────────── */
+  html {
+    font-size: 13px;
+    /* compact base */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+    font-size: 0.875rem;
+    /* 13px effective */
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Flat link appearance ─────────────────────────────────────────────── */
+  a {
+    text-decoration: none;
+  }
+
+  /* ── Remove default focus outlines — replaced by our focus var ─────────── */
+  :focus-visible {
+    outline: 2px solid rgb(var(--teal-700));
+    outline-offset: 2px;
+    border-radius: var(--card-radius);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME-AWARE CSS Custom Properties
+   Applied to :root per theme class on <html>
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Default / Clinic Clarity Light ────────────────────────────────────── */
+:root,
+.theme-light {
+  --color-bg: 248 250 252;
+  /* slate-50 */
+  --color-surface: 255 255 255;
+  --color-surface-2: 248 250 252;
+  /* hover/alt rows */
+  --color-border: 226 232 240;
+  /* slate-200 */
+  --color-border-focus: 15 118 110;
+  /* teal-700 */
+  --color-text: 15 23 42;
+  /* slate-900 */
+  --color-text-muted: 100 116 139;
+  /* slate-500 */
+  --color-primary: 15 118 110;
+  /* teal-700 */
+  --color-primary-hover: 13 148 136;
+  /* teal-600 */
+  --color-primary-light: 204 251 241;
+  /* teal-100 */
+  --color-success: 22 163 74;
+  --color-warning: 217 119 6;
+  --color-danger: 225 29 72;
+  /* Scrollbar */
+  --scrollbar-thumb: 15 118 110;
+  --scrollbar-track: 240 253 250;
+}
+
+/* ── Dark ───────────────────────────────────────────────────────────────── */
+.dark,
+.theme-dark {
+  --color-bg: 9 9 11;
+  /* zinc-950 */
+  --color-surface: 24 24 27;
+  /* zinc-900 */
+  --color-surface-2: 39 39 42;
+  /* zinc-800 */
+  --color-border: 63 63 70;
+  /* zinc-700 */
+  --color-border-focus: 45 212 191;
+  /* teal-400 */
+  --color-text: 250 250 250;
+  --color-text-muted: 161 161 170;
+  /* zinc-400 */
+  --color-primary: 45 212 191;
+  /* teal-400 */
+  --color-primary-hover: 94 234 212;
+  /* teal-300 */
+  --color-primary-light: 19 78 74;
+  /* teal-900 */
+  /* Scrollbar */
+  --scrollbar-thumb: 45 212 191;
+  --scrollbar-track: 24 24 27;
+}
+
+/* ── Rose Clinic ────────────────────────────────────────────────────────── */
+.theme-rose-clinic {
+  --color-bg: 255 241 242;
+  --color-surface: 255 255 255;
+  --color-surface-2: 255 228 230;
+  /* rose-100 */
+  --color-border: 253 164 175;
+  /* rose-300 */
+  --color-border-focus: 225 29 72;
+  --color-text: 136 19 55;
+  /* rose-900 */
+  --color-text-muted: 159 68 95;
+  --color-primary: 225 29 72;
+  /* rose-600 */
+  --color-primary-hover: 190 18 60;
+  --color-primary-light: 255 228 230;
+  /* Scrollbar */
+  --scrollbar-thumb: 225 29 72;
+  --scrollbar-track: 255 228 230;
+}
+
+/* ── Violet Clinical ────────────────────────────────────────────────────── */
+.theme-violet-clinical {
+  --color-bg: 245 243 255;
+  --color-surface: 255 255 255;
+  --color-surface-2: 237 233 254;
+  /* violet-100 */
+  --color-border: 196 181 253;
+  /* violet-300 */
+  --color-border-focus: 124 58 237;
+  --color-text: 76 29 149;
+  /* violet-900 */
+  --color-text-muted: 109 40 217;
+  --color-primary: 124 58 237;
+  /* violet-600 */
+  --color-primary-hover: 109 40 217;
+  --color-primary-light: 237 233 254;
+  /* Scrollbar */
+  --scrollbar-thumb: 124 58 237;
+  --scrollbar-track: 237 233 254;
+}
+
+/* ── Carbon Dark ────────────────────────────────────────────────────────── */
+.theme-carbon-dark {
+  --color-bg: 9 9 11;
+  --color-surface: 17 17 20;
+  --color-surface-2: 28 28 33;
+  --color-border: 39 39 46;
+  --color-border-focus: 13 148 136;
+  --color-text: 250 250 250;
+  --color-text-muted: 113 113 122;
+  --color-primary: 13 148 136;
+  /* teal-600 */
+  --color-primary-hover: 20 184 166;
+  --color-primary-light: 19 78 74;
+  /* Scrollbar */
+  --scrollbar-thumb: 13 148 136;
+  --scrollbar-track: 17 17 20;
+}
+
+/* ── Arctic ─────────────────────────────────────────────────────────────── */
+.theme-arctic {
+  --color-bg: 248 250 252;
+  /* slate-50 */
+  --color-surface: 255 255 255;
+  --color-surface-2: 241 245 249;
+  --color-border: 213 228 244;
+  --color-border-focus: 2 132 199;
+  --color-text: 15 23 42;
+  --color-text-muted: 100 116 139;
+  --color-primary: 2 132 199;
+  /* sky-600 */
+  --color-primary-hover: 3 105 161;
+  --color-primary-light: 224 242 254;
+  /* Scrollbar */
+  --scrollbar-thumb: 2 132 199;
+  --scrollbar-track: 240 249 255;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UTILITY CLASSES — Color palette exports
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+
+  /* ── Teal ─────────────────────────────────────────────────────────────── */
+  .bg-teal-50 {
+    background-color: rgb(240 253 250);
+  }
+
+  .bg-teal-100 {
+    background-color: rgb(204 251 241);
+  }
+
+  .bg-teal-200 {
+    background-color: rgb(153 246 228);
+  }
+
+  .bg-teal-300 {
+    background-color: rgb(94 234 212);
+  }
+
+  .bg-teal-400 {
+    background-color: rgb(45 212 191);
+  }
+
+  .bg-teal-500 {
+    background-color: rgb(20 184 166);
+  }
+
+  .bg-teal-600 {
+    background-color: rgb(13 148 136);
+  }
+
+  .bg-teal-700 {
+    background-color: rgb(15 118 110);
+  }
+
+  .bg-teal-800 {
+    background-color: rgb(17 94 89);
+  }
+
+  .bg-teal-900 {
+    background-color: rgb(19 78 74);
+  }
+
+  .text-teal-50 {
+    color: rgb(240 253 250);
+  }
+
+  .text-teal-100 {
+    color: rgb(204 251 241);
+  }
+
+  .text-teal-200 {
+    color: rgb(153 246 228);
+  }
+
+  .text-teal-300 {
+    color: rgb(94 234 212);
+  }
+
+  .text-teal-400 {
+    color: rgb(45 212 191);
+  }
+
+  .text-teal-500 {
+    color: rgb(20 184 166);
+  }
+
+  .text-teal-600 {
+    color: rgb(13 148 136);
+  }
+
+  .text-teal-700 {
+    color: rgb(15 118 110);
+  }
+
+  .text-teal-800 {
+    color: rgb(17 94 89);
+  }
+
+  .text-teal-900 {
+    color: rgb(19 78 74);
+  }
+
+  .border-teal-50 {
+    border-color: rgb(240 253 250);
+  }
+
+  .border-teal-100 {
+    border-color: rgb(204 251 241);
+  }
+
+  .border-teal-200 {
+    border-color: rgb(153 246 228);
+  }
+
+  .border-teal-300 {
+    border-color: rgb(94 234 212);
+  }
+
+  .border-teal-400 {
+    border-color: rgb(45 212 191);
+  }
+
+  .border-teal-500 {
+    border-color: rgb(20 184 166);
+  }
+
+  .border-teal-600 {
+    border-color: rgb(13 148 136);
+  }
+
+  .border-teal-700 {
+    border-color: rgb(15 118 110);
+  }
+
+  .border-teal-800 {
+    border-color: rgb(17 94 89);
+  }
+
+  .border-teal-900 {
+    border-color: rgb(19 78 74);
+  }
+
+  /* ── Nepal (legacy) ───────────────────────────────────────────────────── */
+  .bg-nepal-50 {
+    background-color: rgb(240 249 255);
+  }
+
+  .bg-nepal-100 {
+    background-color: rgb(224 242 254);
+  }
+
+  .bg-nepal-200 {
+    background-color: rgb(186 230 253);
+  }
+
+  .bg-nepal-300 {
+    background-color: rgb(125 211 252);
+  }
+
+  .bg-nepal-400 {
+    background-color: rgb(56 189 248);
+  }
+
+  .bg-nepal-500 {
+    background-color: rgb(14 165 233);
+  }
+
+  .bg-nepal-600 {
+    background-color: rgb(2 132 199);
+  }
+
+  .bg-nepal-700 {
+    background-color: rgb(3 105 161);
+  }
+
+  .bg-nepal-800 {
+    background-color: rgb(7 89 133);
+  }
+
+  .bg-nepal-900 {
+    background-color: rgb(12 74 110);
+  }
+
+  .text-nepal-50 {
+    color: rgb(240 249 255);
+  }
+
+  .text-nepal-100 {
+    color: rgb(224 242 254);
+  }
+
+  .text-nepal-200 {
+    color: rgb(186 230 253);
+  }
+
+  .text-nepal-300 {
+    color: rgb(125 211 252);
+  }
+
+  .text-nepal-400 {
+    color: rgb(56 189 248);
+  }
+
+  .text-nepal-500 {
+    color: rgb(14 165 233);
+  }
+
+  .text-nepal-600 {
+    color: rgb(2 132 199);
+  }
+
+  .text-nepal-700 {
+    color: rgb(3 105 161);
+  }
+
+  .text-nepal-800 {
+    color: rgb(7 89 133);
+  }
+
+  .text-nepal-900 {
+    color: rgb(12 74 110);
+  }
+
+  .border-nepal-50 {
+    border-color: rgb(240 249 255);
+  }
+
+  .border-nepal-100 {
+    border-color: rgb(224 242 254);
+  }
+
+  .border-nepal-200 {
+    border-color: rgb(186 230 253);
+  }
+
+  .border-nepal-300 {
+    border-color: rgb(125 211 252);
+  }
+
+  .border-nepal-400 {
+    border-color: rgb(56 189 248);
+  }
+
+  .border-nepal-500 {
+    border-color: rgb(14 165 233);
+  }
+
+  .border-nepal-600 {
+    border-color: rgb(2 132 199);
+  }
+
+  .border-nepal-700 {
+    border-color: rgb(3 105 161);
+  }
+
+  .border-nepal-800 {
+    border-color: rgb(7 89 133);
+  }
+
+  .border-nepal-900 {
+    border-color: rgb(12 74 110);
+  }
+
+  /* ── Mountain ─────────────────────────────────────────────────────────── */
+  .bg-mountain-50 {
+    background-color: rgb(248 250 252);
+  }
+
+  .bg-mountain-100 {
+    background-color: rgb(241 245 249);
+  }
+
+  .bg-mountain-200 {
+    background-color: rgb(226 232 240);
+  }
+
+  .bg-mountain-300 {
+    background-color: rgb(203 213 225);
+  }
+
+  .bg-mountain-400 {
+    background-color: rgb(148 163 184);
+  }
+
+  .bg-mountain-500 {
+    background-color: rgb(100 116 139);
+  }
+
+  .bg-mountain-600 {
+    background-color: rgb(71 85 105);
+  }
+
+  .bg-mountain-700 {
+    background-color: rgb(51 65 85);
+  }
+
+  .bg-mountain-800 {
+    background-color: rgb(30 41 59);
+  }
+
+  .bg-mountain-900 {
+    background-color: rgb(15 23 42);
+  }
+
+  .text-mountain-50 {
+    color: rgb(248 250 252);
+  }
+
+  .text-mountain-100 {
+    color: rgb(241 245 249);
+  }
+
+  .text-mountain-200 {
+    color: rgb(226 232 240);
+  }
+
+  .text-mountain-300 {
+    color: rgb(203 213 225);
+  }
+
+  .text-mountain-400 {
+    color: rgb(148 163 184);
+  }
+
+  .text-mountain-500 {
+    color: rgb(100 116 139);
+  }
+
+  .text-mountain-600 {
+    color: rgb(71 85 105);
+  }
+
+  .text-mountain-700 {
+    color: rgb(51 65 85);
+  }
+
+  .text-mountain-800 {
+    color: rgb(30 41 59);
+  }
+
+  .text-mountain-900 {
+    color: rgb(15 23 42);
+  }
+
+  .border-mountain-50 {
+    border-color: rgb(248 250 252);
+  }
+
+  .border-mountain-100 {
+    border-color: rgb(241 245 249);
+  }
+
+  .border-mountain-200 {
+    border-color: rgb(226 232 240);
+  }
+
+  .border-mountain-300 {
+    border-color: rgb(203 213 225);
+  }
+
+  .border-mountain-400 {
+    border-color: rgb(148 163 184);
+  }
+
+  .border-mountain-500 {
+    border-color: rgb(100 116 139);
+  }
+
+  .border-mountain-600 {
+    border-color: rgb(71 85 105);
+  }
+
+  .border-mountain-700 {
+    border-color: rgb(51 65 85);
+  }
+
+  .border-mountain-800 {
+    border-color: rgb(30 41 59);
+  }
+
+  .border-mountain-900 {
+    border-color: rgb(15 23 42);
+  }
+
+  /* ── Health ───────────────────────────────────────────────────────────── */
+  .bg-health-50 {
+    background-color: rgb(240 253 244);
+  }
+
+  .bg-health-100 {
+    background-color: rgb(220 252 231);
+  }
+
+  .bg-health-200 {
+    background-color: rgb(187 247 208);
+  }
+
+  .bg-health-300 {
+    background-color: rgb(134 239 172);
+  }
+
+  .bg-health-400 {
+    background-color: rgb(74 222 128);
+  }
+
+  .bg-health-500 {
+    background-color: rgb(34 197 94);
+  }
+
+  .bg-health-600 {
+    background-color: rgb(22 163 74);
+  }
+
+  .bg-health-700 {
+    background-color: rgb(21 128 61);
+  }
+
+  .bg-health-800 {
+    background-color: rgb(22 101 52);
+  }
+
+  .bg-health-900 {
+    background-color: rgb(20 83 45);
+  }
+
+  .text-health-50 {
+    color: rgb(240 253 244);
+  }
+
+  .text-health-100 {
+    color: rgb(220 252 231);
+  }
+
+  .text-health-200 {
+    color: rgb(187 247 208);
+  }
+
+  .text-health-300 {
+    color: rgb(134 239 172);
+  }
+
+  .text-health-400 {
+    color: rgb(74 222 128);
+  }
+
+  .text-health-500 {
+    color: rgb(34 197 94);
+  }
+
+  .text-health-600 {
+    color: rgb(22 163 74);
+  }
+
+  .text-health-700 {
+    color: rgb(21 128 61);
+  }
+
+  .text-health-800 {
+    color: rgb(22 101 52);
+  }
+
+  .text-health-900 {
+    color: rgb(20 83 45);
+  }
+
+  .border-health-50 {
+    border-color: rgb(240 253 244);
+  }
+
+  .border-health-100 {
+    border-color: rgb(220 252 231);
+  }
+
+  .border-health-200 {
+    border-color: rgb(187 247 208);
+  }
+
+  .border-health-300 {
+    border-color: rgb(134 239 172);
+  }
+
+  .border-health-400 {
+    border-color: rgb(74 222 128);
+  }
+
+  .border-health-500 {
+    border-color: rgb(34 197 94);
+  }
+
+  .border-health-600 {
+    border-color: rgb(22 163 74);
+  }
+
+  .border-health-700 {
+    border-color: rgb(21 128 61);
+  }
+
+  .border-health-800 {
+    border-color: rgb(22 101 52);
+  }
+
+  .border-health-900 {
+    border-color: rgb(20 83 45);
+  }
+
+  /* ── Saffron ──────────────────────────────────────────────────────────── */
+  .bg-saffron-50 {
+    background-color: rgb(254 253 243);
+  }
+
+  .bg-saffron-100 {
+    background-color: rgb(254 250 230);
+  }
+
+  .bg-saffron-200 {
+    background-color: rgb(254 243 199);
+  }
+
+  .bg-saffron-300 {
+    background-color: rgb(253 230 138);
+  }
+
+  .bg-saffron-400 {
+    background-color: rgb(252 211 77);
+  }
+
+  .bg-saffron-500 {
+    background-color: rgb(245 158 11);
+  }
+
+  .bg-saffron-600 {
+    background-color: rgb(217 119 6);
+  }
+
+  .bg-saffron-700 {
+    background-color: rgb(180 83 9);
+  }
+
+  .bg-saffron-800 {
+    background-color: rgb(146 64 14);
+  }
+
+  .bg-saffron-900 {
+    background-color: rgb(120 53 15);
+  }
+
+  .text-saffron-50 {
+    color: rgb(254 253 243);
+  }
+
+  .text-saffron-500 {
+    color: rgb(245 158 11);
+  }
+
+  .text-saffron-600 {
+    color: rgb(217 119 6);
+  }
+
+  .text-saffron-700 {
+    color: rgb(180 83 9);
+  }
+
+  .text-saffron-800 {
+    color: rgb(146 64 14);
+  }
+
+  .text-saffron-900 {
+    color: rgb(120 53 15);
+  }
+
+  .border-saffron-200 {
+    border-color: rgb(254 243 199);
+  }
+
+  .border-saffron-300 {
+    border-color: rgb(253 230 138);
+  }
+
+  .border-saffron-400 {
+    border-color: rgb(252 211 77);
+  }
+
+  .border-saffron-500 {
+    border-color: rgb(245 158 11);
+  }
+
+  /* ── Hover utility variants ───────────────────────────────────────────── */
+  .hover\:bg-nepal-50:hover {
+    background-color: rgb(240 249 255);
+  }
+
+  .hover\:bg-nepal-100:hover {
+    background-color: rgb(224 242 254);
+  }
+
+  .hover\:bg-nepal-600:hover {
+    background-color: rgb(2 132 199);
+  }
+
+  .hover\:text-nepal-600:hover {
+    color: rgb(2 132 199);
+  }
+
+  .hover\:bg-teal-50:hover {
+    background-color: rgb(240 253 250);
+  }
+
+  .hover\:bg-teal-100:hover {
+    background-color: rgb(204 251 241);
+  }
+
+  .hover\:bg-teal-600:hover {
+    background-color: rgb(13 148 136);
+  }
+
+  .hover\:text-teal-700:hover {
+    color: rgb(15 118 110);
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     CLINIC CLARITY — Component Styles
+     Flat, compact, no shadows. Borders define structure.
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  /* ── Flat Card (no shadow) ───────────────────────────────────────────── */
+  .clarity-card {
+    background-color: rgb(var(--color-surface));
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--card-radius);
+    /* zero shadow intentional */
+  }
+
+  /* ── Compact Table ───────────────────────────────────────────────────── */
+  .clarity-table th {
+    font-size: 0.6875rem;
+    /* 11px */
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgb(var(--color-text-muted));
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid rgb(var(--color-border));
+    white-space: nowrap;
+  }
+
+  .clarity-table td {
+    font-size: 0.8125rem;
+    /* 13px */
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid rgb(var(--color-border));
+    color: rgb(var(--color-text));
+  }
+
+  .clarity-table tbody tr:hover td {
+    background-color: rgb(var(--color-surface-2));
+  }
+
+  /* ── Compact Input ───────────────────────────────────────────────────── */
+  .clarity-input {
+    height: var(--input-height);
+    font-size: 0.8125rem;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--card-radius);
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-text));
+    padding: 0 0.625rem;
+    transition: border-color 100ms;
+    outline: none;
+  }
+
+  .clarity-input:focus {
+    border-color: rgb(var(--color-border-focus));
+    box-shadow: 0 0 0 2px rgba(var(--color-border-focus) / 0.15);
+  }
+
+  /* Left icon/prefix: prevent overlap with placeholder or text */
+  .clarity-input.with-left-icon {
+    padding-left: 2.25rem;
+  }
+  .clarity-input.with-prefix {
+    padding-left: 4rem;
+  }
+
+  /* Textarea: same border/focus as input, min-height for multiline */
+  .clarity-textarea {
+    min-height: 64px;
+    font-size: 0.8125rem;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--card-radius);
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-text));
+    padding: 0.375rem 0.625rem;
+    transition: border-color 100ms;
+    outline: none;
+    resize: vertical;
+  }
+  .clarity-textarea:focus {
+    border-color: rgb(var(--color-border-focus));
+    box-shadow: 0 0 0 2px rgba(var(--color-border-focus) / 0.15);
+  }
+
+  /* ── Compact Button ──────────────────────────────────────────────────── */
+  .clarity-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 30px;
+    padding: 0 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: var(--card-radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 100ms, border-color 100ms;
+    user-select: none;
+  }
+
+  .clarity-btn-primary {
+    background-color: rgb(var(--color-primary));
+    color: #fff;
+    border-color: rgb(var(--color-primary));
+  }
+
+  .clarity-btn-primary:hover {
+    background-color: rgb(var(--color-primary-hover));
+    border-color: rgb(var(--color-primary-hover));
+  }
+
+  .clarity-btn-ghost {
+    background-color: transparent;
+    color: rgb(var(--color-text));
+    border-color: rgb(var(--color-border));
+  }
+
+  .clarity-btn-ghost:hover {
+    background-color: rgb(var(--color-surface-2));
+  }
+
+  .clarity-btn-tinted {
+    background-color: rgb(var(--color-primary-light));
+    color: rgb(var(--color-primary));
+    border-color: transparent;
+  }
+
+  .clarity-btn-tinted:hover {
+    background-color: rgba(var(--color-primary) / 0.15);
+  }
+
+  .clarity-btn-danger {
+    background-color: rgb(var(--color-danger));
+    color: #fff;
+    border-color: rgb(var(--color-danger));
+  }
+
+  .clarity-btn-danger:hover {
+    filter: brightness(0.95);
+  }
+
+  /* ── Badge / Status chip ─────────────────────────────────────────────── */
+  .clarity-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 18px;
+    padding: 0 0.4rem;
+    font-size: 0.6875rem;
+    /* 11px */
+    font-weight: 500;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  /* ── Compact Page Header ─────────────────────────────────────────────── */
+  .clarity-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.625rem 0;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid rgb(var(--color-border));
+  }
+
+  .clarity-page-title {
+    font-size: 0.9375rem;
+    /* 15px */
+    font-weight: 700;
+    color: rgb(var(--color-text));
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  .clarity-page-subtitle {
+    font-size: 0.75rem;
+    color: rgb(var(--color-text-muted));
+    margin-top: 0.125rem;
+  }
+
+  /* ── Section header (within a card) ─────────────────────────────────── */
+  .clarity-section-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: rgb(var(--color-text-muted));
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── Stat card (dashboard KPI) ───────────────────────────────────────── */
+  .clarity-stat {
+    padding: 0.75rem 1rem;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--card-radius);
+    background-color: rgb(var(--color-surface));
+  }
+
+  .clarity-stat-value {
+    font-size: 1.375rem;
+    /* 22px */
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: rgb(var(--color-text));
+    line-height: 1;
+  }
+
+  .clarity-stat-label {
+    font-size: 0.6875rem;
+    /* 11px */
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgb(var(--color-text-muted));
+    margin-top: 0.25rem;
+  }
+
+  /* ── Divider ─────────────────────────────────────────────────────────── */
+  .clarity-divider {
+    height: 1px;
+    background-color: rgb(var(--color-border));
+    margin: 0.5rem 0;
+  }
+
+  /* ── Sidebar nav item ────────────────────────────────────────────────── */
+  .clarity-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3125rem 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: var(--card-radius);
+    color: rgb(var(--color-text-muted));
+    cursor: pointer;
+    transition: background-color 100ms, color 100ms;
+    white-space: nowrap;
+    user-select: none;
+    border: 1px solid transparent;
+  }
+
+  .clarity-nav-item:hover {
+    background-color: rgb(var(--color-surface-2));
+    color: rgb(var(--color-text));
+  }
+
+  .clarity-nav-item.active {
+    background-color: rgb(var(--color-primary-light));
+    color: rgb(var(--color-primary));
+    border-color: rgba(var(--color-primary) / 0.2);
+  }
+
+  /* ── Overlay panel (modal / sheet) ──────────────────────────────────── */
+  .clarity-panel {
+    background-color: rgb(var(--color-surface));
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 0.5rem;
+    /* NO shadow; border-only depth */
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     SCROLLBARS — Thin, flat, theme-aware
+     ═════════════════════════════════════════════════════════════════════════ */
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--scrollbar-thumb)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgb(var(--scrollbar-thumb));
+    border-radius: 2px;
+    /* no box-shadow */
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--scrollbar-hover, var(--scrollbar-thumb)));
+  }
+
+  /* Theme-aware scrollbar */
+  .scrollbar-theme {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--scrollbar-thumb)) rgb(var(--scrollbar-track));
+  }
+
+  .scrollbar-theme::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-theme::-webkit-scrollbar-track {
+    background: rgb(var(--scrollbar-track));
+  }
+
+  .scrollbar-theme::-webkit-scrollbar-thumb {
+    background: rgb(var(--scrollbar-thumb));
+    border-radius: 2px;
+  }
+
+  .scrollbar-theme::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--scrollbar-hover, var(--scrollbar-thumb)));
+  }
+
+  /* Legacy scrollbar variants (backward compat) */
+  .scrollbar-mountain {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--mountain-400)) rgb(var(--mountain-100));
+  }
+
+  .scrollbar-health {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--health-400)) rgb(var(--health-100));
+  }
+
+  .scrollbar-saffron {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--saffron-400)) rgb(var(--saffron-100));
+  }
+
+  /* Hide scrollbar */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Global body scrollbar */
+  body {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--scrollbar-thumb)) transparent;
+  }
+
+  body::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  body::-webkit-scrollbar-thumb {
+    background: rgb(var(--scrollbar-thumb));
+    border-radius: 2px;
+  }
+
+  body::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--scrollbar-thumb) / 0.8);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRINT STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media print {
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  table {
+    border-collapse: collapse !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #000 !important;
+    padding: 6px 8px !important;
+  }
+
+  * {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  span,
+  div,
+  td,
+  th {
+    color: black !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   APPOINTMENT BLINK ANIMATIONS (unchanged)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes appointmentBlink {
+
+  0%,
+  50% {
+    background-color: var(--appointment-bg);
+    border-left: 3px solid var(--appointment-color);
+  }
+
+  51%,
+  100% {
+    background-color: transparent;
+    border-left: 3px solid transparent;
+  }
+}
+
+.appointment-blink-default {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(99, 102, 241);
+  --appointment-bg: rgb(238, 242, 255);
+}
+
+.appointment-blink-blue {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(59, 130, 246);
+  --appointment-bg: rgb(239, 246, 255);
+}
+
+.appointment-blink-emerald {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(16, 185, 129);
+  --appointment-bg: rgb(236, 253, 245);
+}
+
+.appointment-blink-amber {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(245, 158, 11);
+  --appointment-bg: rgb(255, 251, 235);
+}
+
+.appointment-blink-red {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(239, 68, 68);
+  --appointment-bg: rgb(254, 242, 242);
+}
+
+.appointment-blink-purple {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(168, 85, 247);
+  --appointment-bg: rgb(250, 245, 255);
+}
+
+.appointment-blink-pink {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(236, 72, 153);
+  --appointment-bg: rgb(253, 242, 248);
+}
+
+.appointment-blink-cyan {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(6, 182, 212);
+  --appointment-bg: rgb(236, 254, 255);
+}
+
+.appointment-blink-orange {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(249, 115, 22);
+  --appointment-bg: rgb(255, 247, 237);
+}
+
+.appointment-blink-teal {
+  animation: appointmentBlink 2s infinite;
+  --appointment-color: rgb(20, 184, 166);
+  --appointment-bg: rgb(240, 253, 250);
+}
+
+/* Dark variants */
+.dark .appointment-blink-default {
+  --appointment-color: rgb(129, 140, 248);
+  --appointment-bg: rgb(67, 56, 202);
+}
+
+.dark .appointment-blink-blue {
+  --appointment-color: rgb(96, 165, 250);
+  --appointment-bg: rgb(29, 78, 216);
+}
+
+.dark .appointment-blink-emerald {
+  --appointment-color: rgb(52, 211, 153);
+  --appointment-bg: rgb(4, 120, 87);
+}
+
+.dark .appointment-blink-amber {
+  --appointment-color: rgb(251, 191, 36);
+  --appointment-bg: rgb(180, 83, 9);
+}
+
+.dark .appointment-blink-red {
+  --appointment-color: rgb(248, 113, 113);
+  --appointment-bg: rgb(185, 28, 28);
+}
+
+.dark .appointment-blink-purple {
+  --appointment-color: rgb(196, 181, 253);
+  --appointment-bg: rgb(109, 40, 217);
+}
+
+.dark .appointment-blink-pink {
+  --appointment-color: rgb(244, 114, 182);
+  --appointment-bg: rgb(190, 24, 93);
+}
+
+.dark .appointment-blink-cyan {
+  --appointment-color: rgb(34, 211, 238);
+  --appointment-bg: rgb(14, 116, 144);
+}
+
+.dark .appointment-blink-orange {
+  --appointment-color: rgb(251, 146, 60);
+  --appointment-bg: rgb(194, 65, 12);
+}
+
+.dark .appointment-blink-teal {
+  --appointment-color: rgb(45, 212, 191);
+  --appointment-bg: rgb(15, 118, 110);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHARMACY COURSE ANIMATIONS (unchanged)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes pharmacyCourseEnding {
+  0% {
+    background-color: rgba(250, 204, 21, 0.1);
+  }
+
+  50% {
+    background-color: rgba(250, 204, 21, 0.3);
+  }
+
+  100% {
+    background-color: rgba(250, 204, 21, 0.1);
+  }
+}
+
+@keyframes pharmacyCourseExpired {
+  0% {
+    background-color: rgba(248, 113, 113, 0.2);
+  }
+
+  50% {
+    background-color: rgba(248, 113, 113, 0.4);
+  }
+
+  100% {
+    background-color: rgba(248, 113, 113, 0.2);
+  }
+}
+
+.pharmacy-course-ending {
+  animation: pharmacyCourseEnding 1.2s ease-in-out infinite;
+}
+
+.pharmacy-course-expired {
+  animation: pharmacyCourseExpired 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .pharmacy-course-ending,
+  .pharmacy-course-expired {
+    animation: none;
+  }
+}

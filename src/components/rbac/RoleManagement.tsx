@@ -1,0 +1,946 @@
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Button,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+  Input,
+  Textarea,
+  Chip,
+  Checkbox,
+  CheckboxGroup,
+  Divider,
+  Spinner,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/react";
+import { PlusIcon, EditIcon, TrashIcon, MoreVerticalIcon } from "lucide-react";
+import { addToast } from "@heroui/toast";
+
+import { Role, Page } from "../../types/models";
+import { rbacService } from "../../services/rbacService";
+import { useAuth } from "../../hooks/useAuth";
+
+interface RoleManagementProps {
+  clinicId: string;
+}
+
+export const RoleManagement: React.FC<RoleManagementProps> = ({ clinicId }) => {
+  const { currentUser, userData } = useAuth();
+  const isBranchAdmin =
+    !!userData?.branchId && userData?.role === "clinic-admin";
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [availablePages, setAvailablePages] = useState<Page[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    permissions: [] as string[],
+    linkedToDoctor: false,
+  });
+
+  useEffect(() => {
+    loadData();
+  }, [clinicId, userData]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      // Prepare filtering options based on current user's role and branch
+      const roleFilterOptions: any = {};
+
+      if (isBranchAdmin && userData?.branchId) {
+        // Branch clinic admin - filter on server side
+        roleFilterOptions.branchId = userData.branchId;
+        roleFilterOptions.isBranchSpecific = true;
+        roleFilterOptions.excludeNames = [
+          "Clinic Super Admin",
+          "Clinic Administrator",
+        ];
+      }
+
+      const [rolesData, pagesData] = await Promise.all([
+        rbacService.getClinicRoles(clinicId, roleFilterOptions),
+        rbacService.getAvailablePagesForClinic(clinicId),
+      ]);
+
+      setRoles(rolesData);
+      setAvailablePages(pagesData);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      addToast({
+        title: "Error",
+        description: "Failed to load roles and permissions",
+        color: "danger",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateRole = () => {
+    setModalMode("create");
+    setSelectedRole(null);
+    setFormData({
+      name: "",
+      description: "",
+      permissions: [],
+      linkedToDoctor: false,
+    });
+    onOpen();
+  };
+
+  const handleEditRole = (role: Role) => {
+    setModalMode("edit");
+    setSelectedRole(role);
+    setFormData({
+      name: role.name,
+      description: role.description,
+      permissions: role.permissions,
+      linkedToDoctor: role.linkedToDoctor || false,
+    });
+    onOpen();
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name.trim()) {
+      addToast({
+        title: "Missing role name",
+        description: "Role name is required",
+        color: "danger",
+      });
+
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      if (modalMode === "create") {
+        // Pre-validate role name uniqueness for better UX (before attempting creation)
+        try {
+          const nameValidation = await rbacService.validateRoleNameUnique(
+            clinicId,
+            formData.name,
+            isBranchAdmin && userData?.branchId ? userData.branchId : undefined,
+          );
+
+          if (!nameValidation.valid) {
+            console.error("Role name validation failed:", {
+              name: formData.name,
+              clinicId,
+              branchId:
+                isBranchAdmin && userData?.branchId
+                  ? userData.branchId
+                  : undefined,
+              validationResult: nameValidation,
+            });
+
+            // Log validation failure
+            try {
+              const { auditLogService } = await import(
+                "@/services/auditLogService"
+              );
+
+              await auditLogService.logEvent(
+                "validation_failed",
+                clinicId,
+                {
+                  operation: "role_creation",
+                  validationType: "name_uniqueness",
+                  roleName: formData.name,
+                  description: formData.description,
+                },
+                "failure",
+                nameValidation.error || "A role with this name already exists",
+                {
+                  branchId:
+                    isBranchAdmin && userData?.branchId
+                      ? userData.branchId
+                      : undefined,
+                },
+              );
+            } catch (logError) {
+              console.error("Failed to log validation failure:", logError);
+            }
+
+            addToast({
+              title: "Role name not unique",
+              description:
+                nameValidation.error || "A role with this name already exists",
+              color: "danger",
+            });
+            setIsSubmitting(false);
+
+            return;
+          }
+        } catch (validationError) {
+          const errorMessage =
+            validationError instanceof Error
+              ? validationError.message
+              : "Failed to validate role name";
+
+          console.error("Error validating role name:", validationError);
+
+          // Log validation error
+          try {
+            const { auditLogService } = await import(
+              "@/services/auditLogService"
+            );
+
+            await auditLogService.logEvent(
+              "validation_failed",
+              clinicId,
+              {
+                operation: "role_creation",
+                validationType: "name_uniqueness",
+                roleName: formData.name,
+              },
+              "failure",
+              errorMessage,
+              {
+                branchId:
+                  isBranchAdmin && userData?.branchId
+                    ? userData.branchId
+                    : undefined,
+              },
+            );
+          } catch (logError) {
+            console.error("Failed to log validation error:", logError);
+          }
+
+          addToast({
+            title: "Validation error",
+            description: errorMessage,
+            color: "danger",
+          });
+          setIsSubmitting(false);
+
+          return;
+        }
+
+        // Pre-validate permissions if provided
+        if (formData.permissions && formData.permissions.length > 0) {
+          try {
+            const permissionValidation = await rbacService.validatePermissions(
+              clinicId,
+              formData.permissions,
+            );
+
+            if (!permissionValidation.valid) {
+              console.error("Permission validation failed:", {
+                permissions: formData.permissions,
+                clinicId,
+                validationResult: permissionValidation,
+              });
+
+              // Log validation failure
+              try {
+                const { auditLogService } = await import(
+                  "@/services/auditLogService"
+                );
+
+                await auditLogService.logEvent(
+                  "validation_failed",
+                  clinicId,
+                  {
+                    operation: "role_creation",
+                    validationType: "permission_validation",
+                    roleName: formData.name,
+                    permissions: formData.permissions,
+                    invalidPermissionIds: permissionValidation.invalidIds,
+                  },
+                  "failure",
+                  permissionValidation.error ||
+                    "One or more permissions are invalid",
+                  {
+                    branchId:
+                      isBranchAdmin && userData?.branchId
+                        ? userData.branchId
+                        : undefined,
+                  },
+                );
+              } catch (logError) {
+                console.error("Failed to log validation failure:", logError);
+              }
+
+              addToast({
+                title: "Permission validation failed",
+                description:
+                  permissionValidation.error ||
+                  "One or more permissions are invalid",
+                color: "danger",
+              });
+              setIsSubmitting(false);
+
+              return;
+            }
+          } catch (validationError) {
+            const errorMessage =
+              validationError instanceof Error
+                ? validationError.message
+                : "Failed to validate permissions";
+
+            console.error("Error validating permissions:", validationError);
+
+            // Log validation error
+            try {
+              const { auditLogService } = await import(
+                "@/services/auditLogService"
+              );
+
+              await auditLogService.logEvent(
+                "validation_failed",
+                clinicId,
+                {
+                  operation: "role_creation",
+                  validationType: "permission_validation",
+                  roleName: formData.name,
+                  permissions: formData.permissions,
+                },
+                "failure",
+                errorMessage,
+                {
+                  branchId:
+                    isBranchAdmin && userData?.branchId
+                      ? userData.branchId
+                      : undefined,
+                },
+              );
+            } catch (logError) {
+              console.error("Failed to log validation error:", logError);
+            }
+
+            addToast({
+              title: "Permission validation error",
+              description: errorMessage,
+              color: "danger",
+            });
+            setIsSubmitting(false);
+
+            return;
+          }
+        }
+
+        const roleData = {
+          name: formData.name,
+          description: formData.description,
+          clinicId,
+          permissions: formData.permissions,
+          isDefault: false,
+          isBranchSpecific: isBranchAdmin, // Automatically branch-specific for branch admins
+          linkedToDoctor: formData.linkedToDoctor,
+          ...(isBranchAdmin && userData?.branchId
+            ? { branchId: userData.branchId }
+            : {}),
+        };
+
+        try {
+          await rbacService.createRole(roleData);
+          addToast({
+            title: "Role created",
+            description: "Role created successfully",
+            color: "success",
+          });
+        } catch (createError) {
+          const errorMessage =
+            createError instanceof Error
+              ? createError.message
+              : "Failed to create role";
+
+          console.error("Error creating role:", createError, {
+            roleData,
+            clinicId,
+          });
+          addToast({
+            title: "Failed to create role",
+            description: errorMessage,
+            color: "danger",
+          });
+          setIsSubmitting(false);
+
+          return;
+        }
+      } else {
+        // Update mode - validate name uniqueness (excluding current role)
+        if (formData.name !== selectedRole!.name) {
+          try {
+            const nameValidation = await rbacService.validateRoleNameUnique(
+              clinicId,
+              formData.name,
+              selectedRole!.branchId,
+              selectedRole!.id, // Exclude current role
+            );
+
+            if (!nameValidation.valid) {
+              console.error("Role name validation failed during update:", {
+                roleId: selectedRole!.id,
+                newName: formData.name,
+                validationResult: nameValidation,
+              });
+              addToast({
+                title: "Role name not unique",
+                description:
+                  nameValidation.error ||
+                  "A role with this name already exists",
+                color: "danger",
+              });
+              setIsSubmitting(false);
+
+              return;
+            }
+          } catch (validationError) {
+            const errorMessage =
+              validationError instanceof Error
+                ? validationError.message
+                : "Failed to validate role name";
+
+            console.error(
+              "Error validating role name during update:",
+              validationError,
+            );
+            addToast({
+              title: "Validation error",
+              description: errorMessage,
+              color: "danger",
+            });
+            setIsSubmitting(false);
+
+            return;
+          }
+        }
+
+        // Validate permissions if being updated
+        if (formData.permissions && formData.permissions.length > 0) {
+          try {
+            const permissionValidation = await rbacService.validatePermissions(
+              clinicId,
+              formData.permissions,
+            );
+
+            if (!permissionValidation.valid) {
+              console.error("Permission validation failed during update:", {
+                roleId: selectedRole!.id,
+                permissions: formData.permissions,
+                validationResult: permissionValidation,
+              });
+              addToast({
+                title: "Permission validation failed",
+                description:
+                  permissionValidation.error ||
+                  "One or more permissions are invalid",
+                color: "danger",
+              });
+              setIsSubmitting(false);
+
+              return;
+            }
+          } catch (validationError) {
+            const errorMessage =
+              validationError instanceof Error
+                ? validationError.message
+                : "Failed to validate permissions";
+
+            console.error(
+              "Error validating permissions during update:",
+              validationError,
+            );
+            addToast({
+              title: "Permission validation error",
+              description: errorMessage,
+              color: "danger",
+            });
+            setIsSubmitting(false);
+
+            return;
+          }
+        }
+
+        try {
+          await rbacService.updateRole(selectedRole!.id, {
+            name: formData.name,
+            description: formData.description,
+            permissions: formData.permissions,
+            linkedToDoctor: formData.linkedToDoctor,
+          });
+          addToast({
+            title: "Role updated",
+            description: "Role updated successfully",
+            color: "success",
+          });
+        } catch (updateError) {
+          const errorMessage =
+            updateError instanceof Error
+              ? updateError.message
+              : "Failed to update role";
+
+          console.error("Error updating role:", updateError, {
+            roleId: selectedRole!.id,
+            updateData: {
+              name: formData.name,
+              description: formData.description,
+              permissions: formData.permissions,
+              linkedToDoctor: formData.linkedToDoctor,
+            },
+          });
+          addToast({
+            title: "Failed to update role",
+            description: errorMessage,
+            color: "danger",
+          });
+          setIsSubmitting(false);
+
+          return;
+        }
+      }
+
+      await loadData();
+      onClose();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "An unexpected error occurred";
+
+      console.error("Error saving role:", error, {
+        modalMode,
+        roleName: formData.name,
+        clinicId,
+      });
+      addToast({
+        title: "Failed to save role",
+        description: errorMessage,
+        color: "danger",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteRole = async (role: Role) => {
+    if (role.isDefault) {
+      addToast({
+        title: "Action not allowed",
+        description: "Cannot delete default roles",
+        color: "danger",
+      });
+
+      return;
+    }
+
+    try {
+      // First, get all users who have this role assigned
+      const usersWithRole = await rbacService.getUsersWithRole(
+        role.id,
+        clinicId,
+      );
+
+      if (usersWithRole.length > 0) {
+        const userNames = usersWithRole
+          .map((user) => user.displayName)
+          .join(", ");
+
+        if (
+          !confirm(
+            `This role is assigned to ${usersWithRole.length} user(s): ${userNames}. Deleting this role will remove their access until they are reassigned. Continue?`,
+          )
+        ) {
+          return;
+        }
+      }
+
+      setIsSubmitting(true);
+
+      // Remove role assignments from all users who have this role
+      if (usersWithRole.length > 0) {
+        const userUpdatePromises = usersWithRole.map(async (user) => {
+          // Get current role assignments for this user
+          const assignments = await rbacService.getUserRoleAssignments(
+            user.id,
+            clinicId,
+          );
+          // Remove the role being deleted
+          const remainingRoles = assignments.filter(
+            (assignment) => assignment.roleId !== role.id,
+          );
+          const remainingRoleIds = remainingRoles.map(
+            (assignment) => assignment.roleId,
+          );
+
+          // Update user's role assignments
+          await rbacService.assignRolesToUser(
+            user.id,
+            remainingRoleIds,
+            clinicId,
+          );
+
+          // Clear user's permissions cache
+          await rbacService.clearUserPermissionsCache(user.id, clinicId);
+        });
+
+        const results = await Promise.allSettled(userUpdatePromises);
+
+        // Check for failures and log errors
+        const failures = results.filter(
+          (result) => result.status === "rejected",
+        );
+
+        if (failures.length > 0) {
+          console.error(
+            `Failed to update ${failures.length} out of ${usersWithRole.length} users:`,
+            failures,
+          );
+          failures.forEach((failure, index) => {
+            console.error(`User update ${index} failed:`, failure.reason);
+          });
+
+          // Optionally show a warning toast about partial failures
+          if (failures.length < usersWithRole.length) {
+            addToast({
+              title: "Partial update",
+              description: `Role deleted but ${failures.length} user(s) could not be updated. Some users may still have this role assigned.`,
+              color: "danger",
+            });
+          }
+        }
+      }
+
+      // Delete the role
+      await rbacService.deleteRole(role.id);
+
+      addToast({
+        title: "Role deleted",
+        description: `Role "${role.name}" deleted successfully${usersWithRole.length > 0 ? `. ${usersWithRole.length} user(s) affected.` : ""}`,
+        color: "success",
+      });
+      await loadData();
+    } catch (error) {
+      console.error("Error deleting role:", error);
+      addToast({
+        title: "Failed to delete role",
+        description: "Failed to delete role",
+        color: "danger",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getPermissionChips = (permissions: string[]) => {
+    const permissionPages = availablePages.filter((page) =>
+      permissions.includes(page.id),
+    );
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {permissionPages.slice(0, 3).map((page) => (
+          <Chip key={page.id} color="primary" size="sm" variant="flat">
+            {page.name}
+          </Chip>
+        ))}
+        {permissionPages.length > 3 && (
+          <Chip color="default" size="sm" variant="flat">
+            +{permissionPages.length - 3} more
+          </Chip>
+        )}
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-8">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex justify-between items-center">
+          <div>
+            <h3 className="text-xl font-semibold">Role Management</h3>
+            <p className="text-sm text-gray-600">
+              {isBranchAdmin
+                ? `Create and manage branch-specific roles for your branch. All roles you create will be automatically scoped to your branch only.`
+                : `Manage roles and permissions for your clinic staff`}
+            </p>
+          </div>
+          <Button
+            color="primary"
+            startContent={<PlusIcon size={16} />}
+            onPress={handleCreateRole}
+          >
+            {isBranchAdmin ? "Create Branch Role" : "Create Role"}
+          </Button>
+        </CardHeader>
+        <CardBody>
+          <Table aria-label="Roles table">
+            <TableHeader>
+              <TableColumn>NAME</TableColumn>
+              <TableColumn>DESCRIPTION</TableColumn>
+              <TableColumn>PERMISSIONS</TableColumn>
+              <TableColumn>TYPE</TableColumn>
+              <TableColumn width={80}>ACTIONS</TableColumn>
+            </TableHeader>
+            <TableBody emptyContent="No roles found">
+              {roles.map((role) => (
+                <TableRow key={role.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{role.name}</p>
+                      {role.isBranchSpecific && (
+                        <Chip color="primary" size="sm" variant="flat">
+                          Branch Role
+                        </Chip>
+                      )}
+                      {role.linkedToDoctor && (
+                        <Chip color="secondary" size="sm" variant="flat">
+                          Doctor Linked
+                        </Chip>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <p className="text-sm text-gray-600 max-w-xs truncate">
+                      {role.description}
+                    </p>
+                  </TableCell>
+                  <TableCell>{getPermissionChips(role.permissions)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      color={role.isDefault ? "success" : "default"}
+                      size="sm"
+                      variant="flat"
+                    >
+                      {role.isDefault ? "Default" : "Custom"}
+                    </Chip>
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      // Check if branch admin can manage this role
+                      const canManage = isBranchAdmin
+                        ? role.isBranchSpecific &&
+                          (!role.branchId ||
+                            role.branchId === userData?.branchId) &&
+                          !role.isDefault
+                        : true;
+
+                      if (!canManage && isBranchAdmin) {
+                        return (
+                          <Chip color="default" size="sm" variant="flat">
+                            View Only
+                          </Chip>
+                        );
+                      }
+
+                      return (
+                        <Dropdown>
+                          <DropdownTrigger>
+                            <Button isIconOnly size="sm" variant="light">
+                              <MoreVerticalIcon size={16} />
+                            </Button>
+                          </DropdownTrigger>
+                          <DropdownMenu>
+                            <DropdownItem
+                              key="edit"
+                              startContent={<EditIcon size={14} />}
+                              onPress={() => handleEditRole(role)}
+                            >
+                              Edit Role
+                            </DropdownItem>
+                            {!role.isDefault && (
+                              <DropdownItem
+                                key="delete"
+                                className="text-danger"
+                                color="danger"
+                                startContent={<TrashIcon size={14} />}
+                                onPress={() => handleDeleteRole(role)}
+                              >
+                                Delete Role
+                              </DropdownItem>
+                            )}
+                          </DropdownMenu>
+                        </Dropdown>
+                      );
+                    })()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardBody>
+      </Card>
+
+      {/* Create/Edit Role Modal */}
+      <Modal
+        isOpen={isOpen}
+        scrollBehavior="inside"
+        size="2xl"
+        onClose={onClose}
+      >
+        <ModalContent>
+          <ModalHeader>
+            {modalMode === "create"
+              ? isBranchAdmin
+                ? "Create New Branch Role"
+                : "Create New Role"
+              : isBranchAdmin
+                ? "Edit Branch Role"
+                : "Edit Role"}
+          </ModalHeader>
+          <ModalBody className="space-y-4">
+            <Input
+              isRequired
+              label="Role Name"
+              placeholder="Enter role name"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, name: e.target.value }))
+              }
+            />
+
+            <Textarea
+              label="Description"
+              placeholder="Enter role description"
+              rows={3}
+              value={formData.description}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  description: e.target.value,
+                }))
+              }
+            />
+
+            <Checkbox
+              isSelected={formData.linkedToDoctor}
+              onValueChange={(checked) =>
+                setFormData((prev) => ({ ...prev, linkedToDoctor: checked }))
+              }
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">Link to Doctors</span>
+                <span className="text-xs text-gray-500">
+                  When creating users with this role, show doctor selection to
+                  auto-fill user details
+                </span>
+              </div>
+            </Checkbox>
+
+            {isBranchAdmin && (
+              <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>Branch-Specific Role:</strong> This role will be
+                  automatically scoped to your branch and will only be able to
+                  access data and users within your branch.
+                </p>
+              </div>
+            )}
+
+            <Divider />
+
+            <div>
+              <h4 className="text-lg font-medium mb-4">Page Permissions</h4>
+              <p className="text-sm text-gray-600 mb-4">
+                {isBranchAdmin
+                  ? "Select which pages this branch role can access. This role will only work within your branch."
+                  : "Select which pages this role can access"}
+              </p>
+
+              <CheckboxGroup
+                className="space-y-2"
+                value={formData.permissions}
+                onChange={(values) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    permissions: values as string[],
+                  }))
+                }
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {availablePages.map((page) => (
+                    <Checkbox
+                      key={page.id}
+                      className="max-w-none"
+                      value={page.id}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{page.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {page.path}
+                        </span>
+                      </div>
+                    </Checkbox>
+                  ))}
+                </div>
+              </CheckboxGroup>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={onClose}>
+              Cancel
+            </Button>
+            <Button
+              color="primary"
+              isLoading={isSubmitting}
+              onPress={handleSubmit}
+            >
+              {modalMode === "create"
+                ? isBranchAdmin
+                  ? "Create Branch Role"
+                  : "Create Role"
+                : isBranchAdmin
+                  ? "Update Branch Role"
+                  : "Update Role"}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {isBranchAdmin && (
+        <Card className="border border-blue-200 bg-blue-50">
+          <CardBody className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                ℹ
+              </div>
+              <div>
+                <h4 className="font-medium text-blue-900 mb-1">
+                  Branch-Specific Role Management
+                </h4>
+                <p className="text-sm text-blue-800">
+                  You can create and manage custom roles for your branch. All
+                  roles you create will be automatically scoped to your branch
+                  only and cannot access data from other branches. Default
+                  system roles are view-only, but you can create and edit your
+                  own custom branch roles.
+                </p>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+    </div>
+  );
+};

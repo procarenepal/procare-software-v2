@@ -1,0 +1,3146 @@
+rules_version = '2';
+service cloud.firestore {
+match /databases/{database}/documents {
+// Check if user is authenticated
+function isAuthenticated() {
+return request.auth != null;
+}
+
+// Check if user is a super admin
+function isSuperAdmin() {
+return isAuthenticated() &&
+exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+}
+
+// Check if user is clinic admin or clinic super admin
+function isClinicAdminOrSuperAdmin() {
+return isAuthenticated() &&
+exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+ get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin');
+}
+
+// Check if the system is uninitialized
+function isSystemUninitialized() {
+return !exists(/databases/$(database)/documents/system_config/system_status) ||
+!get(/databases/$(database)/documents/system_config/system_status).data.initialized ;
+}
+
+// Allow initial system setup without authentication
+match /system_config/{document} {
+allow read: if true                                       ;
+allow write: if isSystemUninitialized() || isSuperAdmin() ;
+}
+
+// Users collection rules
+match /users/{userId} {
+// Helper function to check if user is clinic admin for the same clinic
+function isClinicAdminForSameClinic(targetUserClinicId) {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == targetUserClinicId;
+}
+
+// Helper function to check if user belongs to the same clinic
+function belongsToSameClinic(targetUserClinicId) {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == targetUserClinicId;
+}
+
+// Anyone authenticated can read user data (for staff management, patient assignments, etc.)
+allow read: if isAuthenticated();
+
+// Allow new users to create their own document, super admins to create any user,
+// or clinic admins/super admins to create users for their clinic
+allow create: if isSystemUninitialized() ||
+              isSuperAdmin() ||
+              (request.auth.uid == userId) ||
+              (isClinicAdminOrSuperAdmin() &&
+               request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId);
+
+// Users can update their own data, super admins can update any user,
+// or clinic admins can update users in their clinic (for role management, activation/deactivation)
+allow update: if isAuthenticated() && (
+              request.auth.uid == userId || 
+              isSuperAdmin() ||
+              isClinicAdminForSameClinic(resource.data.clinicId)
+              );
+
+// Only super admins can delete users (clinic admins should deactivate instead)
+allow delete: if isSuperAdmin();
+}
+
+// Users collection-level rules for queries
+match /users {
+// Helper function to check if user belongs to any clinic (for listing their clinic's staff)
+function belongsToAnyClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+}
+
+// Allow clinic users to query users (they'll be filtered by clinicId in the query)
+// Also allow email-based queries for password reset functionality
+allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Special rule for email-based user queries (for password reset)
+match /users {
+  // Allow querying by email for password reset functionality
+  // This allows authenticated users to find users by email
+  allow list: if isAuthenticated();
+}
+
+// Roles collection rules
+match /roles/{roleId} {
+// Helper function to check if user belongs to the role's clinic
+function belongsToRoleClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Helper function to check if user is clinic admin/super admin for the role's clinic
+function isClinicAdminForRoleClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Allow authenticated users to read roles (system roles have null clinicId, clinic roles are filtered by clinic)
+allow read: if isAuthenticated() && 
+            (resource.data.clinicId == null || belongsToRoleClinic() || isSuperAdmin());
+
+// Allow writes during initialization, by super admin, or by clinic admin/super admin for their clinic's roles
+allow create: if isSystemUninitialized() || 
+              isSuperAdmin() || 
+              (isClinicAdminOrSuperAdmin() &&
+               request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+               request.resource.data.createdBy == request.auth.uid);
+
+allow update: if isSystemUninitialized() || 
+              isSuperAdmin() || 
+              isClinicAdminForRoleClinic();
+
+allow delete: if isSystemUninitialized() || 
+              isSuperAdmin() || 
+              isClinicAdminForRoleClinic();
+}
+
+// Roles collection-level rules for queries
+match /roles {
+// Helper function to check if user belongs to any clinic (for listing their clinic's roles)
+function belongsToAnyClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+}
+
+// Allow clinic users to query roles (they'll be filtered by clinicId in the query)
+allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// User Role Assignments collection rules (RBAC many-to-many relationships)
+match /user_role_assignments/{assignmentId} {
+// Helper function to check if user is clinic admin/super admin for the assignment's clinic
+function isClinicAdminForAssignmentClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Helper function to check if user belongs to the assignment's clinic
+function belongsToAssignmentClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Allow clinic users to read user role assignments for their clinic
+allow read: if isAuthenticated() && 
+            (isSuperAdmin() || belongsToAssignmentClinic());
+
+// Allow clinic admins/super admins to create user role assignments for their clinic
+allow create: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (isClinicAdminOrSuperAdmin() &&
+                request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                request.resource.data.assignedBy == request.auth.uid));
+
+// Allow clinic admins/super admins to update user role assignments for their clinic
+allow update: if isAuthenticated() && 
+              (isSuperAdmin() || isClinicAdminForAssignmentClinic());
+
+// Allow clinic admins/super admins to delete user role assignments for their clinic
+allow delete: if isAuthenticated() && 
+              (isSuperAdmin() || isClinicAdminForAssignmentClinic());
+}
+
+// User Role Assignments collection-level rules for queries
+match /user_role_assignments {
+// Helper function to check if user belongs to any clinic
+function belongsToAnyClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+}
+
+// Allow clinic users to query user role assignments (filtered by clinicId in query)
+allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Audit Logs collection rules
+match /audit_logs/{logId} {
+// Helper function to check if user is super admin
+function isSuperAdmin() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super-admin';
+}
+
+// Helper function to check if user belongs to the log's clinic
+function belongsToLogClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Only super admins can read all logs
+// Clinic admins can read logs for their clinic only
+allow read: if isAuthenticated() && (isSuperAdmin() || belongsToLogClinic());
+
+// Any authenticated user can create audit logs (they're system-generated by the application)
+// The system ensures only valid operations create logs
+allow create: if isAuthenticated() && 
+              request.resource.data.performedBy == request.auth.uid;
+
+// No updates or deletes allowed (audit logs are immutable)
+allow update, delete: if false;
+}
+
+// Audit Logs collection-level rules for queries
+match /audit_logs {
+// Helper function to check if user belongs to any clinic
+function belongsToAnyClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+}
+
+// Allow super admins to query all logs
+// Allow clinic users to query logs (they'll be filtered by clinicId in the query)
+allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Clinics collection rules
+match /clinics/{clinicId} {
+// Helper function to check if user is clinic admin/super admin for the clinic
+function isClinicAdminForClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+}
+
+// Only super admins can list all clinics or create new ones
+allow list, create: if isSuperAdmin();
+
+// Allow clinic members to read their own clinic data
+allow get: if isAuthenticated();
+
+// Allow super admins to update any clinic
+// Allow clinic admins/super admins to update their own clinic's basic information
+// Allow any clinic member to update SMS count for their clinic
+allow update: if isSuperAdmin() || 
+              isClinicAdminForClinic() ||
+              (isAuthenticated() && 
+               exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId &&
+               // Only allow updating smsCount field (for increment operations)
+               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['smsCount']));
+
+allow delete: if isSuperAdmin();
+}
+
+// Branches collection rules
+match /branches/{branchId} {
+// Helper function to check if user belongs to the branch's clinic
+function belongsToBranchClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Helper function to check if user is clinic admin/super admin for the branch's clinic
+function isClinicAdminForBranchClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+}
+
+// Allow super admins and clinic members to read branch data
+allow read: if isSuperAdmin() || belongsToBranchClinic();
+
+// Allow super admins and clinic admins to create branches
+allow create: if isSuperAdmin() || 
+              (isAuthenticated() && 
+               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+               request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId);
+
+// Allow super admins and clinic admins to update branches
+allow update: if isSuperAdmin() || isClinicAdminForBranchClinic();
+
+// Allow super admins and clinic admins to delete branches
+allow delete: if isSuperAdmin() || isClinicAdminForBranchClinic();
+}
+
+// Branches collection-level rules for queries
+match /branches {
+// Helper function to check if user belongs to any clinic
+function belongsToAnyClinic() {
+  return isAuthenticated() &&
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+}
+
+// Allow super admins to list all branches, clinic users to query their clinic's branches
+allow list: if isSuperAdmin() || belongsToAnyClinic();
+}
+
+// Clinic Types collection rules
+match /clinic_types/{typeId} {
+// Anyone authenticated can read clinic types
+allow read: if isAuthenticated()              ;
+
+// Only super admins can create, update or delete clinic types
+allow create, update, delete: if isSuperAdmin()                ;
+}
+
+// Subscription Plans collection rules
+match /subscriptionPlans/{planId} {
+  // Allow authenticated users to read subscription plans
+  allow read: if isAuthenticated();
+  
+  // Only super admins can create, update or delete subscription plans
+  allow create, update, delete: if isSuperAdmin();
+}
+
+// Pages collection rules
+match /pages/{pageId} {
+  // Allow authenticated users to read pages
+  allow read: if isAuthenticated();
+  
+  // Only super admins can create, update or delete pages
+  allow create, update, delete: if isSuperAdmin();
+}
+
+// ClinicTypePages collection rules (relation between clinic types and pages)
+match /clinic_type_pages/{relationId} {
+  // Allow authenticated users to read clinic type page relations
+  allow read: if isAuthenticated();
+  
+  // Only super admins can create, update or delete clinic type page relations
+  allow create, update, delete: if isSuperAdmin();
+}
+
+// Impersonation credentials collection rules
+match /impersonation_credentials/{adminId} {
+  // Super admins can access all
+  allow read, write: if isSuperAdmin();
+  
+  // Clinic admins/super admins can store credentials (they should only create users for their clinic)
+  allow write: if isClinicAdminOrSuperAdmin() &&
+               request.resource.data.keys().hasAll(['adminId', 'email', 'encryptedPassword']) &&
+               request.resource.data.adminId == adminId;
+  
+  // Clinic admins/super admins can read credentials they stored for their clinic
+  allow read: if isClinicAdminOrSuperAdmin() &&
+              exists(/databases/$(database)/documents/users/$(adminId)) &&
+              get(/databases/$(database)/documents/users/$(adminId)).data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId;
+  
+  // Allow updates during password reset (when user is authenticated)
+  allow update: if isAuthenticated() &&
+                request.resource.data.keys().hasAll(['adminId', 'email', 'encryptedPassword']) &&
+                request.resource.data.adminId == adminId;
+}
+
+// Invitations collection rules
+match /invitations/{invitationId} {
+  // Helper function to check if user is clinic admin/super admin for the invitation's clinic
+  function isClinicAdminForInvitationClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+  }
+
+  // Helper function to check if user belongs to the invitation's clinic
+  function belongsToInvitationClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+  }
+
+  // Allow clinic members to read invitations for their clinic, super admins can read all
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToInvitationClinic());
+
+  // Allow clinic admins/super admins to create invitations for their clinic, super admins can create any
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (isClinicAdminOrSuperAdmin() &&
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.invitedBy == request.auth.uid));
+
+  // Allow clinic admins/super admins to update (cancel) invitations for their clinic, super admins can update any
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForInvitationClinic());
+
+  // Allow clinic admins/super admins to delete invitations for their clinic, super admins can delete any
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForInvitationClinic());
+}
+
+// Invitations collection-level rules for queries
+match /invitations {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's invitations)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query invitations (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Appointment Types collection rules
+match /appointment_types/{appointmentTypeId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Helper function to check if user belongs to the clinic and branch (or is clinic-super-admin)
+  // Also handles individual clinics where branchId might be null
+  function belongsToClinicAndBranch(clinicId, branchId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin' ||
+            branchId == null || // Individual clinic case - no branch restriction
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId == branchId ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId == null); // User also from individual clinic
+  }
+  
+  // Helper function for simple clinic-only access (for reading across branches)
+  function belongsToClinicOnly(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's appointment types
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && 
+                belongsToClinicOnly(resource.data.clinicId)));
+  
+  // Allow clinic users to create appointment types for their own clinic
+  // branchId is optional for individual clinics
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinicOnly(request.resource.data.clinicId) &&
+                  request.resource.data.keys().hasAll(['name', 'price', 'clinicId', 'createdBy', 'isActive']) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's appointment types
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinicOnly(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's appointment types
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinicOnly(resource.data.clinicId)));
+}
+
+// Appointment Types collection-level rules for queries
+match /appointment_types {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query appointment types (they'll be filtered by clinicId and branchId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Patients collection rules
+match /patients/{patientId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's patients
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create patients for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's patients
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's patients
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Patients collection-level rules for queries
+match /patients {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query patients (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Appointments collection rules
+match /appointments/{appointmentId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's appointments
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create appointments for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's appointments
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's appointments
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Appointments collection-level rules for queries
+match /appointments {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query appointments (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Patient Contacts collection rules
+match /patient_contacts/{contactId} {
+  // Helper function to check if user belongs to the clinic by checking the associated patient
+  function belongsToClinicThroughPatient(patientId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           exists(/databases/$(database)/documents/patients/$(patientId)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == 
+           get(/databases/$(database)/documents/patients/$(patientId)).data.clinicId;
+  }
+  
+  // Allow clinic users to read patient contacts for their clinic's patients
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.patientId != null && 
+                belongsToClinicThroughPatient(resource.data.patientId)));
+  
+  // Allow clinic users to create patient contacts for their clinic's patients
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.patientId != null && 
+                  belongsToClinicThroughPatient(request.resource.data.patientId)));
+  
+  // Allow clinic users to update patient contacts for their clinic's patients
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.patientId != null && 
+                  belongsToClinicThroughPatient(resource.data.patientId) &&
+                  request.resource.data.patientId == resource.data.patientId));
+  
+  // Allow clinic users to delete patient contacts for their clinic's patients
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.patientId != null && 
+                  belongsToClinicThroughPatient(resource.data.patientId)));
+}
+
+// Doctors collection rules
+match /doctors/{doctorId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's doctors
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create doctors for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['name', 'doctorType', 'speciality', 'phone', 'nmcNumber', 'clinicId', 'createdBy', 'isActive'])));
+  
+  // Allow clinic users to update their own clinic's doctors
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's doctors
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Doctors collection-level rules for queries
+match /doctors {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query doctors (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Doctor Specialities collection rules
+match /doctor_specialities/{specialityId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's doctor specialities
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create doctor specialities for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['name', 'key', 'clinicId', 'createdBy', 'isActive'])));
+  
+  // Allow clinic users to update their own clinic's doctor specialities
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's doctor specialities
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Doctor Specialities collection-level rules for queries
+match /doctor_specialities {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query doctor specialities (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Medical Report Fields collection rules
+match /medical_report_fields/{fieldId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow collection-level queries for clinic users
+  allow list: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null));
+  
+  // Allow clinic users to read their own clinic's medical report fields
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medical report fields for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.keys().hasAll(['fieldLabel', 'fieldKey', 'fieldType', 'isRequired', 'isActive', 'displayOrder', 'clinicId', 'createdBy'])));
+  
+  // Allow clinic users to update their own clinic's medical report fields
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medical report fields
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medical Report Responses collection rules
+match /medicalReportResponses/{responseId} {
+  // Helper function to check if user belongs to the clinic by checking the associated patient
+  function belongsToClinicThroughPatient(patientId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           exists(/databases/$(database)/documents/patients/$(patientId)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == 
+           get(/databases/$(database)/documents/patients/$(patientId)).data.clinicId;
+  }
+  
+  // Helper function to check if user belongs to the clinic directly
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read medical report responses for their clinic's patients
+  allow read, list: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medical report responses for their clinic's patients
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.submittedBy == request.auth.uid));
+  
+  // Allow clinic users to update medical report responses for their clinic's patients
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete medical report responses for their clinic's patients
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medical Report Responses collection-level rules for queries
+match /medicalReportResponses {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medical report responses (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Notes Sections collection rules
+match /notes_sections/{sectionId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's notes sections
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create notes sections for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId)));
+  
+  // Allow clinic users to update their own clinic's notes sections
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to delete their own clinic's notes sections
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Notes Sections collection-level rules for queries
+match /notes_sections {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query notes sections (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Patient Notes collection rules
+match /patientNotes/{notesId} {
+  // Helper function to check if user belongs to the clinic by checking the associated patient
+  function belongsToClinicThroughPatient(patientId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           exists(/databases/$(database)/documents/patients/$(patientId)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == 
+           get(/databases/$(database)/documents/patients/$(patientId)).data.clinicId;
+  }
+  
+  // Helper function to check if user belongs to the clinic directly
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Helper function to extract clinicId from document ID pattern: {clinicId}_{patientId}
+  function getClinicIdFromNotesId(notesId) {
+    return notesId.split('_')[0];
+  }
+  
+  // Helper function to extract patientId from document ID pattern: {clinicId}_{patientId}
+  function getPatientIdFromNotesId(notesId) {
+    return notesId.split('_')[1];
+  }
+  
+  // Allow clinic users to read patient notes for their clinic's patients
+  // This handles both existing and non-existing documents
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               // For existing documents, check the data
+               (resource != null && resource.data.clinicId != null && 
+                belongsToClinic(resource.data.clinicId)) ||
+               // For non-existing documents or when accessing by ID pattern
+               (notesId.matches('.*_.*') && 
+                belongsToClinic(getClinicIdFromNotesId(notesId))));
+  
+  // Allow clinic users to create patient notes for their clinic's patients
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.patientId != null));
+  
+  // Allow clinic users to update patient notes for their clinic's patients
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete patient notes for their clinic's patients
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Patient Notes collection-level rules for queries
+match /patientNotes {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query patient notes (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Patient Note Entries collection rules
+match /patientNoteEntries/{entryId} {
+  // Helper function to check if user belongs to the clinic directly
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Helper function to check if user belongs to the clinic by checking the associated patient
+  function belongsToClinicThroughPatient(patientId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           exists(/databases/$(database)/documents/patients/$(patientId)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == 
+           get(/databases/$(database)/documents/patients/$(patientId)).data.clinicId;
+  }
+  
+  // Allow clinic users to read patient note entries for their clinic's patients
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create patient note entries for their clinic's patients
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['clinicId', 'patientId', 'sectionKey', 'sectionLabel', 'content', 'createdBy', 'createdAt'])));
+  
+  // Allow clinic users to update patient note entries for their clinic's patients (though entries are typically immutable)
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId &&
+                  request.resource.data.patientId == resource.data.patientId));
+  
+  // Allow clinic users to delete patient note entries for their clinic's patients
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Patient Note Entries collection-level rules for queries
+match /patientNoteEntries {
+  // Helper function to check if user belongs to any clinic (for listing their own clinic's data)
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query patient note entries (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= MEDICINE MANAGEMENT COLLECTIONS =============
+
+// Clinic Settings collection rules
+match /clinicSettings/{clinicId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's settings
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(clinicId));
+  
+  // Allow clinic users to create their own clinic's settings
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(clinicId) &&
+                  request.resource.data.clinicId == clinicId));
+  
+  // Allow clinic users to update their own clinic's settings
+  // Note: We don't require clinicId in update data since it's in the document path
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(clinicId));
+  
+  // Allow clinic users to delete their own clinic's settings
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(clinicId));
+}
+
+// Clinic Settings collection-level rules for queries
+match /clinicSettings {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query clinic settings (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Medicine Brands collection rules
+match /medicineBrands/{brandId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medicine brands
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medicine brands for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's medicine brands
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medicine brands
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medicine Brands collection-level rules for queries
+match /medicineBrands {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medicine brands (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Medicine Categories collection rules
+match /medicineCategories/{categoryId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medicine categories
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medicine categories for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's medicine categories
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medicine categories
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medicine Categories collection-level rules for queries
+match /medicineCategories {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medicine categories (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Inventory Items collection rules
+match /items/{itemId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's items
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create items for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's items
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's items
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Items collection-level rules for queries
+match /items {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query items (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Item Categories collection rules
+match /itemCategories/{categoryId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's item categories
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create item categories for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's item categories
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's item categories
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Item Categories collection-level rules for queries
+match /itemCategories {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query item categories (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Issued Items collection rules
+match /issuedItems/{issuedItemId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's issued items
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create issued items for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.issuedBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's issued items (for returns)
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's issued items
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Issued Items collection-level rules for queries
+match /issuedItems {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query issued items (they'll be filtered by clinicId in the query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Medicines collection rules
+match /medicines/{medicineId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medicines
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medicines for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's medicines
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medicines
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medicines collection-level rules for queries
+match /medicines {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medicines (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Medicine Stock collection rules
+match /medicineStock/{stockId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medicine stock
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medicine stock for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.updatedBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's medicine stock
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medicine stock
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medicine Stock collection-level rules for queries
+match /medicineStock {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medicine stock (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Stock Transactions collection rules
+match /stockTransactions/{transactionId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's stock transactions
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create stock transactions for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's stock transactions (though typically immutable)
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's stock transactions
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Stock Transactions collection-level rules for queries
+match /stockTransactions {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query stock transactions (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Suppliers collection rules
+match /suppliers/{supplierId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's suppliers
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create suppliers for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's suppliers
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's suppliers
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Suppliers collection-level rules for queries
+match /suppliers {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query suppliers (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Supplier Purchase Records collection rules
+match /supplier_purchase_records/{recordId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's supplier purchase records
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create supplier purchase records for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's supplier purchase records
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's supplier purchase records
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Supplier Purchase Records collection-level rules for queries
+match /supplier_purchase_records {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query supplier purchase records (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= FRONT OFFICE MANAGEMENT COLLECTIONS =============
+
+// Visitors collection rules
+match /visitors/{visitorId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's visitors
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create visitors for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's visitors
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's visitors
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Visitors collection-level rules for queries
+match /visitors {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query visitors (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Call Logs collection rules
+match /callLogs/{callLogId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's call logs
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create call logs for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's call logs
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's call logs
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Call Logs collection-level rules for queries
+match /callLogs {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query call logs (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= PRESCRIPTION MANAGEMENT COLLECTIONS =============
+
+// Prescriptions collection rules
+match /prescriptions/{prescriptionId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's prescriptions
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create prescriptions for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['prescriptionNo', 'patientId', 'doctorId', 'prescriptionDate', 'status', 'clinicId', 'branchId', 'createdBy'])));
+  
+  // Allow clinic users to update their own clinic's prescriptions
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's prescriptions
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+}
+
+// Prescriptions collection-level rules for queries
+match /prescriptions {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query prescriptions (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Prescription Items collection rules (sub-collection of prescriptions)
+match /prescriptions/{prescriptionId}/items/{itemId} {
+  // Helper function to check if user belongs to the prescription's clinic
+  function belongsToPrescriptionClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           exists(/databases/$(database)/documents/prescriptions/$(prescriptionId)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == 
+           get(/databases/$(database)/documents/prescriptions/$(prescriptionId)).data.clinicId;
+  }
+  
+  // Allow clinic users to read prescription items for their clinic's prescriptions
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToPrescriptionClinic());
+  
+  // Allow clinic users to create prescription items for their clinic's prescriptions
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToPrescriptionClinic() &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['medicineId', 'medicineName', 'dosage', 'frequency', 'duration', 'time', 'isActive', 'createdBy'])));
+  
+  // Allow clinic users to update prescription items for their clinic's prescriptions
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToPrescriptionClinic());
+  
+  // Allow clinic users to delete prescription items for their clinic's prescriptions
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToPrescriptionClinic());
+}
+
+// Prescription Templates collection rules
+match /prescriptionTemplates/{templateId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's prescription templates
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create prescription templates for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['name', 'doctorId', 'clinicId', 'branchId', 'items', 'isActive', 'createdBy'])));
+  
+  // Allow clinic users to update their own clinic's prescription templates
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's prescription templates
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+}
+
+// Prescription Templates collection-level rules for queries
+match /prescriptionTemplates {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query prescription templates (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Prescription History collection rules
+match /prescriptionHistory/{historyId} {
+  // Helper function to check if user belongs to the prescription's clinic
+  function belongsToPrescriptionClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           exists(/databases/$(database)/documents/prescriptions/$(resource.data.prescriptionId)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == 
+           get(/databases/$(database)/documents/prescriptions/$(resource.data.prescriptionId)).data.clinicId;
+  }
+  
+  // Allow clinic users to read prescription history for their clinic's prescriptions
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToPrescriptionClinic());
+  
+  // Allow clinic users to create prescription history entries for their clinic's prescriptions
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToPrescriptionClinic() &&
+                  request.resource.data.changedBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['prescriptionId', 'changeType', 'changeDescription', 'changedBy', 'changedAt'])));
+  
+  // History entries should not be updated or deleted (audit trail)
+  allow update, delete: if false;
+}
+
+// Prescription History collection-level rules for queries
+match /prescriptionHistory {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query prescription history (filtered by prescriptionId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= MEDICAL RECORDS COLLECTIONS =============
+
+// Medical Documents collection rules
+match /medical_documents/{documentId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medical documents
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medical documents for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['patientId', 'clinicId', 'note', 'createdBy']) &&
+                  request.resource.data.keys().hasOnly(['patientId', 'clinicId', 'note', 'file', 'createdBy', 'createdAt', 'updatedAt'])));
+  
+  // Allow clinic users to update their own clinic's medical documents
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medical documents
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// Medical Documents collection-level rules for queries
+match /medical_documents {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medical documents (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// X-ray Records collection rules
+match /xray_records/{xrayId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's X-ray records
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create X-ray records for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['patientId', 'clinicId', 'note', 'createdBy']) &&
+                  request.resource.data.keys().hasOnly(['patientId', 'clinicId', 'note', 'file', 'createdBy', 'createdAt', 'updatedAt'])));
+  
+  // Allow clinic users to update their own clinic's X-ray records
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's X-ray records
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// X-ray Records collection-level rules for queries
+match /xray_records {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query X-ray records (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= PHARMACY MANAGEMENT COLLECTIONS =============
+
+// Medicine Purchases collection rules
+match /medicinePurchases/{purchaseId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medicine purchases
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medicine purchases for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['purchaseNo', 'items', 'total', 'netAmount', 'paymentType', 'paymentStatus', 'purchaseDate', 'clinicId', 'createdBy'])));
+  
+  // Allow clinic users to update their own clinic's medicine purchases
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medicine purchases
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medicine Purchases collection-level rules for queries
+match /medicinePurchases {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medicine purchases (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Medicine Usage collection rules
+match /medicineUsage/{usageId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's medicine usage
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create medicine usage records for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['medicineId', 'medicineName', 'quantityUsed', 'usageDate', 'clinicId', 'createdBy'])));
+  
+  // Allow clinic users to update their own clinic's medicine usage records
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's medicine usage records
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Medicine Usage collection-level rules for queries
+match /medicineUsage {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query medicine usage (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Pharmacy Settings collection rules
+match /pharmacySettings/{settingsId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's pharmacy settings
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create pharmacy settings for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.updatedBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['clinicId', 'branchId', 'defaultTaxPercentage', 'enableTax', 'enabledPaymentMethods', 'defaultPaymentMethod', 'enableDiscount', 'nextInvoiceNumber', 'updatedBy']) &&
+                  request.resource.data.enabledPaymentMethods.size() > 0) );
+  
+  // Allow clinic users to update their own clinic's pharmacy settings
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's pharmacy settings
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Pharmacy Settings collection-level rules for queries
+match /pharmacySettings {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query pharmacy settings (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Print Layout Config collection rules
+match /clinic_print_layouts/{clinicId} {
+  // Allow clinic users to read their own clinic's print layout config
+  allow get: if isAuthenticated() && (
+    isSuperAdmin() ||
+    (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId)
+  );
+  // Allow super admins or clinic admins to update their own clinic's print layout config
+  allow update, create: if isAuthenticated() && (
+    isSuperAdmin() ||
+    (
+      (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId
+    )
+  );
+}
+
+// ============= SMS COMMUNICATION MANAGEMENT COLLECTIONS =============
+
+// SMS Logs collection rules
+match /smsLogs/{logId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's SMS logs
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to create SMS logs for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.keys().hasAll(['clinicId', 'message', 'status', 'type', 'createdBy']) &&
+                  request.resource.data.status in ['sent', 'failed', 'pending'] &&
+                  request.resource.data.type in ['reminder', 'manual', 'template', 'appointment'] &&
+                  // Optional fields validation
+                  (!request.resource.data.keys().hasAny(['recipientType']) || request.resource.data.recipientType in ['patient', 'doctor', 'general']) &&
+                  (!request.resource.data.keys().hasAny(['patientId']) || request.resource.data.patientId is string) &&
+                  (!request.resource.data.keys().hasAny(['doctorId']) || request.resource.data.doctorId is string) &&
+                  (!request.resource.data.keys().hasAny(['branchId']) || request.resource.data.branchId is string) &&
+                  (!request.resource.data.keys().hasAny(['templateId']) || request.resource.data.templateId is string) &&
+                  (!request.resource.data.keys().hasAny(['errorMessage']) || request.resource.data.errorMessage is string) &&
+                  (!request.resource.data.keys().hasAny(['patientName']) || request.resource.data.patientName is string) &&
+                  (!request.resource.data.keys().hasAny(['doctorName']) || request.resource.data.doctorName is string) &&
+                  (!request.resource.data.keys().hasAny(['patientPhone']) || request.resource.data.patientPhone is string) &&
+                  (!request.resource.data.keys().hasAny(['doctorPhone']) || request.resource.data.doctorPhone is string)) ||
+                 // Allow system/server-side operations (for automated reminders)
+                 (request.resource.data.createdBy == 'system' &&
+                  request.resource.data.type == 'reminder'));
+  
+  // Allow clinic users to update their own clinic's SMS logs (for status updates)
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's SMS logs
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// SMS Logs collection-level rules for queries
+match /smsLogs {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query SMS logs (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// SMS Templates collection rules
+match /smsTemplates/{templateId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's SMS templates
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to create SMS templates for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.keys().hasAll(['name', 'message', 'type', 'clinicId']) &&
+                  request.resource.data.type in ['patient', 'doctor', 'general', 'appointment', 'reminder']));
+  
+  // Allow clinic users to update their own clinic's SMS templates
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's SMS templates
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// SMS Templates collection-level rules for queries
+match /smsTemplates {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query SMS templates (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// SMS Settings collection rules
+match /smsSettings/{settingsId} {
+  // Helper function to check if user belongs to the clinic (settingsId should be clinicId)
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user is clinic admin for the clinic
+  function isClinicAdminForClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's SMS settings (settingsId = clinicId)
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(settingsId));
+  
+  // Allow clinic users to create SMS settings for their own clinic (settingsId = clinicId)
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(settingsId) && 
+                  request.resource.data.clinicId == settingsId &&
+                  request.resource.data.enableReminders is bool &&
+                  request.resource.data.reminderHours is number &&
+                  request.resource.data.maxDailySMS is number &&
+                  request.resource.data.currentDailySMS is number &&
+                  request.resource.data.enableAutoReminders is bool &&
+                  request.resource.data.isActive is bool));
+  
+  // Allow clinic users to update their own clinic's SMS settings
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(settingsId) &&
+                  request.resource.data.clinicId == settingsId));
+  
+  // Allow clinic admins to delete their own clinic's SMS settings
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForClinic(settingsId));
+}
+
+// SMS Settings collection-level rules for queries
+match /smsSettings {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query SMS settings (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// SMS Provider Configurations collection rules
+match /smsProviders/{providerId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user is clinic admin for the clinic
+  function isClinicAdminForClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's SMS provider configurations
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic admins to create SMS provider configurations for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (isClinicAdminForClinic(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+  
+  // Allow clinic admins to update their own clinic's SMS provider configurations
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForClinic(resource.data.clinicId));
+  
+  // Allow clinic admins to delete their own clinic's SMS provider configurations
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForClinic(resource.data.clinicId));
+}
+
+// SMS Provider Configurations collection-level rules for queries
+match /smsProviders {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query SMS provider configurations (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// SMS Queue collection rules (for batch/scheduled messages)
+match /smsQueue/{queueId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's SMS queue
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to create SMS queue entries for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+  
+  // Allow clinic users to update their own clinic's SMS queue (for status updates)
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's SMS queue entries
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// SMS Queue collection-level rules for queries
+match /smsQueue {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query SMS queue (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// SMS Recipients collection rules (for group messaging)
+match /smsRecipients/{recipientId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's SMS recipients
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to create SMS recipients for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+  
+  // Allow clinic users to update their own clinic's SMS recipients
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's SMS recipients
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// SMS Recipients collection-level rules for queries
+match /smsRecipients {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query SMS recipients (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Appointment Billing Settings collection rules
+match /appointmentBillingSettings/{settingsId} {
+  // Helper function to check if user belongs to the clinic (settingsId should be clinicId)
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user is clinic admin for the clinic
+  function isClinicAdminForClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's billing settings (settingsId = clinicId)
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(settingsId));
+  
+  // Allow super admins to create billing settings for any clinic, clinic admins for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(settingsId) && 
+                  request.resource.data.clinicId == settingsId &&
+                  request.resource.data.keys().hasAll(['clinicId', 'enabledByAdmin', 'isActive', 'invoicePrefix', 'nextInvoiceNumber']) &&
+                  // Validate paymentMethods array structure if present
+                  (!request.resource.data.keys().hasAny(['paymentMethods']) || 
+                   (request.resource.data.paymentMethods is list &&
+                    request.resource.data.paymentMethods.size() >= 0)) &&
+                  // Validate defaultPaymentMethod if present
+                  (!request.resource.data.keys().hasAny(['defaultPaymentMethod']) || 
+                   request.resource.data.defaultPaymentMethod is string)));
+  
+  // Allow super admins to update any clinic's billing settings, clinic admins for their own clinic
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 belongsToClinic(settingsId)) &&
+                // Validate paymentMethods array structure if being updated
+                (!request.resource.data.keys().hasAny(['paymentMethods']) || 
+                 (request.resource.data.paymentMethods is list &&
+                  request.resource.data.paymentMethods.size() >= 0)) &&
+                // Validate defaultPaymentMethod if being updated
+                (!request.resource.data.keys().hasAny(['defaultPaymentMethod']) || 
+                 request.resource.data.defaultPaymentMethod is string) &&
+                // Ensure clinic ID consistency for updates
+                (!request.resource.data.keys().hasAny(['clinicId']) || 
+                 request.resource.data.clinicId == settingsId);
+  
+  // Allow super admins to delete any clinic's billing settings, clinic admins for their own clinic
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForClinic(settingsId));
+}
+
+// Appointment Billing Settings collection-level rules for queries
+match /appointmentBillingSettings {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query billing settings (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Appointment Billing collection rules
+match /appointmentBilling/{billingId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user is clinic admin or has billing permissions
+  function hasBillingAccess(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's billing records
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users with billing access to create billing records for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasBillingAccess(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['invoiceNumber', 'patientId', 'doctorId', 'totalAmount', 'clinicId'])));
+  
+  // Allow clinic users with billing access to update their own clinic's billing records
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasBillingAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+  
+  // Allow clinic admins to delete their own clinic's billing records
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasBillingAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+}
+
+// Appointment Billing collection-level rules for queries
+match /appointmentBilling {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query billing records (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= PATHOLOGY BILLING COLLECTIONS =============
+
+// Pathology Billing Settings collection rules
+match /pathologyBillingSettings/{settingsId} {
+  // Helper function to check if user is clinic admin for the clinic
+  function isClinicAdminForClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's billing settings
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(settingsId));
+  
+  // Allow clinic admins to create/update billing settings for their own clinic
+  allow create, update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (isClinicAdminForClinic(settingsId) &&
+                  request.resource.data.clinicId == settingsId &&
+                  // Ensure clinic ID consistency for updates
+                  (!request.resource.data.keys().hasAny(['clinicId']) || 
+                   request.resource.data.clinicId == settingsId)));
+
+  // Allow super admins to delete any clinic's billing settings, clinic admins for their own clinic
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || isClinicAdminForClinic(settingsId));
+}
+
+// Pathology Billing Settings collection-level rules for queries
+match /pathologyBillingSettings {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query billing settings (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Pathology Billing collection rules
+match /pathologyBilling/{billingId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user is clinic admin or has billing permissions
+  function hasBillingAccess(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's billing records
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users with billing access to create billing records for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasBillingAccess(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['invoiceNumber', 'patientName', 'totalAmount', 'clinicId'])));
+  
+  // Allow clinic users with billing access to update their own clinic's billing records
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasBillingAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+  
+  // Allow clinic admins to delete their own clinic's billing records
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasBillingAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+}
+
+// Pathology Billing collection-level rules for queries
+match /pathologyBilling {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query billing records (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= LAB TECHNICIANS COLLECTION =============
+
+// Lab Technicians collection rules
+match /labTechnicians/{technicianId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user has lab technician management access
+  function hasLabTechnicianAccess(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's lab technicians
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users with access to create lab technicians for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasLabTechnicianAccess(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['name', 'clinicId', 'branchId', 'isActive', 'createdBy'])));
+  
+  // Allow clinic users with access to update their own clinic's lab technicians
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasLabTechnicianAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  // Ensure clinic ID doesn't change
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users with access to delete (soft delete) their own clinic's lab technicians
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasLabTechnicianAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+}
+
+// Lab Technicians collection-level rules for queries
+match /labTechnicians {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query lab technicians (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Doctor Commissions collection rules
+match /doctorCommissions/{commissionId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Helper function to check if user has commission access
+  function hasCommissionAccess(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff') &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's doctor commissions
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users with commission access to create commission records for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasCommissionAccess(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.createdBy == request.auth.uid &&
+                  request.resource.data.keys().hasAll(['doctorId', 'clinicId', 'billingId', 'commissionAmount', 'commissionPercentage', 'status', 'createdBy']) &&
+                  request.resource.data.status in ['pending', 'paid', 'cancelled'] &&
+                  request.resource.data.commissionAmount is number && request.resource.data.commissionAmount >= 0 &&
+                  request.resource.data.commissionPercentage is number && request.resource.data.commissionPercentage >= 0 &&
+                  request.resource.data.doctorId is string &&
+                  request.resource.data.clinicId is string &&
+                  request.resource.data.billingId is string));
+  
+  // Allow clinic users with commission access to update their own clinic's commission records
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasCommissionAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  // Ensure clinicId and core fields don't change
+                  request.resource.data.clinicId == resource.data.clinicId &&
+                  request.resource.data.doctorId == resource.data.doctorId &&
+                  request.resource.data.billingId == resource.data.billingId &&
+                  // Ensure commission amount and percentage validations
+                  request.resource.data.commissionAmount is number && request.resource.data.commissionAmount >= 0 &&
+                  request.resource.data.commissionPercentage is number && request.resource.data.commissionPercentage >= 0 &&
+                  request.resource.data.totalInvoiceAmount is number && request.resource.data.totalInvoiceAmount >= 0 &&
+                  request.resource.data.status in ['pending', 'paid', 'cancelled']));
+  
+  // Allow clinic admins to delete their own clinic's commission records
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (hasCommissionAccess(resource.data.clinicId) &&
+                  resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId));
+}
+
+// Doctor Commissions collection-level rules for queries
+match /doctorCommissions {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query commission records (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= APPOINTMENT REMINDERS MANAGEMENT COLLECTIONS =============
+
+// Appointment Reminders collection rules
+match /appointmentReminders/{reminderId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+
+  // Allow clinic users to read their own clinic's appointment reminders
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+  
+  // Allow clinic users to create appointment reminders for their own clinic
+  // Also allow system-level operations for automated reminders
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(request.resource.data.clinicId) && 
+                  request.resource.data.clinicId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId &&
+                  request.resource.data.keys().hasAll(['appointmentId', 'patientId', 'doctorId', 'clinicId', 'appointmentDate', 'reminderDate', 'status']) &&
+                  request.resource.data.status in ['scheduled', 'sent', 'failed', 'cancelled'] &&
+                  request.resource.data.appointmentId is string &&
+                  request.resource.data.patientId is string &&
+                  request.resource.data.doctorId is string &&
+                  request.resource.data.clinicId is string &&
+                  // branchId is optional
+                  (!request.resource.data.keys().hasAny(['branchId']) || request.resource.data.branchId is string)) ||
+                 // Allow system/server-side operations (for automated reminders)
+                 (request.resource.data.keys().hasAll(['appointmentId', 'patientId', 'doctorId', 'clinicId', 'appointmentDate', 'reminderDate', 'status']) &&
+                  request.resource.data.status in ['scheduled', 'sent', 'failed', 'cancelled'] &&
+                  request.resource.data.appointmentId is string &&
+                  request.resource.data.patientId is string &&
+                  request.resource.data.doctorId is string &&
+                  request.resource.data.clinicId is string &&
+                  // branchId is optional for system operations too
+                  (!request.resource.data.keys().hasAny(['branchId']) || request.resource.data.branchId is string)));
+  
+  // Allow clinic users to update their own clinic's appointment reminders (for status updates)
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId &&
+                  // Ensure core fields don't change
+                  request.resource.data.appointmentId == resource.data.appointmentId &&
+                  request.resource.data.patientId == resource.data.patientId &&
+                  request.resource.data.doctorId == resource.data.doctorId &&
+                  request.resource.data.clinicId == resource.data.clinicId &&
+                  request.resource.data.status in ['scheduled', 'sent', 'failed', 'cancelled']));
+  
+  // Allow clinic users to delete their own clinic's appointment reminders
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || belongsToClinic(resource.data.clinicId));
+}
+
+// Appointment Reminders collection-level rules for queries
+match /appointmentReminders {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+
+  // Allow clinic users to query appointment reminders (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ============= TEXT EDITOR DOCUMENT MANAGEMENT COLLECTIONS =============
+
+// Text Documents collection rules
+match /textDocuments/{documentId} {
+  // Helper function to check if user belongs to the document's clinic
+  function belongsToDocumentClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId;
+  }
+
+  // Helper function to check if user belongs to the document's branch (for multi-branch clinics)
+  function belongsToDocumentBranch() {
+    return belongsToDocumentClinic() &&
+           // If document has no branchId (clinic-wide), allow access
+           (!('branchId' in resource.data) || resource.data.branchId == null ||
+            // If user has no branchId (clinic admin), allow access
+            !('branchId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId == null ||
+            // If user belongs to the same branch
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId == resource.data.branchId);
+  }
+
+  // Helper function to check if user is clinic admin/super admin for the document's clinic
+  function isClinicAdminForDocumentClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == resource.data.clinicId &&
+           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin' ||
+            isSuperAdmin());
+  }
+
+  // Allow clinic members to read documents from their clinic/branch
+  allow read: if isSuperAdmin() || belongsToDocumentBranch();
+
+  // Allow authenticated clinic members to create documents for their clinic/branch
+  allow create: if isAuthenticated() &&
+                 exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                 // Must belong to the clinic they're creating document for
+                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == request.resource.data.clinicId &&
+                 // If document has branchId, user must belong to that branch or be clinic admin
+                 (!('branchId' in request.resource.data) || request.resource.data.branchId == null ||
+                  !('branchId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId == null ||
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.branchId == request.resource.data.branchId ||
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-admin' ||
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'clinic-super-admin') &&
+                 // Document creator must match authenticated user
+                 request.resource.data.createdBy == request.auth.uid;
+
+  // Allow document creator, clinic admins, or users from same branch to update documents
+  allow update: if isAuthenticated() &&
+                 belongsToDocumentBranch() &&
+                 // Either document creator, clinic admin, or lastModifiedBy matches current user
+                 (resource.data.createdBy == request.auth.uid ||
+                  isClinicAdminForDocumentClinic() ||
+                  request.resource.data.lastModifiedBy == request.auth.uid) &&
+                 // Ensure clinicId and branchId cannot be changed
+                 request.resource.data.clinicId == resource.data.clinicId &&
+                 ((!('branchId' in resource.data) && !('branchId' in request.resource.data)) ||
+                  request.resource.data.branchId == resource.data.branchId);
+
+  // Allow document creator or clinic admins to delete documents
+  allow delete: if isAuthenticated() &&
+                 belongsToDocumentBranch() &&
+                 (resource.data.createdBy == request.auth.uid ||
+                  isClinicAdminForDocumentClinic());
+}
+
+// Text Documents collection-level rules for queries
+match /textDocuments {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           'clinicId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+  }
+
+  // Allow clinic users to query documents (filtered by clinicId and optionally branchId in query)
+  allow list: if isSuperAdmin() || belongsToAnyClinic();
+}
+
+// Bed Categories collection rules
+match /bedCategories/{categoryId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's bed categories
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create bed categories for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's bed categories
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's bed categories
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Bed Categories collection-level rules for queries
+match /bedCategories {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query bed categories (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Beds collection rules
+match /beds/{bedId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's beds
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create beds for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's beds
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's beds
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Beds collection-level rules for queries
+match /beds {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query beds (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// Bed Allotments collection rules
+match /bedAllotments/{allotmentId} {
+  // Helper function to check if user belongs to the clinic
+  function belongsToClinic(clinicId) {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Allow clinic users to read their own clinic's bed allotments
+  allow read: if isAuthenticated() && 
+              (isSuperAdmin() || 
+               (resource.data.clinicId != null && belongsToClinic(resource.data.clinicId)));
+  
+  // Allow clinic users to create bed allotments for their own clinic
+  allow create: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (request.resource.data.clinicId != null && 
+                  belongsToClinic(request.resource.data.clinicId) &&
+                  request.resource.data.createdBy == request.auth.uid));
+  
+  // Allow clinic users to update their own clinic's bed allotments
+  allow update: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId) &&
+                  request.resource.data.clinicId == resource.data.clinicId));
+  
+  // Allow clinic users to delete their own clinic's bed allotments
+  allow delete: if isAuthenticated() && 
+                (isSuperAdmin() || 
+                 (resource.data.clinicId != null && 
+                  belongsToClinic(resource.data.clinicId)));
+}
+
+// Bed Allotments collection-level rules for queries
+match /bedAllotments {
+  // Helper function to check if user belongs to any clinic
+  function belongsToAnyClinic() {
+    return isAuthenticated() &&
+           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.clinicId != null;
+  }
+  
+  // Allow clinic users to query bed allotments (filtered by clinicId in query)
+  allow list: if isAuthenticated() && (isSuperAdmin() || belongsToAnyClinic());
+}
+
+// ProCare Nepal listing site: practice users (clinics and doctors)
+match /practice_users/{userId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+
+// ProCare Nepal listing site: clinics (public read when verified; owner/platform admin write)
+match /procarenepal_clinics/{clinicId} {
+  allow read: if true;
+  allow create: if request.auth != null;
+  allow update, delete: if request.auth != null &&
+    (resource.data.createdBy == request.auth.uid ||
+     exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid)));
+}
+
+// ProCare Nepal listing site: doctors (public read when verified; owner/platform admin write)
+match /procarenepal_doctors/{doctorId} {
+  allow read: if resource.data.verificationStatus == 'verified' ||
+    (request.auth != null && (resource.data.uid == request.auth.uid ||
+      exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid))));
+  allow create: if request.auth != null && 
+    request.resource.data.uid == request.auth.uid &&
+    (request.resource.data.doctorType == 'individual' || request.resource.data.doctorType == null);
+  allow update, delete: if request.auth != null &&
+    (resource.data.uid == request.auth.uid ||
+     exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid)));
+}
+
+// ProCare Nepal: clinic-associated doctors (created by clinics)
+match /procarenepal_clinic_doctors/{doctorId} {
+  // Helper: Check if user owns the clinic
+  function isClinicOwner(clinicId) {
+    return request.auth != null &&
+           exists(/databases/$(database)/documents/practice_users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/practice_users/$(request.auth.uid)).data.clinicId == clinicId;
+  }
+  
+  // Helper: Check if user is platform admin
+  function isPlatformAdmin() {
+    return request.auth != null &&
+           exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid));
+  }
+  
+  // Read: Clinic owners can read their doctors, public can read verified public doctors
+  allow read: if (resource.data.verificationStatus == 'verified' && resource.data.isPublic == true && resource.data.isActive == true && resource.data.isDeleted != true) ||
+              (request.auth != null && (
+                isClinicOwner(resource.data.clinicId) ||
+                isPlatformAdmin()
+              ));
+  
+  // Create: Only clinic owners can create doctors for their clinic
+  // Clinic doctors are automatically verified (no platform admin verification needed)
+  // Enforce constraint: Clinic doctors do NOT have services - they inherit from clinic
+  allow create: if request.auth != null &&
+                request.resource.data.clinicId is string &&
+                isClinicOwner(request.resource.data.clinicId) &&
+                request.resource.data.doctorType == 'clinic-associated' &&
+                request.resource.data.createdBy == request.auth.uid &&
+                request.resource.data.verificationStatus == 'verified' &&
+                request.resource.data.verifiedBy == request.auth.uid &&
+                !('services' in request.resource.data);
+  
+  // Update: Clinic owners can update their doctors
+  // Note: Clinic doctors are auto-verified, so platform admins don't need to verify them
+  // Enforce constraint: Clinic doctors do NOT have services - prevent setting/updating services
+  // Prevent changing verificationStatus from verified (clinic doctors stay verified)
+  allow update: if request.auth != null &&
+                 isClinicOwner(resource.data.clinicId) &&
+                 !('services' in request.resource.data) &&
+                 (request.resource.data.verificationStatus == 'verified' || 
+                  !('verificationStatus' in request.resource.data));
+  
+  // Delete: Use soft delete via update instead
+  allow delete: if false;
+}
+
+// ProCare Nepal: clinic doctors collection-level queries
+match /procarenepal_clinic_doctors {
+  allow list: if true; // Public can query, but results filtered by rules above
+}
+
+// ProCare Nepal: appointment requests (patients book slots; doctors read/update)
+match /procarenepal_appointments/{appointmentId} {
+  allow create: if request.resource.data.doctorId is string
+    && request.resource.data.date is string
+    && request.resource.data.slotTime is string
+    && request.resource.data.patientName is string
+    && request.resource.data.patientPhone is string
+    && request.resource.data.status == 'pending';
+  allow read, update, delete: if request.auth != null
+    && (get(/databases/$(database)/documents/procarenepal_doctors/$(resource.data.doctorId)).data.uid == request.auth.uid
+        || exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid)));
+}
+
+// ProCare Nepal platform admins (for verification)
+match /platform_admins/{adminId} {
+  allow read: if request.auth != null && request.auth.uid == adminId;
+  allow list: if false;
+  allow write: if false;
+}
+
+// ProCare Nepal catalog and patient_users (listing site)
+match /patient_users/{userId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+match /catalog_provinces/{id} { allow read: if true; allow write: if false; }
+match /catalog_districts/{id} { allow read: if true; allow write: if false; }
+match /catalog_cities/{id} { allow read: if true; allow write: if false; }
+match /catalog_services/{id} { allow read: if true; allow write: if false; }
+match /catalog_clinic_types/{id} { allow read: if true; allow write: if false; }
+match /catalog_specialities/{id} { allow read: if true; allow write: if false; }
+
+// ProCare Nepal platform configuration (for admin settings)
+match /platform_config/{configId} {
+  // Helper: Check if user is platform admin
+  function isPlatformAdmin() {
+    return request.auth != null &&
+           exists(/databases/$(database)/documents/platform_admins/$(request.auth.uid));
+  }
+  
+  // Public can read (for explore page settings, etc.)
+  allow read: if true;
+  
+  // Only platform admins can write
+  allow write: if isPlatformAdmin();
+}
+
+// Default deny rule - deny all other access
+match /{document=**} {
+allow read, write: if false                  ;
+}
+}
+}

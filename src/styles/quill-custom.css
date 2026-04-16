@@ -1,0 +1,47 @@
+/* Custom Quill Editor Styles */
+
+.ql-editor {
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px !important;
+  height: 600px !important;
+  overflow-y: auto;
+}
+
+.ql-editor.ql-blank::before {
+  font-style: italic;
+  color: #999;
+}
+
+/* Sticky Toolbar styling */
+.ql-toolbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 100 !important;
+  border-bottom: 1px solid #e4e4e7;
+  background: #fafafa;
+  border-top: 1px solid #e4e4e7;
+  border-left: 1px solid #e4e4e7;
+  border-right: 1px solid #e4e4e7;
+  border-radius: 8px 8px 0 0;
+}
+
+.ql-container {
+  border-bottom: 1px solid #e4e4e7;
+  border-left: 1px solid #e4e4e7;
+  border-right: 1px solid #e4e4e7;
+  border-radius: 0 0 8px 8px;
+  height: 600px !important;
+}
+
+/* Medical template styling */
+.ql-editor h1, .ql-editor h2, .ql-editor h3 {
+  color: #1f2937;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ql-editor strong {
+  color: #374151;
+}

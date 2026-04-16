@@ -1,0 +1,1792 @@
+/**
+ * Invoice Detail Page — Clinic Clarity, zero HeroUI
+ * Custom UI per src/design/spec.md. Invoice print layout unchanged.
+ */
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
+import {
+  IoArrowBackOutline,
+  IoPrintOutline,
+  IoCloseOutline,
+} from "react-icons/io5";
+import {
+  IoReceiptOutline,
+  IoAddOutline,
+  IoCashOutline,
+  IoCheckmarkCircleOutline,
+  IoWarningOutline,
+  IoCloseCircleOutline,
+  IoCard,
+  IoCash,
+} from "react-icons/io5";
+
+import { Button } from "@/components/ui/button";
+import { addToast } from "@/components/ui/toast";
+import { appointmentBillingService } from "@/services/appointmentBillingService";
+import { clinicService } from "@/services/clinicService";
+import { patientService } from "@/services/patientService";
+import { AppointmentBilling, Patient } from "@/types/models";
+import { PrintLayoutConfig } from "@/types/printLayout";
+import { useAuth } from "@/hooks/useAuth";
+import { useModalState } from "@/hooks/useModalState";
+import { adToBS } from "@/utils/dateConverter";
+
+// ── UI Helpers (spec: flat, compact, border-based) ─────────────────────────
+function StatusBadge({
+  status,
+  type = "payment",
+}: {
+  status: string;
+  type?: "status" | "payment";
+}) {
+  const S_COLORS: Record<string, string> = {
+    paid: "bg-health-100 text-health-700 border-health-200",
+    finalized: "bg-teal-100 text-teal-700 border-teal-200",
+    partial: "bg-saffron-100 text-saffron-700 border-saffron-200",
+    unpaid: "bg-red-100 text-red-700 border-red-200",
+    cancelled: "bg-red-100 text-red-700 border-red-200",
+    default: "bg-mountain-100 text-mountain-600 border-mountain-200",
+  };
+  const color = S_COLORS[status] || S_COLORS.default;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded border capitalize ${color}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function FlatInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  disabled,
+  prefixText,
+  hint,
+  required,
+  min,
+  step,
+}: {
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  prefixText?: string;
+  hint?: string;
+  required?: boolean;
+  min?: string;
+  step?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 w-full">
+      <label className="text-[12px] font-medium text-mountain-700">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <div
+        className={`flex items-center h-8 border border-mountain-200 rounded bg-white focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-100 ${disabled ? "bg-mountain-50" : ""}`}
+      >
+        {prefixText && (
+          <span className="pl-2.5 text-[12px] text-mountain-400 shrink-0">
+            {prefixText}
+          </span>
+        )}
+        <input
+          className="flex-1 w-full px-2.5 text-[12.5px] bg-transparent focus:outline-none text-mountain-800 placeholder:text-mountain-300 disabled:text-mountain-400"
+          disabled={disabled}
+          min={min}
+          placeholder={placeholder}
+          step={step}
+          type={type}
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      </div>
+      {hint && <p className="text-[10.5px] text-mountain-400">{hint}</p>}
+    </div>
+  );
+}
+
+function ModalShell({
+  title,
+  subtitle,
+  onClose,
+  children,
+  footer,
+  size = "lg",
+  disabled,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+  size?: "md" | "lg" | "xl";
+  disabled?: boolean;
+}) {
+  const widthMap = { md: "max-w-md", lg: "max-w-2xl", xl: "max-w-3xl" };
+
+  useEffect(() => {
+    const el =
+      document.getElementById("dashboard-scroll-container") || document.body;
+    const prev = el.style.overflow;
+
+    el.style.overflow = "hidden";
+
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 overflow-hidden"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !disabled) onClose();
+      }}
+    >
+      <div
+        className={`bg-white border border-mountain-200 rounded w-full ${widthMap[size]} flex flex-col max-h-[90vh]`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between px-4 py-3 border-b border-mountain-100 shrink-0">
+          <div>
+            <h3 className="text-[14px] font-semibold text-mountain-900">
+              {title}
+            </h3>
+            {subtitle && (
+              <div className="mt-1 text-[12px] text-mountain-500">
+                {subtitle}
+              </div>
+            )}
+          </div>
+          {!disabled && (
+            <button
+              className="text-mountain-400 hover:text-mountain-700 mt-0.5"
+              type="button"
+              onClick={onClose}
+            >
+              <IoCloseOutline className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div className="p-4 overflow-y-auto flex-1">{children}</div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-mountain-100 shrink-0">
+          {footer}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export default function InvoiceDetailPage() {
+  const { id: invoiceId } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { currentUser, clinicId, userData, isLoading: authLoading } = useAuth();
+  const paymentModal = useModalState(false);
+  const branchId = userData?.branchId ?? null;
+  const isClinicAdmin =
+    userData?.role === "clinic-admin" ||
+    userData?.role === "clinic-super-admin" ||
+    userData?.role === "super-admin";
+
+  const [invoice, setInvoice] = useState<AppointmentBilling | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [layoutConfig, setLayoutConfig] = useState<PrintLayoutConfig | null>(
+    null,
+  );
+  const [clinic, setClinic] = useState<any>(null);
+  const [patient, setPatient] = useState<Patient | null>(null);
+
+  // Payment form state
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    method: "cash",
+    reference: "",
+    notes: "",
+  });
+
+  // Available payment methods (would come from billing settings in real app)
+  const availablePaymentMethods = [
+    { key: "cash", name: "Cash", icon: "💵" },
+    { key: "card", name: "Card", icon: "💳" },
+    { key: "bank_transfer", name: "Bank Transfer", icon: "🏦" },
+    { key: "mobile_banking", name: "Mobile Banking", icon: "📱" },
+  ];
+
+  useEffect(() => {
+    const loadInvoiceDetails = async () => {
+      if (!invoiceId) return;
+
+      if (authLoading || !clinicId) return;
+
+      try {
+        setLoading(true);
+
+        const [clinicData, layoutConfigData, invoiceData] = await Promise.all([
+          clinicService.getClinicById(clinicId),
+          clinicService.getPrintLayoutConfig(clinicId),
+          appointmentBillingService.getBillingById(invoiceId),
+        ]);
+
+        if (!invoiceData) {
+          addToast({
+            title: "Invoice not found",
+            description: "The requested invoice could not be found.",
+            color: "danger",
+          });
+          navigate("/dashboard/appointments-billing");
+
+          return;
+        }
+
+        if (invoiceData.clinicId !== clinicId) {
+          addToast({
+            title: "Access denied",
+            description: "This invoice does not belong to your clinic.",
+            color: "danger",
+          });
+          navigate("/dashboard/appointments-billing");
+
+          return;
+        }
+
+        if (branchId && invoiceData.branchId !== branchId) {
+          addToast({
+            title: "Access denied",
+            description: "You can only view invoices for your branch.",
+            color: "danger",
+          });
+          navigate("/dashboard/appointments-billing");
+
+          return;
+        }
+
+        setInvoice(invoiceData);
+        if (clinicData) setClinic(clinicData);
+        if (layoutConfigData) setLayoutConfig(layoutConfigData);
+
+        try {
+          const patientData = await patientService.getPatientById(
+            invoiceData.patientId,
+          );
+
+          if (patientData) setPatient(patientData);
+        } catch (error) {
+          console.error("Error loading patient data:", error);
+        }
+      } catch (error) {
+        console.error("Error loading invoice details:", error);
+        addToast({
+          title: "Error",
+          description: "Failed to load invoice details",
+          color: "danger",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInvoiceDetails();
+  }, [invoiceId, clinicId, branchId, navigate, authLoading]);
+
+  // Trigger automatic print if the URL contains `?print=true` once data is loaded
+  useEffect(() => {
+    if (!loading && invoice && searchParams.get("print") === "true") {
+      // Slight delay to ensure the page is fully rendered before printing
+      setTimeout(() => window.print(), 300);
+    }
+  }, [loading, invoice, searchParams]);
+
+  const formatCurrency = (amount: number) => {
+    return `NPR ${amount.toLocaleString()}`;
+  };
+
+  const formatDateWithBS = (date: Date | string) => {
+    const dateObj = typeof date === "string" ? new Date(date) : date;
+    const adDate = dateObj.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    try {
+      const bsDate = adToBS(dateObj);
+
+      return {
+        ad: adDate,
+        bs: bsDate.formatted,
+        bsReadable: `${bsDate.day} ${["Baisakh", "Jestha", "Ashadh", "Shrawan", "Bhadra", "Ashwin", "Kartik", "Mangsir", "Poush", "Magh", "Falgun", "Chaitra"][bsDate.month - 1]} ${bsDate.year}`,
+      };
+    } catch (error) {
+      console.error("Error converting to BS date:", error);
+
+      return {
+        ad: adDate,
+        bs: "",
+        bsReadable: "",
+      };
+    }
+  };
+
+  // Calculate age from date of birth or use stored age
+  const getPatientAge = (p: Patient | null): number | null => {
+    if (!p) return null;
+
+    // Prefer explicitly stored age
+    if (typeof p.age === "number" && p.age > 0) {
+      return p.age;
+    }
+    if (typeof p.age === "string") {
+      const parsed = parseInt(p.age, 10);
+
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+    }
+
+    // Fallback to DOB-based calculation
+    if (p.dob) {
+      const today = new Date();
+      const birthDate = new Date(p.dob);
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && today.getDate() < birthDate.getDate())
+      ) {
+        age--;
+      }
+
+      return age;
+    }
+
+    return null;
+  };
+
+  const getPaymentStatusIcon = (status: string) => {
+    switch (status) {
+      case "paid":
+        return <IoCheckmarkCircleOutline className="w-5 h-5" />;
+      case "partial":
+        return <IoWarningOutline className="w-5 h-5" />;
+      case "unpaid":
+        return <IoCloseCircleOutline className="w-5 h-5" />;
+      default:
+        return null;
+    }
+  };
+
+  const getPaymentMethodIcon = (iconText?: string) => {
+    switch (iconText) {
+      case "💵":
+        return IoCash;
+      case "💳":
+      case "📱":
+      case "🏦":
+        return IoCard;
+      default:
+        return IoCard;
+    }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!invoice || !currentUser) return;
+
+    const amount = parseFloat(paymentForm.amount);
+
+    if (isNaN(amount) || amount <= 0) {
+      addToast({
+        title: "Invalid Amount",
+        description: "Please enter a valid payment amount.",
+        color: "warning",
+      });
+
+      return;
+    }
+
+    if (amount > invoice.balanceAmount) {
+      addToast({
+        title: "Excessive Amount",
+        description: "Payment amount cannot exceed the balance amount.",
+        color: "warning",
+      });
+
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      await appointmentBillingService.recordPayment(
+        invoice.id,
+        amount,
+        paymentForm.method,
+        paymentForm.reference || undefined,
+        paymentForm.notes || undefined,
+      );
+
+      addToast({
+        title: "Payment Recorded",
+        description: `Payment of ${formatCurrency(amount)} has been recorded successfully.`,
+        color: "success",
+      });
+
+      const updatedInvoice = await appointmentBillingService.getBillingById(
+        invoiceId!,
+      );
+
+      if (updatedInvoice) setInvoice(updatedInvoice);
+
+      // Close payment modal
+      paymentModal.forceClose();
+      setPaymentForm({ amount: "", method: "cash", reference: "", notes: "" });
+    } catch (error) {
+      console.error("Error recording payment:", error);
+      addToast({
+        title: "Payment Error",
+        description: "Failed to record payment. Please try again.",
+        color: "danger",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handlePaymentOpen = () => {
+    if (!invoice) return;
+    setPaymentForm({
+      amount: invoice.balanceAmount.toString(),
+      method: "cash",
+      reference: "",
+      notes: "",
+    });
+    paymentModal.open();
+  };
+
+  const handlePrint = () => {
+    if (!invoice) return;
+
+    // Create a new window for printing
+    const printWindow = window.open("", "_blank", "width=800,height=600");
+
+    if (printWindow) {
+      // Build the items HTML
+      const itemsHtml = invoice.items
+        .map(
+          (item) =>
+            `<tr>
+          <td class="text-left">${item.appointmentTypeName}</td>
+          <td class="text-center">${item.quantity}</td>
+          <td class="text-right">NPR ${item.price.toLocaleString()}</td>
+          <td class="text-right">NPR ${item.amount.toLocaleString()}</td>
+        </tr>`,
+        )
+        .join("");
+
+      // Format both AD and BS dates
+      const dateInfo = formatDateWithBS(invoice.invoiceDate);
+
+      // Calculate patient age for print
+      const patientAge = getPatientAge(patient);
+      const patientAgeText = patientAge !== null ? `${patientAge} years` : "";
+      const patientGenderText = patient?.gender
+        ? patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)
+        : "";
+
+      // Generate the HTML content for printing with dynamic clinic data
+      const printContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Invoice - ${invoice.invoiceNumber}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: white;
+      color: #333;
+    }
+    .print-container {
+      max-width: 100%;
+      margin: 0;
+      background: white;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 10mm;
+      box-sizing: border-box;
+    }
+    .header {
+      border-bottom: 2px solid #333;
+      padding-bottom: ${
+        layoutConfig?.headerHeight === "compact"
+          ? "10px"
+          : layoutConfig?.headerHeight === "expanded"
+            ? "20px"
+            : "15px"
+      };
+      margin-bottom: ${
+        layoutConfig?.headerHeight === "compact"
+          ? "10px"
+          : layoutConfig?.headerHeight === "expanded"
+            ? "20px"
+            : "15px"
+      };
+    }
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      ${
+        layoutConfig?.logoPosition === "center"
+          ? "justify-content: center; text-align: center;"
+          : layoutConfig?.logoPosition === "right"
+            ? "justify-content: flex-end; text-align: right;"
+            : "justify-content: flex-start; text-align: left;"
+      }
+    }
+    .header-right {
+      text-align: right;
+      font-size: ${
+        layoutConfig?.fontSize === "small"
+          ? "11px"
+          : layoutConfig?.fontSize === "large"
+            ? "14px"
+            : "12px"
+      };
+      color: #333;
+      line-height: 1.4;
+    }
+    .logo {
+      ${
+        layoutConfig?.logoSize === "small"
+          ? "height: 40px;"
+          : layoutConfig?.logoSize === "large"
+            ? "height: 80px;"
+            : "height: 60px;"
+      }
+      width: auto;
+      object-fit: contain;
+    }
+    .clinic-info {
+      ${layoutConfig?.logoPosition === "center" ? "text-align: center;" : ""}
+    }
+    .clinic-name {
+      font-weight: bold;
+      color: ${layoutConfig?.primaryColor || "#2563eb"};
+      margin: 0;
+      font-size: ${
+        layoutConfig?.fontSize === "small"
+          ? "20px"
+          : layoutConfig?.fontSize === "large"
+            ? "30px"
+            : "26px"
+      };
+    }
+    .tagline {
+      font-size: ${
+        layoutConfig?.fontSize === "small"
+          ? "12px"
+          : layoutConfig?.fontSize === "large"
+            ? "16px"
+            : "14px"
+      };
+      color: #666;
+      margin: 5px 0;
+    }
+    .clinic-details {
+      margin-top: 10px;
+      color: #333;
+      font-size: ${
+        layoutConfig?.fontSize === "small"
+          ? "11px"
+          : layoutConfig?.fontSize === "large"
+            ? "14px"
+            : "12px"
+      };
+    }
+
+    .clinic-flex{
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .document-title {
+      text-align: center;
+      margin: 20px 0;
+    }
+    .document-title h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    .document-subtitle {
+      font-size: 14px;
+      color: #666;
+      margin: 5px 0;
+    }
+    .document-info {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+    }
+    .date-info {
+      text-align: right;
+    }
+    .date-bs {
+      font-size: 12px;
+      color: #888;
+      font-style: italic;
+    }
+    .content {
+      flex: 1;
+      padding: 10px 0;
+      min-height: 0;
+    }
+    .bill-to-section {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 30px;
+      padding: 15px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    .bill-to-section h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+    }
+    .bill-to-section p {
+      margin: 2px 0;
+      font-size: 12px;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    .items-table th,
+    .items-table td {
+      border: 1px solid #333;
+      padding: 8px;
+      font-size: 12px;
+    }
+    .items-table th {
+      background-color: #f5f5f5;
+      font-weight: bold;
+      text-align: center;
+    }
+    .items-table td.text-left {
+      text-align: left;
+    }
+    .items-table td.text-center {
+      text-align: center;
+    }
+    .items-table td.text-right {
+      text-align: right;
+    }
+    .summary-section {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 20px;
+    }
+    .summary-table {
+      width: 300px;
+      border-collapse: collapse;
+    }
+    .summary-table td {
+      border: 1px solid #333;
+      padding: 8px;
+      font-size: 12px;
+    }
+    .summary-table .font-bold {
+      font-weight: bold;
+    }
+
+    .footer {
+      border-top: 1px solid #333;
+      padding-top: 10px;
+      margin-top: auto;
+      text-align: center;
+      font-size: ${
+        layoutConfig?.fontSize === "small"
+          ? "11px"
+          : layoutConfig?.fontSize === "large"
+            ? "13px"
+            : "12px"
+      };
+      color: #666;
+      flex-shrink: 0;
+    }
+
+    /* Responsive adjustments for smaller page sizes - preserving layout */
+    @media print and (max-width: 7in), print and (max-height: 9in) {
+      .print-container {
+        padding: 4mm !important;
+      }
+      
+      .header {
+        padding-bottom: ${
+          layoutConfig?.headerHeight === "compact"
+            ? "8px"
+            : layoutConfig?.headerHeight === "expanded"
+              ? "15px"
+              : "12px"
+        } !important;
+        margin-bottom: ${
+          layoutConfig?.headerHeight === "compact"
+            ? "8px"
+            : layoutConfig?.headerHeight === "expanded"
+              ? "15px"
+              : "12px"
+        } !important;
+      }
+      
+      .header-content {
+        gap: 15px !important;
+      }
+      
+      .header-left {
+        gap: 15px !important;
+      }
+      
+      .clinic-name {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "18px"
+            : layoutConfig?.fontSize === "large"
+              ? "26px"
+              : "22px"
+        } !important;
+      }
+      
+      .tagline {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "11px"
+            : layoutConfig?.fontSize === "large"
+              ? "14px"
+              : "12px"
+        } !important;
+        margin: 4px 0 !important;
+      }
+      
+      .clinic-details {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "10px"
+            : layoutConfig?.fontSize === "large"
+              ? "12px"
+              : "11px"
+        } !important;
+        margin-top: 8px !important;
+      }
+      
+      .header-right {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "10px"
+            : layoutConfig?.fontSize === "large"
+              ? "12px"
+              : "11px"
+        } !important;
+      }
+      
+      .logo {
+        height: ${
+          layoutConfig?.logoSize === "small"
+            ? "35px"
+            : layoutConfig?.logoSize === "large"
+              ? "65px"
+              : "50px"
+        } !important;
+      }
+      
+      .document-title {
+        margin: 15px 0 !important;
+      }
+      
+      .document-title h2 {
+        font-size: 16px !important;
+      }
+      
+      .document-subtitle {
+        font-size: 12px !important;
+        margin: 4px 0 !important;
+      }
+      
+      .document-info {
+        font-size: 12px !important;
+        margin-top: 8px !important;
+      }
+      
+      .date-bs {
+        font-size: 10px !important;
+      }
+      
+      .content {
+        padding: 8px 0 !important;
+      }
+      
+      .bill-to-section {
+        margin-bottom: 20px !important;
+        padding: 12px !important;
+      }
+      
+      .bill-to-section h3 {
+        font-size: 12px !important;
+        margin: 0 0 8px 0 !important;
+      }
+      
+      .bill-to-section p {
+        font-size: 10px !important;
+        margin: 1px 0 !important;
+      }
+      
+      .bill-to-section p[style*="color: #666"] {
+        font-size: 9px !important;
+        margin: 1px 0 !important;
+      }
+      
+      .items-table {
+        margin-bottom: 15px !important;
+      }
+      
+      .items-table th,
+      .items-table td {
+        padding: 6px !important;
+        font-size: 10px !important;
+      }
+      
+      .summary-section {
+        margin-bottom: 15px !important;
+      }
+      
+      .summary-table {
+        width: 280px !important;
+      }
+      
+      .summary-table td {
+        padding: 6px !important;
+        font-size: 10px !important;
+      }
+      
+      .footer {
+        padding-top: 8px !important;
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "10px"
+            : layoutConfig?.fontSize === "large"
+              ? "12px"
+              : "11px"
+        } !important;
+      }
+    }
+
+    /* Only for very small page sizes - minimal layout changes */
+    @media print and (max-width: 5in), print and (max-height: 7in) {
+      .print-container {
+        padding: 2mm !important;
+      }
+      
+      .header {
+        padding-bottom: ${
+          layoutConfig?.headerHeight === "compact"
+            ? "6px"
+            : layoutConfig?.headerHeight === "expanded"
+              ? "12px"
+              : "8px"
+        } !important;
+        margin-bottom: ${
+          layoutConfig?.headerHeight === "compact"
+            ? "6px"
+            : layoutConfig?.headerHeight === "expanded"
+              ? "12px"
+              : "8px"
+        } !important;
+      }
+      
+      .header-content {
+        gap: 10px !important;
+      }
+      
+      .header-left {
+        gap: 10px !important;
+      }
+      
+      .clinic-name {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "16px"
+            : layoutConfig?.fontSize === "large"
+              ? "22px"
+              : "18px"
+        } !important;
+      }
+      
+      .tagline {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "9px"
+            : layoutConfig?.fontSize === "large"
+              ? "12px"
+              : "10px"
+        } !important;
+        margin: 3px 0 !important;
+      }
+      
+      .clinic-details {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "9px"
+            : layoutConfig?.fontSize === "large"
+              ? "11px"
+              : "10px"
+        } !important;
+        margin-top: 6px !important;
+      }
+      
+      .header-right {
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "9px"
+            : layoutConfig?.fontSize === "large"
+              ? "11px"
+              : "10px"
+        } !important;
+      }
+      
+      .logo {
+        height: ${
+          layoutConfig?.logoSize === "small"
+            ? "30px"
+            : layoutConfig?.logoSize === "large"
+              ? "55px"
+              : "45px"
+        } !important;
+      }
+      
+      .document-title {
+        margin: 10px 0 !important;
+      }
+      
+      .document-title h2 {
+        font-size: 14px !important;
+      }
+      
+      .document-subtitle {
+        font-size: 10px !important;
+        margin: 3px 0 !important;
+      }
+      
+      .document-info {
+        font-size: 10px !important;
+        margin-top: 6px !important;
+      }
+      
+      .date-bs {
+        font-size: 9px !important;
+      }
+      
+      .content {
+        padding: 6px 0 !important;
+      }
+      
+      .bill-to-section {
+        margin-bottom: 15px !important;
+        padding: 8px !important;
+      }
+      
+      .bill-to-section h3 {
+        font-size: 11px !important;
+        margin: 0 0 6px 0 !important;
+      }
+      
+      .bill-to-section p {
+        font-size: 9px !important;
+        margin: 1px 0 !important;
+      }
+      
+      .bill-to-section p[style*="color: #666"] {
+        font-size: 8px !important;
+        margin: 1px 0 !important;
+      }
+      
+      .items-table {
+        margin-bottom: 10px !important;
+      }
+      
+      .items-table th,
+      .items-table td {
+        padding: 4px !important;
+        font-size: 9px !important;
+      }
+      
+      .summary-section {
+        margin-bottom: 10px !important;
+      }
+      
+      .summary-table {
+        width: 240px !important;
+      }
+      
+      .summary-table td {
+        padding: 4px !important;
+        font-size: 9px !important;
+      }
+      
+      .footer {
+        padding-top: 6px !important;
+        font-size: ${
+          layoutConfig?.fontSize === "small"
+            ? "8px"
+            : layoutConfig?.fontSize === "large"
+              ? "10px"
+              : "9px"
+        } !important;
+      }
+
+      .clinic-flex {
+          display: flex;
+          justify-content: space-between;
+      }
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        margin: 0;
+      }
+      .print-container {
+        height: 100vh;
+        padding: 5mm;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-container">
+    <div class="header">
+      <div class="header-content">
+        <div class="header-left">
+          ${
+            layoutConfig?.logoUrl
+              ? `
+            <img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />
+          `
+              : ""
+          }
+          <div class="clinic-info">
+            <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
+            ${
+              layoutConfig?.tagline
+                ? `
+              <p class="tagline">${layoutConfig.tagline}</p>
+            `
+                : ""
+            }
+            <div class="clinic-flex">
+              <div class="clinic-details">
+                <p>${layoutConfig?.address || clinic?.address || ""}</p>
+                <p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>
+                ${layoutConfig?.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
+              </div>
+              <div class="clinic-contact">
+                <p><strong>Phone:</strong> ${layoutConfig?.phone || clinic?.phone || ""}</p>
+                <p><strong>Email:</strong> ${layoutConfig?.email || clinic?.email || ""}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <div class="document-title">
+      <h2>Invoice</h2>
+      <p class="document-subtitle">Appointment Billing</p>
+      <div class="document-info">
+        <span>Invoice No: ${invoice.invoiceNumber}</span>
+        <div class="date-info">
+          <div>${dateInfo.ad}</div>
+          ${dateInfo.bsReadable ? `<div class="date-bs">${dateInfo.bsReadable} BS</div>` : ""}
+        </div>
+      </div>
+    </div>
+    
+    <div class="content">
+      <div class="bill-to-section">
+        <div>
+          <h3>Bill To:</h3>
+          <p><strong>Name: ${invoice.patientName}</strong></p>
+          ${patientAgeText ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Age: ${patientAgeText}</p>` : ""}
+          ${patientGenderText ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Gender: ${patientGenderText}</p>` : ""}
+          ${patient?.address ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Address: ${patient.address}</p>` : ""}
+        </div>
+        <div>
+          <h3></h3>
+          <p><strong></strong></p>
+        </div>
+      </div>
+      
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+      
+      <div class="summary-section">
+        <table class="summary-table">
+          <tbody>
+            <tr>
+              <td>Subtotal</td>
+              <td class="text-right">NPR ${invoice.subtotal.toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td>Discount${invoice.discountType === "percent" ? ` (${invoice.discountValue}%)` : " (Flat)"}</td>
+              <td class="text-right">- NPR ${invoice.discountAmount.toLocaleString()}</td>
+            </tr>
+            ${
+              invoice.taxAmount > 0
+                ? `
+            <tr>
+              <td>Tax (${invoice.taxPercentage}%)</td>
+              <td class="text-right">NPR ${invoice.taxAmount.toLocaleString()}</td>
+            </tr>
+            `
+                : ""
+            }
+            <tr class="font-bold">
+              <td>Total Amount</td>
+              <td class="text-right">NPR ${invoice.totalAmount.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+
+      
+      ${
+        invoice.notes
+          ? `
+      <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
+        <h3 style="margin: 0 0 10px 0; font-size: 14px;">Notes:</h3>
+        <p style="margin: 0; font-size: 12px;">${invoice.notes}</p>
+      </div>
+      `
+          : ""
+      }
+    </div>
+    
+    <div class="footer">
+      ${layoutConfig?.footerText ? `<p>${layoutConfig.footerText}</p>` : ""}
+    </div>
+  </div>
+  
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        window.print();
+      }, 500);
+    });
+    
+    window.addEventListener('afterprint', function() {
+      window.close();
+    });
+    
+    window.addEventListener('beforeunload', function() {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage('printComplete', '*');
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+    } else {
+      addToast({
+        title: "Error",
+        description:
+          "Unable to open print window. Please check your browser settings.",
+        color: "danger",
+      });
+    }
+  };
+
+  if (loading || authLoading || !clinicId) {
+    return (
+      <div className="flex flex-col gap-4 px-4 pb-12">
+        <div className="clarity-page-header flex flex-wrap items-center gap-3">
+          <button
+            className="p-2 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded border border-transparent hover:border-mountain-200"
+            type="button"
+            onClick={() => navigate(-1)}
+          >
+            <IoArrowBackOutline className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="clarity-page-title text-[15px] font-bold text-mountain-900 tracking-tight">
+              Invoice Details
+            </h1>
+            <p className="clarity-page-subtitle text-[12.5px] text-mountain-500 mt-0.5">
+              {authLoading
+                ? "Authenticating..."
+                : !clinicId
+                  ? "Setting up clinic..."
+                  : "Loading invoice information..."}
+            </p>
+          </div>
+        </div>
+        <div className="bg-white border border-mountain-200 rounded p-6 flex items-center justify-center min-h-[200px]">
+          <p className="text-[13px] text-mountain-500">
+            {authLoading
+              ? "Authenticating..."
+              : !clinicId
+                ? "Setting up clinic..."
+                : "Loading invoice details..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!invoice) {
+    return (
+      <div className="flex flex-col gap-4 px-4 pb-12">
+        <div className="clarity-page-header flex flex-wrap items-center gap-3">
+          <button
+            className="p-2 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded border border-transparent hover:border-mountain-200"
+            type="button"
+            onClick={() => navigate(-1)}
+          >
+            <IoArrowBackOutline className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="clarity-page-title text-[15px] font-bold text-mountain-900 tracking-tight">
+              Invoice Not Found
+            </h1>
+            <p className="clarity-page-subtitle text-[12.5px] text-mountain-500 mt-0.5">
+              The requested invoice could not be found
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate payment progress (treat fully paid / zero balance as 100% even when total is 0)
+  const paymentProgress =
+    invoice.totalAmount > 0
+      ? (invoice.paidAmount / invoice.totalAmount) * 100
+      : invoice.paymentStatus === "paid" || invoice.balanceAmount <= 0
+        ? 100
+        : 0;
+
+  return (
+    <>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+          .print-only { display: none !important; }
+          @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { margin: 0 !important; padding: 0 !important; }
+            .print-only { margin: 0 !important; padding: 5mm !important; width: 100% !important; height: 100% !important; border: none !important; border-radius: 0 !important; box-shadow: none !important; }
+          }
+        `,
+        }}
+      />
+      <div className="flex flex-col gap-4 px-4 pb-12 no-print">
+        {/* Page header — spec: clarity-page-header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              className="p-2 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded border border-transparent hover:border-mountain-200"
+              type="button"
+              onClick={() => navigate(-1)}
+            >
+              <IoArrowBackOutline className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="clarity-page-title text-[15px] font-bold text-mountain-900 tracking-tight">
+                Invoice Details
+              </h1>
+              <div className="clarity-page-subtitle text-[12.5px] text-mountain-500 mt-0.5 space-y-0.5">
+                <p>
+                  {invoice.invoiceNumber} •{" "}
+                  {formatDateWithBS(invoice.invoiceDate).ad}
+                </p>
+                {formatDateWithBS(invoice.invoiceDate).bsReadable && (
+                  <p className="text-[11px] italic">
+                    {formatDateWithBS(invoice.invoiceDate).bsReadable} BS
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              color="default"
+              size="sm"
+              startContent={<IoPrintOutline className="w-4 h-4" />}
+              variant="bordered"
+              onClick={handlePrint}
+            >
+              Print Invoice
+            </Button>
+            {invoice.balanceAmount > 0 && (
+              <Button
+                color="primary"
+                size="sm"
+                startContent={<IoAddOutline className="w-4 h-4" />}
+                onClick={handlePaymentOpen}
+              >
+                Record Payment
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Payment status bar — clarity-card, no shadow */}
+        <div className="bg-white border border-mountain-200 rounded p-4">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[12px] text-mountain-500 mb-0.5">
+                Total Amount
+              </p>
+              <p className="text-[22px] font-bold text-mountain-900 tracking-tight">
+                {formatCurrency(invoice.totalAmount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[12px] text-mountain-500 mb-0.5">
+                Paid Amount
+              </p>
+              <p className="text-[22px] font-bold text-health-700 tracking-tight">
+                {formatCurrency(invoice.paidAmount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[12px] text-mountain-500 mb-0.5">
+                Balance Amount
+              </p>
+              <p
+                className={`text-[22px] font-bold tracking-tight ${invoice.balanceAmount > 0 ? "text-red-600" : "text-health-700"}`}
+              >
+                {formatCurrency(invoice.balanceAmount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[12px] text-mountain-500 mb-0.5">
+                Payment Status
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {getPaymentStatusIcon(invoice.paymentStatus)}
+                <StatusBadge status={invoice.paymentStatus} />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-[12px] text-mountain-500">
+                Payment Progress
+              </span>
+              <span className="text-[12px] font-medium text-mountain-700">
+                {paymentProgress.toFixed(1)}%
+              </span>
+            </div>
+            <div className="h-2 bg-mountain-100 rounded overflow-hidden">
+              <div
+                className="h-full rounded transition-[width] ease-out"
+                style={{
+                  width: `${Math.min(100, paymentProgress)}%`,
+                  backgroundColor:
+                    paymentProgress >= 100
+                      ? "rgb(22 163 74)"
+                      : paymentProgress > 0
+                        ? "rgb(217 119 6)"
+                        : "rgb(225 29 72)",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Invoice details — two cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Invoice Items — clarity-table */}
+          <div className="bg-white border border-mountain-200 rounded overflow-hidden">
+            <div className="px-4 py-3 bg-mountain-50 border-b border-mountain-200 flex items-center gap-2">
+              <IoReceiptOutline className="w-4 h-4 text-teal-700" />
+              <h3 className="text-[13px] font-semibold text-mountain-900 uppercase tracking-wide">
+                Invoice Items
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full clarity-table border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left">Service</th>
+                    <th className="text-center">Qty</th>
+                    <th className="text-right">Price</th>
+                    <th className="text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoice.items.map((item, index) => (
+                    <tr key={index}>
+                      <td>
+                        <div>
+                          <p className="font-medium text-mountain-800 text-[13px]">
+                            {item.appointmentTypeName}
+                          </p>
+                          {item.commission > 0 && (
+                            <p className="text-[11px] text-mountain-500">
+                              Commission: {item.commission}%
+                            </p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-center">{item.quantity}</td>
+                      <td className="text-right">
+                        {formatCurrency(item.price)}
+                      </td>
+                      <td className="text-right">
+                        {formatCurrency(item.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 border-t border-mountain-200 bg-mountain-50 space-y-1.5 text-[13px] text-mountain-700">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span>{formatCurrency(invoice.subtotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Discount ({invoice.discountType}):</span>
+                <span className="text-red-600">
+                  - {formatCurrency(invoice.discountAmount)}
+                </span>
+              </div>
+              {invoice.taxAmount > 0 && (
+                <div className="flex justify-between">
+                  <span>Tax ({invoice.taxPercentage}%):</span>
+                  <span>{formatCurrency(invoice.taxAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-mountain-900 text-[14px] pt-1.5 border-t border-mountain-200 mt-1.5">
+                <span>Total Amount:</span>
+                <span>{formatCurrency(invoice.totalAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Invoice Information */}
+          <div className="bg-white border border-mountain-200 rounded overflow-hidden">
+            <div className="px-4 py-3 bg-mountain-50 border-b border-mountain-200 flex items-center gap-2">
+              <IoCashOutline className="w-4 h-4 text-teal-700" />
+              <h3 className="text-[13px] font-semibold text-mountain-900 uppercase tracking-wide">
+                Invoice Information
+              </h3>
+            </div>
+            <div className="p-4 space-y-5 text-[13px]">
+              <div>
+                <h4 className="text-[11px] font-semibold text-mountain-500 uppercase tracking-wider mb-1.5">
+                  Patient Information
+                </h4>
+                <div className="space-y-0.5 text-mountain-800">
+                  <p>
+                    <span className="font-medium">Name:</span>{" "}
+                    {invoice.patientName}
+                  </p>
+                  {getPatientAge(patient) !== null && (
+                    <p>
+                      <span className="font-medium">Age:</span>{" "}
+                      {getPatientAge(patient)} years
+                    </p>
+                  )}
+                  {patient?.gender && (
+                    <p>
+                      <span className="font-medium">Gender:</span>{" "}
+                      <span className="capitalize">{patient.gender}</span>
+                    </p>
+                  )}
+                  {patient?.address && (
+                    <p>
+                      <span className="font-medium">Address:</span>{" "}
+                      {patient.address}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-[11px] font-semibold text-mountain-500 uppercase tracking-wider mb-1.5">
+                  Doctor Information
+                </h4>
+                <div className="space-y-0.5 text-mountain-800">
+                  <p>
+                    <span className="font-medium">Name:</span>{" "}
+                    {invoice.doctorName}
+                  </p>
+                  <p>
+                    <span className="font-medium">Type:</span>{" "}
+                    {invoice.doctorType}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <h4 className="text-[11px] font-semibold text-mountain-500 uppercase tracking-wider mb-1.5">
+                  Invoice Details
+                </h4>
+                <div className="space-y-0.5 text-mountain-800">
+                  <p>
+                    <span className="font-medium">Invoice Number:</span>{" "}
+                    {invoice.invoiceNumber}
+                  </p>
+                  <div>
+                    <p>
+                      <span className="font-medium">Invoice Date:</span>{" "}
+                      {formatDateWithBS(invoice.invoiceDate).ad}
+                    </p>
+                    {formatDateWithBS(invoice.invoiceDate).bsReadable && (
+                      <p className="text-[11px] text-mountain-500 ml-4 italic">
+                        {formatDateWithBS(invoice.invoiceDate).bsReadable} BS
+                      </p>
+                    )}
+                  </div>
+                  <p>
+                    <span className="font-medium">Status:</span>{" "}
+                    {invoice.status}
+                  </p>
+                  {invoice.paymentMethod && (
+                    <p>
+                      <span className="font-medium">Payment Method:</span>{" "}
+                      {invoice.paymentMethod.replace("_", " ")}
+                    </p>
+                  )}
+                  {invoice.paymentReference && (
+                    <p>
+                      <span className="font-medium">Payment Reference:</span>{" "}
+                      {invoice.paymentReference}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {invoice.notes && (
+                <div>
+                  <h4 className="text-[11px] font-semibold text-mountain-500 uppercase tracking-wider mb-1.5">
+                    Notes
+                  </h4>
+                  <p className="text-mountain-600 text-[12.5px]">
+                    {invoice.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Payment Recording Modal — custom ModalShell */}
+      {paymentModal.isOpen && invoice && (
+        <ModalShell
+          disabled={isSubmitting}
+          footer={
+            <>
+              <Button
+                color="default"
+                disabled={isSubmitting}
+                size="sm"
+                variant="bordered"
+                onClick={paymentModal.close}
+              >
+                Cancel
+              </Button>
+              <Button
+                color="secondary"
+                disabled={
+                  !paymentForm.amount ||
+                  parseFloat(paymentForm.amount) <= 0 ||
+                  isSubmitting
+                }
+                isLoading={isSubmitting}
+                size="sm"
+                onClick={handlePaymentSubmit}
+              >
+                {isSubmitting ? "Recording…" : "Record Payment"}
+              </Button>
+            </>
+          }
+          size="md"
+          subtitle={
+            <div className="space-y-0.5 text-[12px]">
+              <p>
+                <span className="font-medium text-mountain-700">Invoice:</span>{" "}
+                {invoice.invoiceNumber}
+              </p>
+              <p>
+                <span className="font-medium text-mountain-700">Patient:</span>{" "}
+                {invoice.patientName}
+              </p>
+              <p className="text-red-600 font-semibold">
+                <span className="font-medium text-mountain-700">Balance:</span>{" "}
+                {formatCurrency(invoice.balanceAmount)}
+              </p>
+            </div>
+          }
+          title="Record Payment"
+          onClose={paymentModal.close}
+        >
+          <div className="space-y-4">
+            <FlatInput
+              required
+              hint={`Maximum: ${formatCurrency(invoice.balanceAmount)}`}
+              label="Payment Amount"
+              min="0"
+              placeholder="Enter payment amount"
+              prefixText="NPR"
+              step="0.01"
+              type="number"
+              value={paymentForm.amount}
+              onChange={(v) =>
+                setPaymentForm((prev) => ({ ...prev, amount: v }))
+              }
+            />
+            <div className="flex flex-col gap-1">
+              <label className="text-[12px] font-medium text-mountain-700">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="h-8 w-full px-2.5 text-[12.5px] border border-mountain-200 rounded bg-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100 text-mountain-800"
+                value={paymentForm.method}
+                onChange={(e) =>
+                  setPaymentForm((prev) => ({
+                    ...prev,
+                    method: e.target.value,
+                    reference: "",
+                  }))
+                }
+              >
+                {availablePaymentMethods.map((method) => (
+                  <option key={method.key} value={method.key}>
+                    {method.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <FlatInput
+              hint="Transaction ID, cheque number, or reference"
+              label="Transaction Reference"
+              placeholder="Transaction ID / reference (optional)"
+              value={paymentForm.reference}
+              onChange={(v) =>
+                setPaymentForm((prev) => ({ ...prev, reference: v }))
+              }
+            />
+            <FlatInput
+              label="Payment Notes"
+              placeholder="Optional notes"
+              value={paymentForm.notes}
+              onChange={(v) =>
+                setPaymentForm((prev) => ({ ...prev, notes: v }))
+              }
+            />
+            {paymentForm.amount && (
+              <div className="p-3 bg-mountain-50 border border-mountain-100 rounded text-[12px] space-y-1">
+                <h4 className="font-semibold text-mountain-900 mb-1.5">
+                  Payment Summary
+                </h4>
+                <div className="flex justify-between">
+                  <span className="text-mountain-600">Total Invoice:</span>
+                  <span>{formatCurrency(invoice.totalAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-mountain-600">Already Paid:</span>
+                  <span className="text-health-600">
+                    {formatCurrency(invoice.paidAmount)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-mountain-600">Current Payment:</span>
+                  <span className="text-teal-700 font-semibold">
+                    {formatCurrency(parseFloat(paymentForm.amount) || 0)}
+                  </span>
+                </div>
+                <div className="border-t border-mountain-200 my-1.5 pt-1.5 flex justify-between font-semibold">
+                  <span>New Balance:</span>
+                  <span
+                    className={
+                      invoice.balanceAmount -
+                        (parseFloat(paymentForm.amount) || 0) <=
+                      0
+                        ? "text-health-600"
+                        : "text-red-600"
+                    }
+                  >
+                    {formatCurrency(
+                      invoice.balanceAmount -
+                        (parseFloat(paymentForm.amount) || 0),
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-mountain-500">Status:</span>
+                  <span
+                    className={
+                      invoice.balanceAmount -
+                        (parseFloat(paymentForm.amount) || 0) <=
+                      0
+                        ? "text-health-600 font-semibold"
+                        : "text-saffron-600 font-semibold"
+                    }
+                  >
+                    {invoice.balanceAmount -
+                      (parseFloat(paymentForm.amount) || 0) <=
+                    0
+                      ? "Fully Paid"
+                      : "Partially Paid"}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </ModalShell>
+      )}
+    </>
+  );
+}

@@ -1,0 +1,979 @@
+/**
+ * Edit Invoice Page — Clinic Clarity, zero HeroUI
+ */
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  IoReceiptOutline,
+  IoAddOutline,
+  IoTrashOutline,
+  IoArrowBackOutline,
+  IoSearchOutline,
+  IoCloseOutline,
+} from "react-icons/io5";
+
+import DashboardNotFoundPage from "../../not-found";
+
+import { title } from "@/components/primitives";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { useAuthContext } from "@/context/AuthContext";
+import { addToast } from "@/components/ui/toast";
+import { appointmentBillingService } from "@/services/appointmentBillingService";
+import { patientService } from "@/services/patientService";
+import { doctorService } from "@/services/doctorService";
+import { appointmentTypeService } from "@/services/appointmentTypeService";
+import {
+  AppointmentBilling,
+  AppointmentBillingItem,
+  AppointmentBillingSettings,
+  Patient,
+  Doctor,
+  AppointmentType,
+} from "@/types/models";
+
+// ── Types ───────────────────────────────────────────────────────────────────
+interface InvoiceFormData {
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  doctorName: string;
+  doctorType: "regular" | "visitor";
+  invoiceDate: string;
+  items: AppointmentBillingItem[];
+  discountType: "flat" | "percent";
+  discountValue: number;
+  notes: string;
+}
+
+// ── Custom UI Helpers ────────────────────────────────────────────────────────
+function SearchSelect({
+  label,
+  items,
+  value,
+  onChange,
+  disabled,
+  required,
+  hint,
+  placeholder,
+}: {
+  label: string;
+  items: { id: string; primary: string; secondary?: string }[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  hint?: string;
+  placeholder?: string;
+}) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const filtered = (
+    q
+      ? items.filter((i) =>
+          (i.primary + (i.secondary || ""))
+            .toLowerCase()
+            .includes(q.toLowerCase()),
+        )
+      : items
+  ).slice(0, 100);
+  const selected = items.find((i) => i.id === value);
+
+  return (
+    <div className="flex flex-col gap-1.5 relative w-full">
+      {label && (
+        <label className="text-[13px] font-medium text-mountain-700">
+          {label}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+      )}
+      <div
+        className={`flex flex-wrap items-center min-h-[38px] border border-mountain-200 rounded focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-100 bg-white ${disabled ? "bg-mountain-50" : ""}`}
+        onClick={() => !disabled && setOpen(true)}
+      >
+        <IoSearchOutline className="ml-3 w-4 h-4 text-mountain-400 shrink-0" />
+        <input
+          className="flex-1 text-[13.5px] px-2 py-1.5 bg-transparent focus:outline-none text-mountain-800 placeholder:text-mountain-400 w-full"
+          disabled={disabled}
+          placeholder={
+            selected && !open ? selected.primary : placeholder || `Search…`
+          }
+          value={open ? q : selected ? selected.primary : ""}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {value && !disabled && (
+          <button
+            className="mr-3 text-mountain-400 hover:text-mountain-700"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange("");
+              setQ("");
+            }}
+          >
+            <IoCloseOutline className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      {hint && <p className="text-[11.5px] text-mountain-500 mt-0.5">{hint}</p>}
+      {open && !disabled && (
+        <>
+          <div
+            className="fixed inset-0 z-[50] bg-transparent"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          />
+          <div className="absolute z-[60] top-full mt-1 left-0 right-0 bg-white border border-mountain-200 rounded shadow-lg max-h-60 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-3 text-[13px] text-mountain-500 text-center">
+                No results
+              </p>
+            ) : (
+              filtered.map((i) => (
+                <button
+                  key={i.id}
+                  className={`flex flex-col w-full text-left px-3 py-2 hover:bg-teal-50 border-b border-mountain-50 last:border-0 ${i.id === value ? "bg-teal-50/50" : ""}`}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChange(i.id);
+                    setQ("");
+                    setOpen(false);
+                  }}
+                >
+                  <span className="text-[13.5px] font-medium text-mountain-800 leading-tight">
+                    {i.primary}
+                  </span>
+                  {i.secondary && (
+                    <span className="text-[11.5px] text-mountain-500 mt-0.5 leading-tight">
+                      {i.secondary}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CustomInput({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  required,
+  placeholder,
+  description,
+  disabled,
+  readOnly,
+  startContent,
+  endContent,
+  min,
+  step,
+  className,
+}: any) {
+  return (
+    <div className={`flex flex-col gap-1.5 w-full relative ${className || ""}`}>
+      {label && (
+        <label className="text-[13px] font-medium text-mountain-700">
+          {label}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+      )}
+      <div
+        className={`flex items-center border border-mountain-200 rounded min-h-[38px] bg-white focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-100 ${disabled || readOnly ? "bg-mountain-50" : ""}`}
+      >
+        {startContent && (
+          <div className="px-3 border-r border-mountain-100 h-full flex items-center bg-mountain-50 text-[12.5px] text-mountain-500">
+            {startContent}
+          </div>
+        )}
+        <input
+          className="flex-1 w-full text-[13.5px] px-3 py-1.5 bg-transparent outline-none text-mountain-800 placeholder:text-mountain-400 disabled:text-mountain-500"
+          disabled={disabled}
+          min={min}
+          name={name}
+          placeholder={placeholder}
+          readOnly={readOnly}
+          required={required}
+          step={step}
+          type={type}
+          value={value}
+          onChange={onChange}
+        />
+        {endContent && (
+          <div className="px-3 border-l border-mountain-100 h-full flex items-center bg-mountain-50 text-[12.5px] text-mountain-500">
+            {endContent}
+          </div>
+        )}
+      </div>
+      {description && (
+        <p className="text-[11.5px] text-mountain-500">{description}</p>
+      )}
+    </div>
+  );
+}
+
+function CustomSelect({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+  required,
+}: any) {
+  return (
+    <div className="flex flex-col gap-1.5 w-full">
+      {label && (
+        <label className="text-[13px] font-medium text-mountain-700">
+          {label}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+      )}
+      <select
+        className="h-[38px] bg-white border border-mountain-200 text-mountain-800 text-[13.5px] rounded px-3 py-1 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100 transition-shadow disabled:bg-mountain-50 disabled:text-mountain-500"
+        disabled={disabled}
+        value={value}
+        onChange={onChange}
+      >
+        {options.map((opt: any) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ── Main Component ──────────────────────────────────────────────────────────
+export default function EditInvoicePage() {
+  const { id: invoiceId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { clinicId, currentUser, userData, branchId } = useAuthContext();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Data states
+  const [invoice, setInvoice] = useState<AppointmentBilling | null>(null);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>(
+    [],
+  );
+  const [billingSettings, setBillingSettings] =
+    useState<AppointmentBillingSettings | null>(null);
+
+  // Form data
+  const [formData, setFormData] = useState<InvoiceFormData>({
+    patientId: "",
+    patientName: "",
+    doctorId: "",
+    doctorName: "",
+    doctorType: "regular",
+    invoiceDate: new Date().toISOString().split("T")[0],
+    items: [],
+    discountType: "percent",
+    discountValue: 0,
+    notes: "",
+  });
+
+  // Calculations
+  const [calculations, setCalculations] = useState({
+    subtotal: 0,
+    discountAmount: 0,
+    taxAmount: 0,
+    totalAmount: 0,
+  });
+
+  useEffect(() => {
+    loadData();
+  }, [clinicId, invoiceId]);
+
+  useEffect(() => {
+    calculateTotals();
+  }, [
+    formData.items,
+    formData.discountType,
+    formData.discountValue,
+    billingSettings,
+  ]);
+
+  const loadData = async () => {
+    if (!clinicId || !invoiceId) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const settings =
+        await appointmentBillingService.getBillingSettings(clinicId);
+
+      if (!settings || !settings.enabledByAdmin || !settings.isActive) {
+        setError("Billing is not enabled for this clinic");
+
+        return;
+      }
+      setBillingSettings(settings);
+
+      const invoiceData =
+        await appointmentBillingService.getBillingById(invoiceId);
+
+      if (!invoiceData || invoiceData.clinicId !== clinicId) {
+        setError("Invoice not found");
+
+        return;
+      }
+
+      if (branchId && invoiceData.branchId !== branchId) {
+        setError("You can only edit invoices for your branch.");
+        addToast({
+          title: "Access denied",
+          description: "You can only edit invoices for your branch.",
+          color: "danger",
+        });
+        navigate("/dashboard/appointments-billing");
+
+        return;
+      }
+
+      const invoiceBranchId = invoiceData.branchId || undefined;
+      const [patientsData, doctorsData, appointmentTypesData] =
+        await Promise.all([
+          patientService.getPatientsByClinic(clinicId, invoiceBranchId),
+          doctorService.getDoctorsByClinic(clinicId, invoiceBranchId),
+          appointmentTypeService.getAppointmentTypesByClinic(
+            clinicId,
+            invoiceBranchId,
+          ),
+        ]);
+
+      setInvoice(invoiceData);
+      setPatients(patientsData);
+      setDoctors(doctorsData);
+      setAppointmentTypes(appointmentTypesData);
+
+      const invoiceDate = new Date(invoiceData.invoiceDate);
+
+      setFormData({
+        patientId: invoiceData.patientId,
+        patientName: invoiceData.patientName,
+        doctorId: invoiceData.doctorId,
+        doctorName: invoiceData.doctorName,
+        doctorType: invoiceData.doctorType,
+        invoiceDate: invoiceDate.toISOString().split("T")[0],
+        items: invoiceData.items.map((item) => ({
+          ...item,
+          id: item.id || `item_${Date.now()}_${Math.random()}`,
+        })),
+        discountType: invoiceData.discountType,
+        discountValue: invoiceData.discountValue,
+        notes: invoiceData.notes || "",
+      });
+    } catch (error) {
+      console.error("Error loading invoice data:", error);
+      setError("Failed to load invoice data. Please try again.");
+      addToast({
+        title: "Error",
+        description: "Failed to load invoice data. Please try again.",
+        color: "danger",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTotals = () => {
+    if (!formData.items.length || !billingSettings) return;
+
+    const totals = appointmentBillingService.calculateInvoiceTotals(
+      formData.items,
+      formData.discountType,
+      formData.discountValue,
+      billingSettings.enableTax ? billingSettings.defaultTaxPercentage : 0,
+    );
+
+    setCalculations(totals);
+  };
+
+  const addInvoiceItem = () => {
+    const newItem: AppointmentBillingItem = {
+      id: `item_${Date.now()}`,
+      appointmentTypeId: "",
+      appointmentTypeName: "",
+      price: 0,
+      quantity: 1,
+      commission: billingSettings?.defaultCommission || 0,
+      amount: 0,
+    };
+
+    setFormData((prev) => ({ ...prev, items: [...prev.items, newItem] }));
+  };
+
+  const updateInvoiceItem = (
+    index: number,
+    field: keyof AppointmentBillingItem,
+    value: any,
+  ) => {
+    const updatedItems = [...formData.items];
+
+    if (field === "appointmentTypeId") {
+      const appointmentType = appointmentTypes.find((at) => at.id === value);
+
+      if (appointmentType) {
+        const selectedDoctor = doctors.find((d) => d.id === formData.doctorId);
+        const defaultCommission = selectedDoctor?.defaultCommission || 0;
+
+        updatedItems[index] = {
+          ...updatedItems[index],
+          appointmentTypeId: value,
+          appointmentTypeName: appointmentType.name,
+          price: appointmentType.price,
+          commission: defaultCommission,
+          amount: appointmentType.price * updatedItems[index].quantity,
+        };
+      }
+    } else if (field === "quantity") {
+      updatedItems[index] = {
+        ...updatedItems[index],
+        quantity: value,
+        amount: updatedItems[index].price * value,
+      };
+    } else if (field === "price") {
+      updatedItems[index] = {
+        ...updatedItems[index],
+        price: value,
+        amount: value * updatedItems[index].quantity,
+      };
+    } else {
+      updatedItems[index] = { ...updatedItems[index], [field]: value };
+    }
+
+    setFormData((prev) => ({ ...prev, items: updatedItems }));
+  };
+
+  const removeInvoiceItem = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handlePatientChange = (patientId: string) => {
+    const patient = patients.find((p) => p.id === patientId);
+
+    setFormData((prev) => ({
+      ...prev,
+      patientId,
+      patientName: patient ? patient.name : "",
+    }));
+  };
+
+  const handleDoctorChange = (doctorId: string) => {
+    if (!doctorId) return;
+    const doctor = doctors.find((d) => d.id === doctorId);
+
+    setFormData((prev) => ({
+      ...prev,
+      doctorId,
+      doctorName: doctor ? doctor.name : "",
+      doctorType: doctor
+        ? doctor.doctorType === "visiting"
+          ? "visitor"
+          : "regular"
+        : "regular",
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (!clinicId || !currentUser || !invoice || !billingSettings) return;
+
+    if (!formData.patientId || !formData.doctorId || !formData.items.length) {
+      addToast({
+        title: "Validation Error",
+        description:
+          "Please fill in patient, doctor, and at least one invoice item.",
+        color: "warning",
+      });
+
+      return;
+    }
+
+    const hasValidItems = formData.items.every(
+      (item) => item.appointmentTypeId && item.quantity > 0 && item.price >= 0,
+    );
+
+    if (!hasValidItems) {
+      addToast({
+        title: "Validation Error",
+        description:
+          "Please ensure all invoice items have valid appointment types and quantities.",
+        color: "warning",
+      });
+
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const newTotalAmount = calculations.totalAmount;
+      const existingPaidAmount = invoice.paidAmount;
+      const newBalanceAmount = Math.max(0, newTotalAmount - existingPaidAmount);
+
+      let paymentStatus: "unpaid" | "partial" | "paid" = "unpaid";
+
+      if (existingPaidAmount >= newTotalAmount) paymentStatus = "paid";
+      else if (existingPaidAmount > 0) paymentStatus = "partial";
+
+      let invoiceStatus = invoice.status;
+
+      if (paymentStatus === "paid" && invoice.status !== "cancelled") {
+        invoiceStatus = "paid";
+      }
+
+      const updateData: Partial<AppointmentBilling> = {
+        patientId: formData.patientId,
+        patientName: formData.patientName,
+        doctorId: formData.doctorId,
+        doctorName: formData.doctorName,
+        doctorType: formData.doctorType,
+        invoiceDate: new Date(formData.invoiceDate),
+        items: formData.items,
+        subtotal: calculations.subtotal,
+        discountType: formData.discountType,
+        discountValue: formData.discountValue,
+        discountAmount: calculations.discountAmount,
+        taxPercentage: billingSettings.enableTax
+          ? billingSettings.defaultTaxPercentage
+          : 0,
+        taxAmount: calculations.taxAmount,
+        totalAmount: newTotalAmount,
+        balanceAmount: newBalanceAmount,
+        paymentStatus,
+        status: invoiceStatus,
+        notes: formData.notes,
+      };
+
+      await appointmentBillingService.updateBilling(invoice.id, updateData);
+      addToast({
+        title: "Success",
+        description: "Invoice updated successfully!",
+        color: "success",
+      });
+      navigate("/dashboard/appointments-billing");
+    } catch (error) {
+      console.error("Error updating invoice:", error);
+      addToast({
+        title: "Error",
+        description: "Failed to update invoice. Please try again.",
+        color: "danger",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const formatCurrency = (amount: number) =>
+    `NPR ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className={title({ size: "sm" })}>Edit Invoice</h1>
+        </div>
+        <div className="bg-white border border-mountain-200 rounded p-12 flex items-center justify-center shadow-sm">
+          <Spinner size="md" />
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    !billingSettings ||
+    !billingSettings.enabledByAdmin ||
+    !billingSettings.isActive
+  ) {
+    return <DashboardNotFoundPage />;
+  }
+
+  if (error || !invoice) {
+    return (
+      <div className="bg-white border border-mountain-200 rounded p-12 text-center shadow-sm">
+        <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+          <IoReceiptOutline className="w-6 h-6 text-red-600" />
+        </div>
+        <h3 className="text-[15px] font-semibold text-mountain-900 mb-1">
+          Error Loading Invoice
+        </h3>
+        <p className="text-[13.5px] text-mountain-500 mb-6">
+          {error || "Invoice not found"}
+        </p>
+        <div className="flex justify-center gap-3">
+          <Button
+            variant="bordered"
+            onClick={() => navigate("/dashboard/appointments-billing")}
+          >
+            Back to Invoices
+          </Button>
+          <Button color="primary" onClick={() => window.location.reload()}>
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col justify-between items-start gap-4">
+        <div>
+          <h1 className={title({ size: "sm" })}>Edit Invoice</h1>
+          <p className="text-[13.5px] text-mountain-500 mt-1">
+            Invoice:{" "}
+            <span className="font-semibold text-mountain-800">
+              {invoice.invoiceNumber}
+            </span>
+          </p>
+        </div>
+        <Button
+          startContent={<IoArrowBackOutline />}
+          variant="bordered"
+          onClick={() => navigate("/dashboard/appointments-billing")}
+        >
+          Back
+        </Button>
+      </div>
+
+      <div className="bg-white border border-mountain-200 rounded shadow-sm">
+        {/* Basic Information */}
+        <div className="px-5 py-4 border-b border-mountain-100 bg-mountain-50/50">
+          <h4 className="font-semibold text-[15px] text-mountain-900">
+            Basic Information
+          </h4>
+        </div>
+        <div className="p-6 border-b border-mountain-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <SearchSelect
+              required
+              items={patients.map((p) => ({
+                id: p.id,
+                primary: p.name,
+                secondary: `Reg# ${p.regNumber}`,
+              }))}
+              label="Patient"
+              placeholder="Search patient"
+              value={formData.patientId}
+              onChange={(id) => handlePatientChange(id)}
+            />
+
+            <SearchSelect
+              required
+              items={doctors.map((d) => ({
+                id: d.id,
+                primary: d.name,
+                secondary: d.speciality,
+              }))}
+              label="Doctor"
+              placeholder="Search doctor"
+              value={formData.doctorId}
+              onChange={(id) => handleDoctorChange(id)}
+            />
+
+            <CustomSelect
+              disabled={!!formData.doctorId}
+              label="Doctor Type"
+              options={[
+                { value: "regular", label: "Regular" },
+                { value: "visitor", label: "Visitor" },
+              ]}
+              value={formData.doctorType}
+              onChange={(e: any) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  doctorType: e.target.value as any,
+                }))
+              }
+            />
+
+            <CustomInput
+              required
+              label="Invoice Date"
+              name="invoiceDate"
+              type="date"
+              value={formData.invoiceDate}
+              onChange={(e: any) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  invoiceDate: e.target.value,
+                }))
+              }
+            />
+          </div>
+        </div>
+
+        {/* Invoice Items */}
+        <div className="px-5 py-4 border-b border-mountain-100 bg-mountain-50/50 flex justify-between items-center">
+          <h4 className="font-semibold text-[15px] text-mountain-900">
+            Invoice Details
+          </h4>
+          <Button
+            color="primary"
+            size="sm"
+            startContent={<IoAddOutline />}
+            onClick={addInvoiceItem}
+          >
+            Add Item
+          </Button>
+        </div>
+        <div className="p-6 border-b border-mountain-100">
+          {formData.items.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              {formData.items.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="p-4 border border-mountain-200 rounded bg-mountain-50/30 gap-4 flex flex-col md:flex-row md:items-end"
+                >
+                  <div className="flex-1 w-full relative z-[50]">
+                    <SearchSelect
+                      items={appointmentTypes.map((at) => ({
+                        id: at.id,
+                        primary: at.name,
+                        secondary: `NPR ${at.price}`,
+                      }))}
+                      label="Service Type"
+                      placeholder="Select service"
+                      value={item.appointmentTypeId}
+                      onChange={(id) =>
+                        updateInvoiceItem(index, "appointmentTypeId", id)
+                      }
+                    />
+                  </div>
+
+                  <div className="w-full md:w-32">
+                    <CustomInput
+                      label="Price"
+                      min="0"
+                      startContent="NPR"
+                      step="0.01"
+                      type="number"
+                      value={item.price.toString()}
+                      onChange={(e: any) =>
+                        updateInvoiceItem(
+                          index,
+                          "price",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="w-full md:w-24">
+                    <CustomInput
+                      label="Qty"
+                      min="1"
+                      type="number"
+                      value={item.quantity.toString()}
+                      onChange={(e: any) =>
+                        updateInvoiceItem(
+                          index,
+                          "quantity",
+                          parseInt(e.target.value) || 1,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="w-full md:w-32">
+                    <CustomInput
+                      endContent="%"
+                      label="Commission"
+                      type="number"
+                      value={item.commission.toString()}
+                      onChange={(e: any) =>
+                        updateInvoiceItem(
+                          index,
+                          "commission",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="w-full md:w-32">
+                    <CustomInput
+                      label="Amount"
+                      min="0"
+                      startContent="NPR"
+                      step="0.01"
+                      type="number"
+                      value={item.amount.toString()}
+                      onChange={(e: any) =>
+                        updateInvoiceItem(
+                          index,
+                          "amount",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <Button
+                    isIconOnly
+                    className="w-[38px] h-[38px] shrink-0"
+                    color="danger"
+                    variant="flat"
+                    onClick={() => removeInvoiceItem(index)}
+                  >
+                    <IoTrashOutline className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="w-12 h-12 rounded-full bg-mountain-50 flex items-center justify-center mx-auto mb-4 border border-mountain-100">
+                <IoReceiptOutline className="w-6 h-6 text-mountain-400" />
+              </div>
+              <h3 className="text-[14.5px] font-medium text-mountain-800 mb-1">
+                No services added yet
+              </h3>
+              <p className="text-[13px] text-mountain-500 mb-4">
+                Start by adding an invoice item.
+              </p>
+              <Button
+                color="primary"
+                startContent={<IoAddOutline />}
+                onClick={addInvoiceItem}
+              >
+                Add Your First Item
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Totals Section */}
+        {formData.items.length > 0 && (
+          <div className="p-6 bg-mountain-50/20">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="flex flex-col gap-4">
+                <h4 className="font-semibold text-[14.5px] text-mountain-900 border-b border-mountain-200 pb-2">
+                  Discount & Extras
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <CustomSelect
+                    label="Discount Type"
+                    options={[
+                      { value: "flat", label: "Flat Amount" },
+                      { value: "percent", label: "Percentage" },
+                    ]}
+                    value={formData.discountType}
+                    onChange={(e: any) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        discountType: e.target.value as any,
+                      }))
+                    }
+                  />
+                  <CustomInput
+                    endContent={
+                      formData.discountType === "percent" ? "%" : "NPR"
+                    }
+                    label="Discount Value"
+                    type="number"
+                    value={formData.discountValue.toString()}
+                    onChange={(e: any) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        discountValue: parseFloat(e.target.value) || 0,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5 w-full">
+                  <label className="text-[13px] font-medium text-mountain-700">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    className="w-full text-[13.5px] px-3 py-2 bg-white border border-mountain-200 rounded min-h-[80px] focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100 text-mountain-800 placeholder:text-mountain-400"
+                    placeholder="Provide additional details..."
+                    value={formData.notes}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        notes: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <h4 className="font-semibold text-[14.5px] text-mountain-900 border-b border-mountain-200 pb-2">
+                  Summary
+                </h4>
+                <div className="bg-white rounded border border-mountain-200 p-4 space-y-3 shadow-sm">
+                  <div className="flex justify-between text-[13.5px] text-mountain-700">
+                    <span>Subtotal:</span>
+                    <span className="font-medium text-mountain-900">
+                      {formatCurrency(calculations.subtotal)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[13.5px] text-health-600">
+                    <span>Discount:</span>
+                    <span>- {formatCurrency(calculations.discountAmount)}</span>
+                  </div>
+                  {billingSettings.enableTax && (
+                    <div className="flex justify-between text-[13.5px] text-mountain-700">
+                      <span>
+                        {billingSettings.taxLabel || "Tax"} (
+                        {billingSettings.defaultTaxPercentage}%):
+                      </span>
+                      <span className="font-medium text-mountain-900">
+                        {formatCurrency(calculations.taxAmount)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="h-px bg-mountain-200 my-2" />
+                  <div className="flex justify-between text-[16px] font-bold text-teal-800">
+                    <span>Total Amount:</span>
+                    <span>{formatCurrency(calculations.totalAmount)}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-4">
+                  <Button
+                    variant="bordered"
+                    onClick={() => navigate("/dashboard/appointments-billing")}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    color="primary"
+                    isLoading={saving}
+                    onClick={handleSubmit}
+                  >
+                    Update Invoice
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

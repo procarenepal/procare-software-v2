@@ -1,0 +1,380 @@
+import React, { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
+import clsx from "clsx";
+import {
+  IoMenuOutline,
+  IoCloseOutline,
+  IoChevronDownOutline,
+  IoChevronForwardOutline,
+  IoGridOutline,
+  IoWarningOutline,
+  IoRefreshOutline,
+  IoHeadsetOutline,
+} from "react-icons/io5";
+
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigation } from "@/hooks/useNavigation";
+import { useTheme } from "@/context/ThemeContext";
+import { DashboardHeader } from "@/components/dashboard-header";
+import { SubscriptionBanner } from "@/components/subscription-banner";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
+import { NavItem } from "@/services/navigationService";
+import { prefetchChunks } from "@/utils/prefetchRoutes";
+// Custom UI components — no HeroUI
+import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/ui/avatar";
+
+export interface DashboardLayoutProps {
+  children: React.ReactNode;
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const location = useLocation();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const { currentUser, userData } = useAuth();
+  const { isDark } = useTheme();
+  const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
+
+  const { navItems, loading, error, refreshNavigation } = useNavigation();
+
+  // Prefetch likely next routes after first render
+  useEffect(() => {
+    if (loading) return;
+    const topLevel = navItems.slice(0, 4);
+
+    prefetchChunks(
+      topLevel.map((i) => ({
+        path: i.href,
+        importChunk: () => {
+          if (i.href.startsWith("/dashboard/patients"))
+            return import("@/pages/dashboard/patients");
+          if (i.href.startsWith("/dashboard/appointments"))
+            return import("@/pages/dashboard/appointments");
+          if (i.href.startsWith("/dashboard/doctors"))
+            return import("@/pages/dashboard/doctors");
+          if (i.href.startsWith("/dashboard/medicine-management"))
+            return import("@/pages/dashboard/medicine-management/index");
+
+          return Promise.resolve();
+        },
+      })),
+    );
+  }, [loading, navItems]);
+
+  // Handle responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSidebarOpen(window.innerWidth >= 768);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Auto-expand parent menus when a child page is active
+  useEffect(() => {
+    if (loading || navItems.length === 0) return;
+    const expanded = new Set<string>();
+
+    const check = (items: NavItem[]) => {
+      items.forEach((item) => {
+        if (item.children.length > 0) {
+          const hasActiveChild = item.children.some((child) =>
+            isPathActive(child),
+          );
+
+          if (hasActiveChild) expanded.add(item.href);
+          check(item.children);
+        }
+      });
+    };
+
+    check(navItems);
+    setExpandedMenus(expanded);
+  }, [location.pathname, navItems, loading]);
+
+  const toggleSubMenu = (href: string) => {
+    setExpandedMenus((prev) => {
+      const next = new Set(prev);
+
+      next.has(href) ? next.delete(href) : next.add(href);
+
+      return next;
+    });
+  };
+
+  const isPathActive = (item: NavItem): boolean => {
+    if (location.pathname === item.href) return true;
+    if (item.href !== "/dashboard" && location.pathname.startsWith(item.href))
+      return true;
+
+    return item.children.some((child) => isPathActive(child));
+  };
+
+  // ── Render a nav item recursively ──────────────────────────────────────────
+  const renderNavItem = (item: NavItem, level = 0): React.ReactNode => {
+    const hasChildren = item.children.length > 0;
+    const isExpanded = expandedMenus.has(item.href);
+    const isActive = isPathActive(item);
+
+    const itemBase = clsx(
+      "flex items-center px-2.5 py-[6px] text-[13.5px] font-medium rounded transition-colors duration-200 select-none cursor-pointer",
+      level > 0 && "ml-3",
+      isActive
+        ? "bg-teal-500/10 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400"
+        : "text-mountain-500 dark:text-zinc-400 hover:bg-mountain-100 dark:hover:bg-zinc-800 hover:text-mountain-900 dark:hover:text-zinc-100",
+    );
+
+    return (
+      <div key={item.href}>
+        {hasChildren ? (
+          <div
+            className={clsx(
+              "flex items-center rounded overflow-hidden",
+              level > 0 && "ml-3",
+            )}
+          >
+            {/* Clickable link area */}
+            <Link
+              className={clsx(
+                "flex items-center flex-1 px-2.5 py-[6px] text-[13.5px] font-medium rounded-l transition-colors duration-200",
+                isActive
+                  ? "bg-teal-500/10 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400 transition-colors"
+                  : "text-mountain-500 dark:text-zinc-400 hover:bg-mountain-100 dark:hover:bg-zinc-800 hover:text-mountain-900 dark:hover:text-zinc-100",
+              )}
+              to={item.href}
+            >
+              <span className="mr-2 shrink-0 opacity-70 [&>svg]:w-3.5 [&>svg]:h-3.5">
+                {item.icon}
+              </span>
+              <span className="truncate">{item.title}</span>
+            </Link>
+
+            {/* Subtree toggle */}
+            <button
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+              className={clsx(
+                "flex items-center justify-center w-7 py-[5px] shrink-0 rounded-r transition-colors duration-200",
+                isActive
+                  ? "bg-teal-500/10 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400 hover:bg-teal-500/20 dark:hover:bg-teal-500/25 border-l border-mountain-200 dark:border-teal-800"
+                  : "text-mountain-400 dark:text-zinc-600 hover:bg-mountain-100 dark:hover:bg-zinc-800 border-l border-mountain-100 dark:border-zinc-800",
+              )}
+              onClick={() => toggleSubMenu(item.href)}
+            >
+              {isExpanded ? (
+                <IoChevronDownOutline className="w-3 h-3" />
+              ) : (
+                <IoChevronForwardOutline className="w-3 h-3" />
+              )}
+            </button>
+          </div>
+        ) : (
+          <Link className={itemBase} to={item.href}>
+            <span className="mr-2 shrink-0 opacity-70 [&>svg]:w-3.5 [&>svg]:h-3.5">
+              {item.icon}
+            </span>
+            <span className="truncate">{item.title}</span>
+          </Link>
+        )}
+
+        {/* Children */}
+        {hasChildren && isExpanded && (
+          <div className="ml-3 mt-0.5 space-y-0.5 border-l-2 border-mountain-100 dark:border-zinc-800 pl-2">
+            {item.children.map((child) => renderNavItem(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const toggleSidebar = () => setIsSidebarOpen((v) => !v);
+
+  const formatRole = (role?: string): string => {
+    if (!role) return "User";
+    const map: Record<string, string> = {
+      "super-admin": "Platform Admin",
+      "clinic-super-admin": "Clinic Super Admin",
+      "clinic-admin": "Clinic Admin",
+      doctor: "Doctor",
+      nurse: "Nurse",
+      receptionist: "Receptionist",
+      staff: "Staff",
+      "front-office": "Front Office",
+    };
+
+    return (
+      map[role] ??
+      role.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-screen bg-zinc-950">
+      {/* ── Top header ──────────────────────────────────────────────────── */}
+      <DashboardHeader
+        isSidebarOpen={isSidebarOpen}
+        toggleSidebar={toggleSidebar}
+      />
+
+      <div className="flex flex-1 pt-12">
+        {/* ── Sidebar ───────────────────────────────────────────────────── */}
+        <aside
+          aria-label="Sidebar navigation"
+          className={clsx(
+            "fixed inset-y-0 top-12 left-0 z-20 w-[220px]",
+            "transition-transform duration-200 ease-out",
+            // Theme-aware split-surface
+            "bg-white dark:bg-zinc-950 border-r border-mountain-200 dark:border-zinc-800",
+            "flex flex-col print:hidden",
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+          style={{ height: "calc(100vh - 3rem)" }}
+        >
+          {/* User identity strip */}
+          <div className="flex items-center justify-between px-3 py-2 border-b border-mountain-100 dark:border-zinc-800">
+            {currentUser && (
+              <>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Avatar
+                    className="shrink-0"
+                    color="primary"
+                    name={
+                      currentUser.displayName ||
+                      currentUser.email?.split("@")[0] ||
+                      "User"
+                    }
+                    size="sm"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-bold truncate leading-tight text-mountain-900 dark:text-zinc-100">
+                      {currentUser.displayName ||
+                        currentUser.email?.split("@")[0] ||
+                        "User"}
+                    </p>
+                    <p className="text-[11px] truncate text-mountain-400 dark:text-zinc-500">
+                      {formatRole(userData?.role)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Refresh nav */}
+                <button
+                  className="shrink-0 p-1 rounded transition-colors duration-100 text-mountain-400 dark:text-zinc-500 hover:bg-mountain-100 dark:hover:bg-zinc-800 disabled:opacity-40"
+                  disabled={loading}
+                  title="Refresh navigation"
+                  onClick={refreshNavigation}
+                >
+                  <IoRefreshOutline
+                    className={clsx("w-3.5 h-3.5", loading && "animate-spin")}
+                  />
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-950">
+            {loading ? (
+              // Skeleton
+              Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 px-2.5 py-1.5 animate-pulse"
+                >
+                  <div className="w-3.5 h-3.5 rounded bg-zinc-700" />
+                  <div
+                    className="h-3 rounded bg-zinc-700 flex-1"
+                    style={{ width: `${50 + ((i * 13) % 40)}%` }}
+                  />
+                </div>
+              ))
+            ) : error ? (
+              <div className="text-center py-4">
+                <IoWarningOutline className="w-4 h-4 mx-auto mb-1.5 text-red-400" />
+                <p className="text-[11px] text-zinc-500">Navigation failed</p>
+                <button
+                  className="text-[11px] text-teal-400 hover:underline mt-1"
+                  onClick={refreshNavigation}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : navItems.length > 0 ? (
+              navItems.map((item) => renderNavItem(item))
+            ) : (
+              renderNavItem({
+                title: "Dashboard",
+                href: "/dashboard",
+                icon: <IoGridOutline />,
+                children: [],
+              })
+            )}
+          </nav>
+
+          {/* Bottom action */}
+          <div className="px-3 py-2 shrink-0 border-t border-mountain-100 dark:border-zinc-800">
+            <Button
+              fullWidth
+              className="text-[12.5px] h-[30px] text-mountain-400 dark:text-zinc-500 hover:bg-mountain-50 dark:hover:bg-zinc-800 hover:text-mountain-900 dark:hover:text-zinc-300"
+              color="default"
+              size="sm"
+              startContent={<IoHeadsetOutline className="w-4 h-4" />}
+              variant="light"
+            >
+              Get Support
+            </Button>
+          </div>
+        </aside>
+
+        {/* ── Main content ──────────────────────────────────────────────── */}
+        <main
+          className={clsx(
+            "flex-1 transition-all duration-200 ease-out overflow-hidden",
+            isSidebarOpen ? "md:pl-[220px]" : "",
+          )}
+          style={{ height: "calc(100vh - 3rem)" }}
+        >
+          {/* Content well — always white/light regardless of theme */}
+          <div
+            className="h-full overflow-auto bg-slate-50 print:p-0 cv-auto will-scroll"
+            id="dashboard-scroll-container"
+          >
+            <div className="px-4 py-3 pb-10 min-h-full">
+              <ImpersonationBanner />
+              <SubscriptionBanner />
+              {children}
+            </div>
+          </div>
+        </main>
+
+        {/* ── Mobile overlay ────────────────────────────────────────────── */}
+        {isSidebarOpen && (
+          <div
+            aria-hidden
+            className="fixed inset-0 z-10 bg-black/30 md:hidden"
+            onClick={toggleSidebar}
+          />
+        )}
+
+        {/* ── Mobile FAB toggle ────────────────────────────────────────── */}
+        <Button
+          isIconOnly
+          aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+          className="fixed bottom-5 right-5 z-30 md:hidden w-9 h-9"
+          color="primary"
+          radius="full"
+          size="sm"
+          onClick={toggleSidebar}
+        >
+          {isSidebarOpen ? (
+            <IoCloseOutline className="w-5 h-5" />
+          ) : (
+            <IoMenuOutline className="w-5 h-5" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}

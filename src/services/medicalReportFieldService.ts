@@ -1,0 +1,231 @@
+import {
+  collection,
+  doc,
+  addDoc,
+  getDocs,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
+
+import { db } from "@/config/firebase";
+import { MedicalReportField } from "@/types/models";
+
+const COLLECTION_NAME = "medical_report_fields";
+
+export const medicalReportFieldService = {
+  // Create a new medical report field
+  async createField(
+    fieldData: Omit<MedicalReportField, "id" | "createdAt" | "updatedAt">,
+  ): Promise<string> {
+    try {
+      const docData = {
+        ...fieldData,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      };
+
+      const docRef = await addDoc(collection(db, COLLECTION_NAME), docData);
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating medical report field:", error);
+      throw error;
+    }
+  },
+
+  // Get all fields for a clinic (alias for getFieldsByClinic)
+  async getFields(clinicId: string): Promise<MedicalReportField[]> {
+    return this.getFieldsByClinic(clinicId);
+  },
+
+  // Get all fields for a clinic
+  async getFieldsByClinic(clinicId: string): Promise<MedicalReportField[]> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where("clinicId", "==", clinicId),
+        orderBy("displayOrder", "asc"),
+        orderBy("createdAt", "desc"),
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      return querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as MedicalReportField[];
+    } catch (error) {
+      console.error("Error getting medical report fields:", error);
+      throw error;
+    }
+  },
+
+  // Get active fields for a clinic
+  async getActiveFieldsByClinic(
+    clinicId: string,
+  ): Promise<MedicalReportField[]> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where("clinicId", "==", clinicId),
+        where("isActive", "==", true),
+        orderBy("displayOrder", "asc"),
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      return querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as MedicalReportField[];
+    } catch (error) {
+      console.error("Error getting active medical report fields:", error);
+      throw error;
+    }
+  },
+
+  // Get a field by ID
+  async getFieldById(fieldId: string): Promise<MedicalReportField | null> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, fieldId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+          createdAt: docSnap.data().createdAt?.toDate() || new Date(),
+          updatedAt: docSnap.data().updatedAt?.toDate() || new Date(),
+        } as MedicalReportField;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error getting medical report field:", error);
+      throw error;
+    }
+  },
+
+  // Update a field
+  async updateField(
+    fieldId: string,
+    updateData: Partial<MedicalReportField>,
+  ): Promise<void> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, fieldId);
+      const dataToUpdate = {
+        ...updateData,
+        updatedAt: Timestamp.now(),
+      };
+
+      await updateDoc(docRef, dataToUpdate);
+    } catch (error) {
+      console.error("Error updating medical report field:", error);
+      throw error;
+    }
+  },
+
+  // Delete a field
+  async deleteField(fieldId: string): Promise<void> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, fieldId);
+
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting medical report field:", error);
+      throw error;
+    }
+  },
+
+  // Check if a key is unique (alias for !isKeyExists)
+  async isKeyUnique(
+    clinicId: string,
+    key: string,
+    excludeFieldId?: string,
+  ): Promise<boolean> {
+    return !(await this.isKeyExists(clinicId, key, excludeFieldId));
+  },
+
+  // Check if a key exists in the clinic
+  async isKeyExists(
+    clinicId: string,
+    key: string,
+    excludeFieldId?: string,
+  ): Promise<boolean> {
+    try {
+      const q = query(
+        collection(db, COLLECTION_NAME),
+        where("clinicId", "==", clinicId),
+        where("fieldKey", "==", key),
+      );
+
+      const querySnapshot = await getDocs(q);
+
+      // If excludeFieldId is provided, check if any doc id matches it
+      if (excludeFieldId && querySnapshot.docs.length === 1) {
+        return querySnapshot.docs[0].id !== excludeFieldId;
+      }
+
+      return querySnapshot.docs.length > 0;
+    } catch (error) {
+      console.error("Error checking if key exists:", error);
+      throw error;
+    }
+  },
+
+  // Update field order (single field)
+  async updateFieldOrder(fieldId: string, newOrder: number): Promise<void> {
+    try {
+      const docRef = doc(db, COLLECTION_NAME, fieldId);
+
+      await updateDoc(docRef, {
+        displayOrder: newOrder,
+        updatedAt: Timestamp.now(),
+      });
+    } catch (error) {
+      console.error("Error updating field order:", error);
+      throw error;
+    }
+  },
+
+  // Update field orders (multiple fields)
+  async updateFieldOrders(
+    updates: { id: string; order: number }[],
+  ): Promise<void> {
+    try {
+      const promises = updates.map((update) => {
+        const docRef = doc(db, COLLECTION_NAME, update.id);
+
+        return updateDoc(docRef, {
+          displayOrder: update.order,
+          updatedAt: Timestamp.now(),
+        });
+      });
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error("Error updating field orders:", error);
+      throw error;
+    }
+  },
+
+  // Generate key from name
+  generateKeyFromName(name: string): string {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, "") // Remove special characters
+      .replace(/\s+/g, "-") // Replace spaces with hyphens
+      .replace(/-+/g, "-") // Replace multiple hyphens with single
+      .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+  },
+};

@@ -1,0 +1,1904 @@
+/**
+ * Appointment Billing Page — Clinic Clarity, zero HeroUI
+ * Replaced: Card, Button, Input, Select, Autocomplete, Table, Chip,
+ *           Divider, Pagination, Modal, Switch, Tabs (@heroui)
+ */
+import type { Branch } from "@/types/models";
+
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  IoReceiptOutline,
+  IoAddOutline,
+  IoTrashOutline,
+  IoEyeOutline,
+  IoCash,
+  IoSettings,
+  IoStatsChartOutline,
+  IoSearchOutline,
+  IoPencilOutline,
+  IoCloseOutline,
+} from "react-icons/io5";
+
+import DashboardNotFoundPage from "./not-found";
+
+import { useAuth } from "@/hooks/useAuth";
+import { addToast } from "@/components/ui/toast";
+import { Button } from "@/components/ui/button";
+
+// Services
+import { appointmentBillingService } from "@/services/appointmentBillingService";
+import { patientService } from "@/services/patientService";
+import { doctorService } from "@/services/doctorService";
+import { appointmentTypeService } from "@/services/appointmentTypeService";
+import { doctorCommissionService } from "@/services/doctorCommissionService";
+import { branchService } from "@/services/branchService";
+import {
+  AppointmentBilling,
+  AppointmentBillingItem,
+  AppointmentBillingSettings,
+  Patient,
+  Doctor,
+  AppointmentType,
+} from "@/types/models";
+
+// ── Types ───────────────────────────────────────────────────────────────────
+interface InvoiceFormData {
+  patientId: string;
+  patientName: string;
+  doctorId: string;
+  doctorName: string;
+  doctorType: "regular" | "visitor";
+  invoiceDate: string;
+  items: AppointmentBillingItem[];
+  discountType: "flat" | "percent";
+  discountValue: number;
+  notes: string;
+}
+
+// ── UI Helpers ─────────────────────────────────────────────────────────────
+function StatusBadge({
+  status,
+  type = "status",
+}: {
+  status: string;
+  type?: "status" | "payment";
+}) {
+  const S_COLORS: Record<string, string> = {
+    paid: "bg-health-100 text-health-700 border-health-200",
+    finalized: "bg-teal-100 text-teal-700 border-teal-200",
+    partial: "bg-saffron-100 text-saffron-700 border-saffron-200",
+    unpaid: "bg-red-100 text-red-700 border-red-200",
+    cancelled: "bg-red-100 text-red-700 border-red-200",
+    default: "bg-mountain-100 text-mountain-600 border-mountain-200",
+  };
+  const color = S_COLORS[status] || S_COLORS.default;
+
+  return (
+    <span
+      className={`text-[10.5px] font-semibold px-2 py-0.5 rounded border capitalize ${color}`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function SearchSelect({
+  label,
+  items,
+  value,
+  onChange,
+  disabled,
+  required,
+  hint,
+  placeholder,
+}: {
+  label: string;
+  items: { id: string; primary: string; secondary?: string }[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  hint?: string;
+  placeholder?: string;
+}) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const filtered = (
+    q
+      ? items.filter((i) => i.primary.toLowerCase().includes(q.toLowerCase()))
+      : items
+  ).slice(0, 100);
+  const selected = items.find((i) => i.id === value);
+
+  return (
+    <div className="flex flex-col gap-1 relative">
+      <label className="text-[12px] font-medium text-mountain-700">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <div
+        className={`flex items-center h-9 border border-mountain-200 rounded focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-100 bg-white ${disabled ? "bg-mountain-50" : ""}`}
+        onClick={() => !disabled && setOpen(true)}
+      >
+        <IoSearchOutline className="ml-2.5 w-3.5 h-3.5 text-mountain-400 shrink-0" />
+        <input
+          className="flex-1 text-[12.5px] px-2 bg-transparent focus:outline-none text-mountain-800 placeholder:text-mountain-300 w-full"
+          disabled={disabled}
+          placeholder={placeholder || `Search…`}
+          value={selected && !open ? selected.primary : q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {value && !disabled && (
+          <button
+            className="mr-2 text-mountain-400 hover:text-mountain-700"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange("");
+              setQ("");
+            }}
+          >
+            <IoCloseOutline className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      {hint && <p className="text-[10.5px] text-mountain-400">{hint}</p>}
+      {open && !disabled && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-mountain-200 rounded max-h-48 overflow-y-auto shadow-sm">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[12px] text-mountain-400">
+                No results
+              </p>
+            ) : (
+              filtered.map((i) => (
+                <button
+                  key={i.id}
+                  className={`w-full text-left px-3 py-2 hover:bg-teal-50 ${i.id === value ? "bg-teal-50" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    onChange(i.id);
+                    setQ("");
+                    setOpen(false);
+                  }}
+                >
+                  <p className="text-[12.5px] text-mountain-800">{i.primary}</p>
+                  {i.secondary && (
+                    <p className="text-[11px] text-mountain-400">
+                      {i.secondary}
+                    </p>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FlatInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  disabled,
+  prefixText,
+  suffixText,
+  hint,
+  required,
+  min,
+  step,
+}: {
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  prefixText?: string;
+  suffixText?: string;
+  hint?: string;
+  required?: boolean;
+  min?: string;
+  step?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 w-full">
+      <label className="text-[12px] font-medium text-mountain-700">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <div
+        className={`flex items-center h-9 border border-mountain-200 rounded bg-white focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-100 ${disabled ? "bg-mountain-50" : ""}`}
+      >
+        {prefixText && (
+          <span className="pl-2.5 text-[12px] text-mountain-400 shrink-0">
+            {prefixText}
+          </span>
+        )}
+        <input
+          className="flex-1 w-full px-2.5 text-[12.5px] bg-transparent focus:outline-none text-mountain-800 placeholder:text-mountain-300 disabled:text-mountain-400"
+          disabled={disabled}
+          min={min}
+          placeholder={placeholder}
+          step={step}
+          type={type}
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+        {suffixText && (
+          <span className="pr-2.5 text-[12px] text-mountain-400 shrink-0">
+            {suffixText}
+          </span>
+        )}
+      </div>
+      {hint && <p className="text-[10.5px] text-mountain-400">{hint}</p>}
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (c: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer">
+      <div
+        className="relative inline-block w-8 h-4.5 rounded-full transition-colors duration-200 ease-in-out"
+        style={{ backgroundColor: checked ? "#0f766e" : "#e2e8f0" }}
+      >
+        <div
+          className={`absolute left-0.5 top-0.5 w-3.5 h-3.5 bg-white rounded-full transition-transform duration-200 ease-in-out shadow-sm ${checked ? "transform translate-x-3.5" : ""}`}
+        />
+      </div>
+      <span className="text-[12.5px] text-mountain-700">{label}</span>
+      {/* Hidden checkbox for accessibility/state */}
+      <input
+        checked={checked}
+        className="hidden"
+        type="checkbox"
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+function ModalShell({
+  title,
+  subtitle,
+  onClose,
+  children,
+  footer,
+  size = "lg",
+  disabled,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+  size?: "md" | "lg" | "xl" | "5xl";
+  disabled?: boolean;
+}) {
+  const widthMap = {
+    md: "max-w-md",
+    lg: "max-w-2xl",
+    xl: "max-w-3xl",
+    "5xl": "max-w-5xl",
+  };
+
+  useEffect(() => {
+    const el =
+      document.getElementById("dashboard-scroll-container") || document.body;
+    const prev = el.style.overflow;
+
+    el.style.overflow = "hidden";
+
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 overflow-hidden"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !disabled) onClose();
+      }}
+    >
+      <div
+        className={`bg-white border border-mountain-200 rounded w-full ${widthMap[size]} flex flex-col max-h-[90vh]`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between px-4 py-3 border-b border-mountain-100 shrink-0">
+          <div>
+            <h3 className="text-[14px] font-semibold text-mountain-900">
+              {title}
+            </h3>
+            {subtitle && <div className="mt-1">{subtitle}</div>}
+          </div>
+          {!disabled && (
+            <button
+              className="text-mountain-400 hover:text-mountain-700 mt-0.5"
+              type="button"
+              onClick={onClose}
+            >
+              <IoCloseOutline className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div className="p-4 overflow-y-auto flex-1">{children}</div>
+        <div className="flex justify-end gap-2 px-4 py-3 border-t border-mountain-100 shrink-0">
+          {footer}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ── Main Page ───────────────────────────────────────────────────────────────
+export default function AppointmentBillingPage() {
+  const { clinicId, currentUser, userData } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const filterDate = searchParams.get("date");
+
+  const branchId = userData?.branchId ?? null;
+  const isClinicAdmin =
+    userData?.role === "clinic-admin" ||
+    userData?.role === "clinic-super-admin" ||
+    userData?.role === "super-admin";
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const mainBranchId = branches.find((b) => b.isMainBranch)?.id ?? null;
+  const effectiveBranchId =
+    branchId ??
+    (mainBranchId && selectedBranchId === mainBranchId
+      ? undefined
+      : (selectedBranchId ?? undefined));
+
+  // Tabs: 'create' | 'manage' | 'settings'
+  const [activeTab, setActiveTab] = useState(filterDate ? "manage" : "create");
+
+  // Data
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>(
+    [],
+  );
+  const [billings, setBillings] = useState<AppointmentBilling[]>([]);
+  const [billingSettings, setBillingSettings] =
+    useState<AppointmentBillingSettings | null>(null);
+
+  // States
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Modals
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [selectedBilling, setSelectedBilling] =
+    useState<AppointmentBilling | null>(null);
+
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [selectedBillingForPayment, setSelectedBillingForPayment] =
+    useState<AppointmentBilling | null>(null);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    method: "cash",
+    reference: "",
+    notes: "",
+  });
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingBilling, setDeletingBilling] =
+    useState<AppointmentBilling | null>(null);
+
+  // Form Data (Create)
+  const emptyForm: InvoiceFormData = {
+    patientId: "",
+    patientName: "",
+    doctorId: "",
+    doctorName: "",
+    doctorType: "regular",
+    invoiceDate: new Date().toISOString().split("T")[0],
+    items: [],
+    discountType: "percent",
+    discountValue: 0,
+    notes: "",
+  };
+  const [formData, setFormData] = useState<InvoiceFormData>(emptyForm);
+  const [calculations, setCalculations] = useState({
+    subtotal: 0,
+    discountAmount: 0,
+    taxAmount: 0,
+    totalAmount: 0,
+  });
+
+  // Settings tab form
+  const [paymentMethodForm, setPaymentMethodForm] = useState({
+    name: "",
+    key: "",
+    description: "",
+    requiresReference: false,
+    icon: "💳",
+  });
+  const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
+
+  // Load branches for clinic-wide admins (no fixed branchId)
+  useEffect(() => {
+    if (!clinicId || !isClinicAdmin || branchId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await branchService.getClinicBranches(clinicId, true);
+
+        if (cancelled) return;
+        setBranches(data);
+        if (data.length > 0) {
+          setSelectedBranchId((prev) => prev ?? data[0].id);
+        } else {
+          setSelectedBranchId(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setBranches([]);
+          setSelectedBranchId(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clinicId, isClinicAdmin, branchId]);
+
+  useEffect(() => {
+    if (branchId) setSelectedBranchId(null);
+  }, [branchId]);
+
+  useEffect(() => {
+    loadData();
+  }, [clinicId, filterDate, effectiveBranchId]);
+  useEffect(() => {
+    if (filterDate) setActiveTab("manage");
+  }, [filterDate]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+  useEffect(() => {
+    calculateTotals();
+  }, [
+    formData.items,
+    formData.discountType,
+    formData.discountValue,
+    billingSettings,
+  ]);
+
+  const loadData = async () => {
+    if (!clinicId) return;
+    try {
+      setLoading(true);
+      const settings =
+        await appointmentBillingService.getBillingSettings(clinicId);
+
+      if (!settings?.enabledByAdmin || !settings?.isActive) return;
+      setBillingSettings(settings);
+
+      const [pData, dData, aData, bData] = await Promise.all([
+        patientService.getPatientsByClinic(clinicId, effectiveBranchId),
+        doctorService.getDoctorsByClinic(clinicId, effectiveBranchId),
+        appointmentTypeService.getAppointmentTypesByClinic(
+          clinicId,
+          effectiveBranchId,
+        ),
+        appointmentBillingService.getBillingByClinic(
+          clinicId,
+          effectiveBranchId,
+        ),
+      ]);
+
+      setPatients(pData);
+      setDoctors(dData);
+      setAppointmentTypes(aData);
+      let filtered = bData || [];
+
+      if (filterDate) {
+        const d = new Date(filterDate);
+        const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const end = new Date(
+          d.getFullYear(),
+          d.getMonth(),
+          d.getDate(),
+          23,
+          59,
+          59,
+        );
+
+        filtered = filtered.filter((b) => {
+          if (!b.invoiceDate) return false;
+          const bd = new Date(b.invoiceDate);
+
+          return bd >= start && bd <= end;
+        });
+      }
+      setBillings(filtered);
+      setFormData((p) => ({
+        ...p,
+        discountType: settings.defaultDiscountType,
+        discountValue: settings.defaultDiscountValue,
+      }));
+    } catch (e) {
+      addToast({ title: "Error loading data", color: "danger" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateTotals = () => {
+    if (!formData.items.length || !billingSettings) return;
+    setCalculations(
+      appointmentBillingService.calculateInvoiceTotals(
+        formData.items,
+        formData.discountType,
+        formData.discountValue,
+        billingSettings.enableTax ? billingSettings.defaultTaxPercentage : 0,
+      ),
+    );
+  };
+
+  // ── Create Invoice Logic ───────────────────────────────────────────────────
+  const handlePatientChange = (id: string) => {
+    const p = patients.find((x) => x.id === id);
+
+    if (p)
+      setFormData((prev) => ({ ...prev, patientId: id, patientName: p.name }));
+    else setFormData((prev) => ({ ...prev, patientId: "", patientName: "" }));
+  };
+
+  const handleDoctorChange = (id: string) => {
+    const d = doctors.find((x) => x.id === id);
+
+    if (d) {
+      const type =
+        (d.doctorType || "regular").toLowerCase() === "visitor"
+          ? "visitor"
+          : "regular";
+
+      setFormData((prev) => ({
+        ...prev,
+        doctorId: id,
+        doctorName: d.name,
+        doctorType: type as "regular" | "visitor",
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        doctorId: "",
+        doctorName: "",
+        doctorType: "regular",
+      }));
+    }
+  };
+
+  const addInvoiceItem = () => {
+    setFormData((p) => ({
+      ...p,
+      items: [
+        ...p.items,
+        {
+          id: `item_${Date.now()}`,
+          appointmentTypeId: "",
+          appointmentTypeName: "",
+          price: 0,
+          quantity: 1,
+          commission: billingSettings?.defaultCommission || 0,
+          amount: 0,
+        },
+      ],
+    }));
+  };
+
+  const removeInvoiceItem = (index: number) => {
+    setFormData((p) => {
+      const newItems = [...p.items];
+
+      newItems.splice(index, 1);
+
+      return { ...p, items: newItems };
+    });
+  };
+
+  const updateInvoiceItem = (
+    index: number,
+    field: keyof AppointmentBillingItem,
+    value: any,
+  ) => {
+    const items = [...formData.items];
+
+    if (field === "appointmentTypeId") {
+      const at = appointmentTypes.find((t) => t.id === value);
+
+      if (at) {
+        const doc = doctors.find((d) => d.id === formData.doctorId);
+
+        items[index] = {
+          ...items[index],
+          appointmentTypeId: value,
+          appointmentTypeName: at.name,
+          price: at.price,
+          commission: doc?.defaultCommission || 0,
+          amount: at.price * items[index].quantity,
+        };
+      }
+    } else if (field === "quantity") {
+      items[index] = {
+        ...items[index],
+        quantity: value,
+        amount: items[index].price * value,
+      };
+    } else if (field === "price") {
+      items[index] = {
+        ...items[index],
+        price: value,
+        amount: value * items[index].quantity,
+      };
+    } else {
+      items[index] = { ...items[index], [field]: value };
+    }
+    setFormData((p) => ({ ...p, items }));
+  };
+
+  const handleCreateSubmit = async () => {
+    if (!clinicId || !currentUser || !billingSettings) return;
+    if (!formData.patientId || !formData.doctorId || !formData.items.length) {
+      addToast({ title: "Fill required fields", color: "warning" });
+
+      return;
+    }
+    if (
+      !formData.items.every(
+        (i) => i.appointmentTypeId && i.quantity > 0 && i.price > 0,
+      )
+    ) {
+      addToast({ title: "Check invoice items", color: "warning" });
+
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const invoiceNumber =
+        await appointmentBillingService.generateInvoiceNumber(clinicId);
+      const data: Omit<AppointmentBilling, "id" | "createdAt" | "updatedAt"> = {
+        invoiceNumber,
+        clinicId,
+        branchId: effectiveBranchId || userData?.branchId || "",
+        ...formData,
+        invoiceDate: new Date(formData.invoiceDate),
+        subtotal: calculations.subtotal,
+        discountAmount: calculations.discountAmount,
+        taxPercentage: billingSettings.enableTax
+          ? billingSettings.defaultTaxPercentage
+          : 0,
+        taxAmount: calculations.taxAmount,
+        totalAmount: calculations.totalAmount,
+        status: "draft",
+        paymentStatus: "unpaid",
+        paidAmount: 0,
+        balanceAmount: calculations.totalAmount,
+        createdBy: currentUser.uid,
+      };
+
+      const id = await appointmentBillingService.createBilling(data);
+
+      try {
+        const doc = doctors.find((d) => d.id === formData.doctorId);
+
+        if (data.items.some((i) => (i.commission || 0) > 0)) {
+          await doctorCommissionService.createCommission(
+            { id, ...data, createdAt: new Date(), updatedAt: new Date() },
+            doc?.defaultCommission || 0,
+            currentUser.uid,
+          );
+        }
+      } catch (e) {
+        addToast({
+          title: "Warning",
+          description: "Invoice created but commission logic failed.",
+          color: "warning",
+        });
+      }
+
+      addToast({ title: "Invoice created", color: "success" });
+      setFormData({
+        ...emptyForm,
+        discountType: billingSettings.defaultDiscountType,
+        discountValue: billingSettings.defaultDiscountValue,
+      });
+      const up = await appointmentBillingService.getBillingByClinic(
+        clinicId,
+        effectiveBranchId,
+      );
+
+      if (up) setBillings(up);
+      setActiveTab("manage");
+    } catch (e) {
+      addToast({ title: "Failed to create invoice", color: "danger" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ── Manage Invoices Logic ──────────────────────────────────────────────────
+  const fmtCur = (n: number) => `NPR ${n.toLocaleString()}`;
+  const fmtDate = (d: string | Date) =>
+    new Date(d).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+  const filteredBillings = searchQuery.trim()
+    ? billings.filter(
+        (b) =>
+          b.patientName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          b.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : billings;
+
+  const totalPages = Math.ceil(filteredBillings.length / itemsPerPage) || 1;
+  const currentBillings = filteredBillings.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
+
+  const handleDelete = async () => {
+    if (!deletingBilling || !clinicId) return;
+    try {
+      setIsDeleting(true);
+      await appointmentBillingService.deleteBilling(deletingBilling.id);
+      addToast({ title: "Invoice deleted", color: "success" });
+      setBillings((b) => b.filter((x) => x.id !== deletingBilling.id));
+      setShowDeleteModal(false);
+      setDeletingBilling(null);
+    } catch (e) {
+      addToast({ title: "Delete failed", color: "danger" });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!selectedBillingForPayment || !clinicId) return;
+    const amount = parseFloat(paymentForm.amount);
+
+    if (isNaN(amount) || amount <= 0) {
+      addToast({ title: "Invalid amount", color: "warning" });
+
+      return;
+    }
+    if (amount > selectedBillingForPayment.balanceAmount) {
+      addToast({ title: "Exceeds balance", color: "warning" });
+
+      return;
+    }
+
+    const methodInfo = availableMethods.find(
+      (m) => m.key === paymentForm.method,
+    );
+
+    if (methodInfo?.requiresReference && !paymentForm.reference.trim()) {
+      addToast({ title: "Reference required", color: "warning" });
+
+      return;
+    }
+
+    try {
+      setPaymentProcessing(true);
+      await appointmentBillingService.recordPayment(
+        selectedBillingForPayment.id,
+        amount,
+        paymentForm.method,
+        paymentForm.reference || undefined,
+        paymentForm.notes || undefined,
+      );
+      addToast({ title: "Payment recorded", color: "success" });
+      const up = await appointmentBillingService.getBillingByClinic(
+        clinicId,
+        effectiveBranchId,
+      );
+
+      if (up) setBillings(up);
+      setShowPaymentModal(false);
+      setSelectedBillingForPayment(null);
+      setPaymentForm({ amount: "", method: "cash", reference: "", notes: "" });
+      if (showInvoiceModal) setShowInvoiceModal(false); // Close view modal if open
+    } catch (e) {
+      addToast({ title: "Payment failed", color: "danger" });
+    } finally {
+      setPaymentProcessing(false);
+    }
+  };
+
+  // ── Settings Logic ─────────────────────────────────────────────────────────
+  const handleAddPaymentMethod = async () => {
+    if (!clinicId || !currentUser) return;
+    if (!paymentMethodForm.name.trim() || !paymentMethodForm.key.trim()) return;
+    if (
+      billingSettings?.paymentMethods?.some(
+        (m) => m.key.toLowerCase() === paymentMethodForm.key.toLowerCase(),
+      )
+    ) {
+      addToast({ title: "Duplicate key", color: "warning" });
+
+      return;
+    }
+    try {
+      setIsAddingPaymentMethod(true);
+      await appointmentBillingService.addPaymentMethod(
+        clinicId,
+        {
+          name: paymentMethodForm.name.trim(),
+          key: paymentMethodForm.key.toLowerCase().replace(/\s+/g, "_"),
+          description: paymentMethodForm.description.trim(),
+          requiresReference: paymentMethodForm.requiresReference,
+          icon: paymentMethodForm.icon,
+          isEnabled: true,
+          isCustom: true,
+        },
+        currentUser.uid,
+      );
+      addToast({ title: "Method added", color: "success" });
+      setPaymentMethodForm({
+        name: "",
+        key: "",
+        description: "",
+        requiresReference: false,
+        icon: "💳",
+      });
+      const s = await appointmentBillingService.getBillingSettings(clinicId);
+
+      if (s) setBillingSettings(s);
+    } catch (e) {
+      addToast({ title: "Failed to add method", color: "danger" });
+    } finally {
+      setIsAddingPaymentMethod(false);
+    }
+  };
+
+  const handleToggleMethod = async (id: string, current: boolean) => {
+    if (!clinicId || !currentUser) return;
+    try {
+      await appointmentBillingService.updatePaymentMethod(
+        clinicId,
+        id,
+        { isEnabled: !current },
+        currentUser.uid,
+      );
+      const s = await appointmentBillingService.getBillingSettings(clinicId);
+
+      if (s) setBillingSettings(s);
+    } catch (e) {
+      addToast({ title: "Update failed", color: "danger" });
+    }
+  };
+
+  const handleDeleteMethod = async (id: string) => {
+    if (!clinicId || !currentUser) return;
+    try {
+      await appointmentBillingService.deletePaymentMethod(
+        clinicId,
+        id,
+        currentUser.uid,
+      );
+      const s = await appointmentBillingService.getBillingSettings(clinicId);
+
+      if (s) setBillingSettings(s);
+    } catch (e) {
+      addToast({ title: "Delete failed", color: "danger" });
+    }
+  };
+
+  const availableMethods =
+    billingSettings?.paymentMethods?.filter((method) => method.isEnabled) || [];
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
+  if (loading)
+    return (
+      <div className="p-8 text-center text-mountain-400">Loading billing…</div>
+    );
+  if (!billingSettings?.enabledByAdmin || !billingSettings?.isActive)
+    return <DashboardNotFoundPage />;
+
+  return (
+    <div className="flex flex-col gap-5 px-4 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-page-title text-mountain-900">
+            Appointment Billing
+          </h1>
+          <p className="text-[12.5px] text-mountain-400 mt-1">
+            Create and manage appointment invoices
+          </p>
+        </div>
+        {!branchId && isClinicAdmin && branches.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-mountain-500">Branch</span>
+            <select
+              className="h-8 px-2.5 py-0 text-[12px] border border-mountain-200 rounded bg-white text-mountain-700 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-200"
+              value={selectedBranchId ?? ""}
+              onChange={(e) => setSelectedBranchId(e.target.value || null)}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {b.isMainBranch ? " (all branches)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border border-mountain-200 rounded overflow-hidden">
+        {/* Tab Strip */}
+        <div className="flex border-b border-mountain-100 bg-mountain-25">
+          {[
+            {
+              id: "create",
+              label: "Create Invoice",
+              icon: <IoAddOutline className="w-4 h-4" />,
+            },
+            {
+              id: "manage",
+              label: "Manage Invoices",
+              icon: <IoStatsChartOutline className="w-4 h-4" />,
+            },
+            {
+              id: "settings",
+              label: "Settings",
+              icon: <IoSettings className="w-4 h-4" />,
+            },
+          ].map((t) => (
+            <button
+              key={t.id}
+              className={`flex items-center gap-2 px-5 py-3.5 text-[13px] font-medium border-b-2 transition-colors
+                ${activeTab === t.id ? "border-teal-700 text-teal-700 bg-white" : "border-transparent text-mountain-500 hover:text-teal-600 hover:bg-mountain-50"}`}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Create Tab */}
+        {activeTab === "create" && (
+          <div className="p-5 flex flex-col gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <SearchSelect
+                required
+                items={patients.map((p) => ({
+                  id: p.id,
+                  primary: p.name,
+                  secondary: p.regNumber,
+                }))}
+                label="Patient"
+                value={formData.patientId}
+                onChange={(id) => handlePatientChange(id)}
+              />
+
+              <SearchSelect
+                required
+                items={doctors.map((d) => ({
+                  id: d.id,
+                  primary: d.name,
+                  secondary: `${d.speciality} · ${d.doctorType}`,
+                }))}
+                label="Doctor"
+                value={formData.doctorId}
+                onChange={(id) => handleDoctorChange(id)}
+              />
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[12px] font-medium text-mountain-700">
+                  Doctor Type
+                </label>
+                <select
+                  className="h-9 px-2 text-[12.5px] border border-mountain-200 rounded disabled:bg-mountain-50 bg-white"
+                  disabled={!!formData.doctorId}
+                  value={formData.doctorType}
+                  onChange={(e) =>
+                    setFormData((p) => ({
+                      ...p,
+                      doctorType: e.target.value as any,
+                    }))
+                  }
+                >
+                  <option value="regular">Regular</option>
+                  <option value="visitor">Visitor</option>
+                </select>
+                {formData.doctorId && (
+                  <p className="text-[10px] text-mountain-400">Auto-selected</p>
+                )}
+              </div>
+
+              <FlatInput
+                required
+                label="Invoice Date"
+                type="date"
+                value={formData.invoiceDate}
+                onChange={(v) => setFormData((p) => ({ ...p, invoiceDate: v }))}
+              />
+            </div>
+
+            <div className="border-t border-mountain-100" />
+
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-[14px] font-semibold text-mountain-900">
+                  Invoice Items
+                </h3>
+                <Button
+                  color="primary"
+                  size="sm"
+                  startContent={<IoAddOutline />}
+                  onClick={addInvoiceItem}
+                >
+                  Add Item
+                </Button>
+              </div>
+
+              {formData.items.length === 0 ? (
+                <div className="py-10 text-center border dashed border-mountain-200 rounded">
+                  <IoReceiptOutline className="mx-auto w-10 h-10 text-mountain-300 mb-2" />
+                  <p className="text-[13px] text-mountain-500 mb-4">
+                    No invoice items added
+                  </p>
+                  <Button
+                    color="primary"
+                    size="sm"
+                    startContent={<IoAddOutline />}
+                    onClick={addInvoiceItem}
+                  >
+                    Add First Item
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {formData.items.map((item, i) => (
+                    <div
+                      key={item.id}
+                      className="grid grid-cols-1 md:grid-cols-6 gap-3 p-3 border border-mountain-200 rounded items-end"
+                    >
+                      <div className="md:col-span-2">
+                        <SearchSelect
+                          items={appointmentTypes.map((t) => ({
+                            id: t.id,
+                            primary: t.name,
+                            secondary: fmtCur(t.price),
+                          }))}
+                          label="Appointment Type"
+                          value={item.appointmentTypeId}
+                          onChange={(id) =>
+                            updateInvoiceItem(i, "appointmentTypeId", id)
+                          }
+                        />
+                      </div>
+                      <FlatInput
+                        label="Price (NPR)"
+                        min="0"
+                        step="0.01"
+                        type="number"
+                        value={item.price.toString()}
+                        onChange={(v) =>
+                          updateInvoiceItem(i, "price", parseFloat(v) || 0)
+                        }
+                      />
+                      <FlatInput
+                        label="Qty"
+                        min="1"
+                        type="number"
+                        value={item.quantity.toString()}
+                        onChange={(v) =>
+                          updateInvoiceItem(i, "quantity", parseInt(v) || 1)
+                        }
+                      />
+                      <FlatInput
+                        label="Comm. (%)"
+                        type="number"
+                        value={item.commission.toString()}
+                        onChange={(v) =>
+                          updateInvoiceItem(i, "commission", parseFloat(v) || 0)
+                        }
+                      />
+                      <div className="flex items-end gap-2">
+                        <FlatInput
+                          disabled
+                          label="Amount"
+                          value={item.amount.toString()}
+                        />
+                        <button
+                          className="w-9 h-9 flex items-center justify-center text-red-500 border border-red-200 rounded hover:bg-red-50 shrink-0"
+                          type="button"
+                          onClick={() => removeInvoiceItem(i)}
+                        >
+                          <IoTrashOutline />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {formData.items.length > 0 && (
+              <>
+                <div className="border-t border-mountain-100" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <h4 className="text-[13px] font-semibold text-mountain-900">
+                      Discount & Tax
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[12px] font-medium text-mountain-700">
+                          Discount Type
+                        </label>
+                        <select
+                          className="h-9 px-2 text-[12.5px] border border-mountain-200 rounded bg-white"
+                          value={formData.discountType}
+                          onChange={(e) =>
+                            setFormData((p) => ({
+                              ...p,
+                              discountType: e.target.value as any,
+                            }))
+                          }
+                        >
+                          <option value="flat">Flat Amount</option>
+                          <option value="percent">Percentage</option>
+                        </select>
+                      </div>
+                      <FlatInput
+                        label="Discount Value"
+                        suffixText={
+                          formData.discountType === "percent" ? "%" : "NPR"
+                        }
+                        type="number"
+                        value={formData.discountValue.toString()}
+                        onChange={(v) =>
+                          setFormData((p) => ({
+                            ...p,
+                            discountValue: parseFloat(v) || 0,
+                          }))
+                        }
+                      />
+                    </div>
+                    <FlatInput
+                      label="Notes"
+                      placeholder="Optional notes"
+                      value={formData.notes}
+                      onChange={(v) => setFormData((p) => ({ ...p, notes: v }))}
+                    />
+                  </div>
+                  <div className="bg-mountain-50 border border-mountain-100 rounded p-4 text-[13px] space-y-2 text-mountain-700">
+                    <h4 className="font-semibold text-mountain-900 mb-2">
+                      Summary
+                    </h4>
+                    <div className="flex justify-between">
+                      <span>Subtotal:</span>
+                      <span>{fmtCur(calculations.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Discount:</span>
+                      <span className="text-red-500">
+                        - {fmtCur(calculations.discountAmount)}
+                      </span>
+                    </div>
+                    {billingSettings.enableTax && (
+                      <div className="flex justify-between">
+                        <span>
+                          {billingSettings.taxLabel} (
+                          {billingSettings.defaultTaxPercentage}%):
+                        </span>
+                        <span>{fmtCur(calculations.taxAmount)}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-mountain-200 pt-2 flex justify-between font-bold text-mountain-900 text-[14px]">
+                      <span>Total:</span>
+                      <span>{fmtCur(calculations.totalAmount)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-4">
+                  <Button
+                    color="default"
+                    variant="bordered"
+                    onClick={() => setFormData({ ...emptyForm })}
+                  >
+                    Reset
+                  </Button>
+                  <Button
+                    color="primary"
+                    isLoading={submitting}
+                    onClick={handleCreateSubmit}
+                  >
+                    Create Invoice
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Manage Tab */}
+        {activeTab === "manage" && (
+          <div className="p-5 flex flex-col gap-4">
+            {billings.length > 0 && (
+              <div className="w-64">
+                <div className="flex items-center h-9 border border-mountain-200 rounded bg-white focus-within:border-teal-500">
+                  <IoSearchOutline className="ml-2.5 w-4 h-4 text-mountain-400" />
+                  <input
+                    className="flex-1 px-2 text-[12.5px] bg-transparent focus:outline-none placeholder:text-mountain-400"
+                    placeholder="Search invoices…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {filteredBillings.length === 0 ? (
+              <div className="text-center py-12">
+                <IoReceiptOutline className="mx-auto w-12 h-12 text-mountain-300 mb-3" />
+                <p className="text-[14px] font-medium text-mountain-700">
+                  No invoices found
+                </p>
+                {searchQuery ? (
+                  <Button
+                    className="mt-3"
+                    color="default"
+                    size="sm"
+                    variant="bordered"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    Clear Search
+                  </Button>
+                ) : (
+                  <Button
+                    className="mt-3"
+                    color="primary"
+                    size="sm"
+                    startContent={<IoAddOutline />}
+                    onClick={() => setActiveTab("create")}
+                  >
+                    Create Invoice
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="overflow-x-auto border border-mountain-200 rounded">
+                  <table className="w-full text-left border-collapse whitespace-nowrap">
+                    <thead>
+                      <tr className="bg-mountain-50 border-b border-mountain-200">
+                        {[
+                          "INVOICE #",
+                          "PATIENT",
+                          "DOCTOR",
+                          "DATE",
+                          "AMOUNT",
+                          "STATUS",
+                          "PAYMENT",
+                          "ACTIONS",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-3 py-2 text-[10.5px] font-semibold text-mountain-500 uppercase tracking-wider"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-mountain-100 bg-white">
+                      {currentBillings.map((b) => (
+                        <tr
+                          key={b.id}
+                          className="hover:bg-mountain-25 transition-colors"
+                        >
+                          <td className="px-3 py-2.5 text-[12.5px] font-mono text-mountain-900">
+                            {b.invoiceNumber}
+                          </td>
+                          <td className="px-3 py-2.5 text-[12.5px] text-mountain-800">
+                            {b.patientName}
+                          </td>
+                          <td className="px-3 py-2.5 text-[12.5px]">
+                            <p className="text-mountain-800">{b.doctorName}</p>
+                            <span className="text-[10px] text-mountain-400">
+                              {b.doctorType}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-[12.5px] text-mountain-600">
+                            {fmtDate(b.invoiceDate)}
+                          </td>
+                          <td className="px-3 py-2.5 text-[12.5px] font-semibold text-mountain-900">
+                            {fmtCur(b.totalAmount)}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <StatusBadge status={b.status} />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex flex-col gap-1 items-start">
+                              <StatusBadge
+                                status={b.paymentStatus}
+                                type="payment"
+                              />
+                              {b.paymentStatus !== "paid" && (
+                                <span className="text-[10.5px] text-mountain-500">
+                                  Bal: {fmtCur(b.balanceAmount)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                className="p-1.5 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded"
+                                title="View"
+                                onClick={() =>
+                                  navigate(
+                                    `/dashboard/appointments-billing/${b.id}`,
+                                  )
+                                }
+                              >
+                                <IoEyeOutline />
+                              </button>
+                              <button
+                                className="p-1.5 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded"
+                                title="Edit"
+                                onClick={() =>
+                                  navigate(
+                                    `/dashboard/appointments-billing/${b.id}/edit`,
+                                  )
+                                }
+                              >
+                                <IoPencilOutline />
+                              </button>
+                              {b.paymentStatus !== "paid" && (
+                                <button
+                                  className="p-1.5 text-mountain-500 hover:text-health-600 hover:bg-health-50 rounded"
+                                  title="Pay"
+                                  onClick={() => {
+                                    setSelectedBillingForPayment(b);
+                                    setPaymentForm((p) => ({
+                                      ...p,
+                                      amount: b.balanceAmount.toString(),
+                                    }));
+                                    setShowPaymentModal(true);
+                                  }}
+                                >
+                                  <IoCash />
+                                </button>
+                              )}
+                              <button
+                                className="p-1.5 text-mountain-500 hover:text-red-600 hover:bg-red-50 rounded"
+                                title="Delete"
+                                onClick={() => {
+                                  setDeletingBilling(b);
+                                  setShowDeleteModal(true);
+                                }}
+                              >
+                                <IoTrashOutline />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Custom basic Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between text-[12.5px] text-mountain-600 mt-2">
+                    <span>
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                      {Math.min(
+                        currentPage * itemsPerPage,
+                        filteredBillings.length,
+                      )}{" "}
+                      of {filteredBillings.length}
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        className="px-2 py-1 border border-mountain-200 rounded hover:bg-mountain-50 disabled:opacity-50 text-mountain-800"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage((p) => p - 1)}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        className="px-2 py-1 border border-mountain-200 rounded hover:bg-mountain-50 disabled:opacity-50 text-mountain-800"
+                        disabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage((p) => p + 1)}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === "settings" && (
+          <div className="p-5 flex flex-col lg:flex-row gap-6 items-start">
+            {/* Add form */}
+            <div className="flex-1 w-full border border-mountain-200 rounded overflow-hidden">
+              <div className="px-4 py-3 bg-mountain-50 border-b border-mountain-100">
+                <h4 className="text-[13.5px] font-semibold text-mountain-900">
+                  Add Payment Method
+                </h4>
+              </div>
+              <div className="p-4 flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <FlatInput
+                    required
+                    label="Method Name"
+                    value={paymentMethodForm.name}
+                    onChange={(v) =>
+                      setPaymentMethodForm((p) => ({
+                        ...p,
+                        name: v,
+                        key: v
+                          .toLowerCase()
+                          .replace(/[^a-z0-9]/g, "_")
+                          .replace(/_+/g, "_")
+                          .replace(/^_|_$/g, ""),
+                      }))
+                    }
+                  />
+                  <FlatInput
+                    required
+                    hint="Auto-generated"
+                    label="Method Key"
+                    value={paymentMethodForm.key}
+                    onChange={(v) =>
+                      setPaymentMethodForm((p) => ({
+                        ...p,
+                        key: v.toLowerCase().replace(/[^a-z0-9_]/g, ""),
+                      }))
+                    }
+                  />
+                </div>
+                <FlatInput
+                  label="Description"
+                  value={paymentMethodForm.description}
+                  onChange={(v) =>
+                    setPaymentMethodForm((p) => ({ ...p, description: v }))
+                  }
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[12px] font-medium text-mountain-700">
+                      Icon
+                    </label>
+                    <select
+                      className="h-9 px-2 text-[12.5px] border border-mountain-200 rounded bg-white"
+                      value={paymentMethodForm.icon}
+                      onChange={(e) =>
+                        setPaymentMethodForm((p) => ({
+                          ...p,
+                          icon: e.target.value,
+                        }))
+                      }
+                    >
+                      {[
+                        "💳 Card",
+                        "💵 Cash",
+                        "📱 Mobile",
+                        "📲 Digital Wallet",
+                        "🏦 Bank",
+                        "📋 Cheque",
+                      ].map((i) => (
+                        <option key={i.charAt(0)} value={i.charAt(0)}>
+                          {i}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center mt-6">
+                    <Toggle
+                      checked={paymentMethodForm.requiresReference}
+                      label="Requires Reference"
+                      onChange={(c) =>
+                        setPaymentMethodForm((p) => ({
+                          ...p,
+                          requiresReference: c,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="mt-2 text-right">
+                  <Button
+                    color="primary"
+                    disabled={!paymentMethodForm.name}
+                    isLoading={isAddingPaymentMethod}
+                    size="sm"
+                    onClick={handleAddPaymentMethod}
+                  >
+                    Add Method
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 w-full border border-mountain-200 rounded overflow-hidden">
+              <div className="px-4 py-3 bg-mountain-50 border-b border-mountain-100">
+                <h4 className="text-[13.5px] font-semibold text-mountain-900">
+                  Current Methods
+                </h4>
+              </div>
+              <div className="p-4 flex flex-col gap-2">
+                {billingSettings?.paymentMethods?.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between p-3 border border-mountain-100 rounded bg-white"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[20px]">{m.icon}</span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12.5px] font-medium text-mountain-800">
+                            {m.name}
+                          </span>
+                          {m.isCustom && (
+                            <span className="text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded">
+                              Custom
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-mountain-400">
+                          Key: {m.key} •{" "}
+                          {m.requiresReference ? "Ref Req." : "No Ref"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Toggle
+                        checked={m.isEnabled}
+                        label=""
+                        onChange={() => handleToggleMethod(m.id, m.isEnabled)}
+                      />
+                      {m.isCustom && (
+                        <button
+                          className="text-red-400 hover:text-red-600"
+                          onClick={() => handleDeleteMethod(m.id)}
+                        >
+                          <IoTrashOutline />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+
+      {/* View Modal */}
+      {showInvoiceModal && selectedBilling && (
+        <ModalShell
+          footer={
+            <>
+              <Button
+                color="default"
+                size="sm"
+                variant="bordered"
+                onClick={() => setShowInvoiceModal(false)}
+              >
+                Close
+              </Button>
+              {selectedBilling.paymentStatus !== "paid" && (
+                <Button
+                  color="primary"
+                  size="sm"
+                  onClick={() => {
+                    setShowInvoiceModal(false);
+                    setSelectedBillingForPayment(selectedBilling);
+                    setPaymentForm((p) => ({
+                      ...p,
+                      amount: selectedBilling.balanceAmount.toString(),
+                    }));
+                    setShowPaymentModal(true);
+                  }}
+                >
+                  Record Payment
+                </Button>
+              )}
+              <Button
+                color="primary"
+                size="sm"
+                variant="bordered"
+                onClick={() =>
+                  window.open(
+                    `/dashboard/appointments-billing/${selectedBilling.id}?print=true`,
+                    "_blank",
+                  )
+                }
+              >
+                Print
+              </Button>
+            </>
+          }
+          size="xl"
+          subtitle={
+            <span className="text-mountain-500 font-mono text-[11.5px]">
+              {selectedBilling.invoiceNumber}
+            </span>
+          }
+          title="Invoice Details"
+          onClose={() => setShowInvoiceModal(false)}
+        >
+          <div className="space-y-4 text-[13px] text-mountain-800">
+            <div className="grid grid-cols-2 gap-3 bg-mountain-50 p-3 rounded border border-mountain-100">
+              <div>
+                <p className="text-[11px] text-mountain-500">Patient</p>
+                <p className="font-semibold">{selectedBilling.patientName}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-mountain-500">Doctor</p>
+                <p className="font-semibold">
+                  {selectedBilling.doctorName} ({selectedBilling.doctorType})
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-mountain-500">Date</p>
+                <p>{fmtDate(selectedBilling.invoiceDate)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-mountain-500">Status</p>
+                <StatusBadge status={selectedBilling.status} />
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2 text-mountain-900 border-b border-mountain-100 pb-1">
+                Items
+              </h4>
+              <div className="space-y-1">
+                {selectedBilling.items.map((i, idx) => (
+                  <div
+                    key={idx}
+                    className="flex justify-between items-center bg-white border border-mountain-100 p-2 rounded"
+                  >
+                    <div>
+                      <p className="font-medium">{i.appointmentTypeName}</p>
+                      <p className="text-[11.5px] text-mountain-500">
+                        {fmtCur(i.price)} × {i.quantity}
+                      </p>
+                    </div>
+                    <span>{fmtCur(i.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5 flex flex-col items-end border-t border-mountain-100 pt-3">
+              <p className="w-48 flex justify-between text-mountain-600">
+                <span>Subtotal:</span>
+                <span>{fmtCur(selectedBilling.subtotal)}</span>
+              </p>
+              <p className="w-48 flex justify-between text-mountain-600">
+                <span>Discount:</span>
+                <span className="text-red-500">
+                  - {fmtCur(selectedBilling.discountAmount)}
+                </span>
+              </p>
+              {selectedBilling.taxAmount > 0 && (
+                <p className="w-48 flex justify-between text-mountain-600">
+                  <span>Tax:</span>
+                  <span>{fmtCur(selectedBilling.taxAmount)}</span>
+                </p>
+              )}
+              <p className="w-48 flex justify-between font-bold text-mountain-900 mt-1 border-t border-mountain-100 pt-1">
+                <span>Total:</span>
+                <span>{fmtCur(selectedBilling.totalAmount)}</span>
+              </p>
+            </div>
+
+            {selectedBilling.paidAmount > 0 && (
+              <div className="bg-health-50 p-3 rounded border border-health-100 space-y-1 mt-4">
+                <h4 className="font-semibold text-health-800 border-b border-health-100 pb-1 mb-2">
+                  Payment Recieved
+                </h4>
+                <p className="flex justify-between text-health-700">
+                  <span>Total:</span>
+                  <span>{fmtCur(selectedBilling.totalAmount)}</span>
+                </p>
+                <p className="flex justify-between font-bold text-health-800">
+                  <span>Paid:</span>
+                  <span>{fmtCur(selectedBilling.paidAmount)}</span>
+                </p>
+                {selectedBilling.balanceAmount > 0 && (
+                  <p className="flex justify-between text-red-600 font-semibold mt-1">
+                    <span>Due:</span>
+                    <span>{fmtCur(selectedBilling.balanceAmount)}</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </ModalShell>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && selectedBillingForPayment && (
+        <ModalShell
+          disabled={paymentProcessing}
+          footer={
+            <>
+              <Button
+                color="default"
+                disabled={paymentProcessing}
+                size="sm"
+                variant="bordered"
+                onClick={() => setShowPaymentModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                color="primary"
+                disabled={!paymentForm.amount}
+                isLoading={paymentProcessing}
+                size="sm"
+                onClick={handlePaymentSubmit}
+              >
+                Record Payment
+              </Button>
+            </>
+          }
+          size="md"
+          subtitle={
+            <span className="text-mountain-500 text-[11.5px]">
+              Invoice: {selectedBillingForPayment.invoiceNumber} — Bal:{" "}
+              {fmtCur(selectedBillingForPayment.balanceAmount)}
+            </span>
+          }
+          title="Record Payment"
+          onClose={() => setShowPaymentModal(false)}
+        >
+          <div className="space-y-4">
+            <FlatInput
+              required
+              hint={`Max: ${fmtCur(selectedBillingForPayment.balanceAmount)}`}
+              label="Amount (NPR)"
+              type="number"
+              value={paymentForm.amount}
+              onChange={(v) => setPaymentForm((p) => ({ ...p, amount: v }))}
+            />
+            <div className="flex flex-col gap-1">
+              <label className="text-[12px] font-medium text-mountain-700">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="h-9 px-2 text-[12.5px] border border-mountain-200 rounded bg-white focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-100"
+                value={paymentForm.method}
+                onChange={(e) =>
+                  setPaymentForm((p) => ({
+                    ...p,
+                    method: e.target.value,
+                    reference: "",
+                  }))
+                }
+              >
+                {availableMethods.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {availableMethods.find((m) => m.key === paymentForm.method)
+              ?.requiresReference && (
+              <FlatInput
+                required
+                label="Reference ID"
+                value={paymentForm.reference}
+                onChange={(v) =>
+                  setPaymentForm((p) => ({ ...p, reference: v }))
+                }
+              />
+            )}
+            <FlatInput
+              label="Notes"
+              value={paymentForm.notes}
+              onChange={(v) => setPaymentForm((p) => ({ ...p, notes: v }))}
+            />
+          </div>
+        </ModalShell>
+      )}
+
+      {/* Delete Modal */}
+      {showDeleteModal && deletingBilling && (
+        <ModalShell
+          disabled={isDeleting}
+          footer={
+            <>
+              <Button
+                color="default"
+                disabled={isDeleting}
+                size="sm"
+                variant="bordered"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                color="danger"
+                isLoading={isDeleting}
+                size="sm"
+                onClick={handleDelete}
+              >
+                Delete Invoice
+              </Button>
+            </>
+          }
+          size="md"
+          title="Delete Invoice"
+          onClose={() => setShowDeleteModal(false)}
+        >
+          <div className="text-[13px] text-mountain-800">
+            <p>
+              Are you sure you want to delete invoice{" "}
+              <strong className="font-mono text-mountain-900">
+                {deletingBilling.invoiceNumber}
+              </strong>
+              ?
+            </p>
+            <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded text-red-700">
+              <p className="font-semibold flex items-center gap-1">
+                <IoTrashOutline /> This action cannot be undone.
+              </p>
+              <p className="text-[12px] mt-1">
+                This will permanently remove the invoice and any associated
+                ledger records.
+              </p>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+    </div>
+  );
+}

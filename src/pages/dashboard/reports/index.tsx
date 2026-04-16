@@ -1,0 +1,2109 @@
+import { useMemo, useState, useEffect } from "react";
+import * as XLSX from "xlsx";
+import {
+  IoCalendarOutline,
+  IoPeopleOutline,
+  IoMedicalOutline,
+  IoStatsChartOutline,
+  IoDownloadOutline,
+  IoFilterOutline,
+  IoMedkitOutline,
+  IoMedkitSharp,
+  IoStorefrontOutline,
+  IoLayersOutline,
+  IoReceiptOutline,
+  IoCheckmarkCircleOutline,
+  IoTimeOutline,
+  IoCloseCircleOutline,
+} from "react-icons/io5";
+
+import { Button } from "@/components/ui/button";
+import { Tabs, Tab } from "@/components/ui/tabs";
+import { Divider } from "@/components/ui/divider";
+import { Chip } from "@/components/ui/chip";
+import { Input } from "@/components/ui/input";
+import { Select, SelectItem } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { Checkbox } from "@/components/ui/checkbox";
+import { addToast } from "@/components/ui/toast";
+import { useAuthContext } from "@/context/AuthContext";
+
+// Services
+import { appointmentService } from "@/services/appointmentService";
+import { patientService } from "@/services/patientService";
+import { doctorService } from "@/services/doctorService";
+import { medicineService } from "@/services/medicineService";
+import { pharmacyService } from "@/services/pharmacyService";
+import { itemService } from "@/services/itemService";
+import { itemCategoryService } from "@/services/itemCategoryService";
+import { issuedItemService } from "@/services/issuedItemService";
+import { appointmentBillingService } from "@/services/appointmentBillingService";
+import { appointmentTypeService } from "@/services/appointmentTypeService";
+import { branchService } from "@/services/branchService";
+
+// Types
+import {
+  Appointment,
+  Patient,
+  Doctor,
+  Medicine,
+  MedicineStock,
+  MedicinePurchase,
+  MedicineUsage,
+  StockTransaction,
+  Item,
+  ItemCategory,
+  IssuedItem,
+  AppointmentBilling,
+  AppointmentBillingSettings,
+  AppointmentType,
+  Branch,
+} from "@/types/models";
+
+interface ReportData {
+  appointments: Appointment[];
+  patients: Patient[];
+  doctors: Doctor[];
+  appointmentTypes: AppointmentType[];
+  medicines: Medicine[];
+  medicineStock: (MedicineStock & { medicine: Medicine })[];
+  medicinePurchases: MedicinePurchase[];
+  medicineUsage: MedicineUsage[];
+  stockTransactions: StockTransaction[];
+  items: Item[];
+  itemCategories: ItemCategory[];
+  issuedItems: IssuedItem[];
+  billings: AppointmentBilling[];
+  billingSettings: AppointmentBillingSettings | null;
+}
+
+// Helper function to format date in yyyy/mm/dd format
+const formatDate = (date: Date | string) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${year}/${month}/${day}`;
+};
+
+// Helper function to format time in 12-hour format
+const formatTime = (time: string | undefined) => {
+  if (!time) return "N/A";
+
+  // If time is already in HH:MM format
+  const [hours, minutes] = time.split(":");
+
+  if (!hours || !minutes) return time;
+
+  const hour24 = parseInt(hours, 10);
+  const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+  const ampm = hour24 >= 12 ? "PM" : "AM";
+
+  return `${hour12}:${minutes} ${ampm}`;
+};
+
+interface OverviewStats {
+  totalAppointments: number;
+  completedAppointments: number;
+  cancelledAppointments: number;
+  totalPatients: number;
+  activeDoctors: number;
+  criticalPatients: number;
+  completionRate: number;
+}
+
+export default function ReportsPage() {
+  const { clinicId, userData } = useAuthContext();
+  const branchId = userData?.branchId ?? null;
+
+  const isClinicAdmin =
+    userData?.role === "clinic-admin" ||
+    userData?.role === "clinic-super-admin" ||
+    userData?.role === "super-admin";
+
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const mainBranchId = branches.find((b) => b.isMainBranch)?.id ?? null;
+  const reportBranchId =
+    branchId ??
+    (mainBranchId && selectedBranchId === mainBranchId
+      ? undefined
+      : (selectedBranchId ?? undefined));
+
+  const [loading, setLoading] = useState(true);
+  const [reportData, setReportData] = useState<ReportData>({
+    appointments: [],
+    patients: [],
+    doctors: [],
+    appointmentTypes: [],
+    medicines: [],
+    medicineStock: [],
+    medicinePurchases: [],
+    medicineUsage: [],
+    stockTransactions: [],
+    items: [],
+    itemCategories: [],
+    issuedItems: [],
+    billings: [],
+    billingSettings: null,
+  });
+  const [selectedTab, setSelectedTab] = useState("overview");
+  const [dateRange, setDateRange] = useState({
+    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      .toISOString()
+      .split("T")[0],
+    end: new Date().toISOString().split("T")[0],
+  });
+  const [selectedDoctor, setSelectedDoctor] = useState("all");
+  const [selectedAppointmentType, setSelectedAppointmentType] = useState("all");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [allDates, setAllDates] = useState(false);
+
+  // Create doctor options for select
+  const doctorOptions = [
+    { key: "all", label: "All Doctors" },
+    ...reportData.doctors.map((doctor) => ({
+      key: doctor.id,
+      label: doctor.name,
+    })),
+  ];
+
+  // Create appointment type options for select
+  const appointmentTypeOptions = [
+    { key: "all", label: "All Appointment Types" },
+    ...reportData.appointmentTypes.map((appointmentType) => ({
+      key: appointmentType.id,
+      label: appointmentType.name,
+    })),
+  ];
+
+  // Load branches for clinic-wide admins (no fixed branchId)
+  useEffect(() => {
+    if (!clinicId || !isClinicAdmin || branchId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await branchService.getClinicBranches(clinicId, true);
+
+        if (cancelled) return;
+        setBranches(data);
+        if (data.length > 0) {
+          setSelectedBranchId((prev) => prev ?? data[0].id);
+        } else {
+          setSelectedBranchId(null);
+        }
+      } catch (err) {
+        console.error("Reports branches fetch error:", err);
+        if (!cancelled) {
+          setBranches([]);
+          setSelectedBranchId(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clinicId, isClinicAdmin, branchId]);
+
+  // When user has fixed branch, clear admin branch filter
+  useEffect(() => {
+    if (branchId) setSelectedBranchId(null);
+  }, [branchId]);
+
+  // Load data on component mount
+  useEffect(() => {
+    let isMounted = true; // Flag to track if component is still mounted
+    const abortController = new AbortController(); // For canceling fetch requests if supported
+
+    const loadReportData = async () => {
+      if (!clinicId) return;
+
+      setLoading(true);
+      try {
+        const [
+          appointments,
+          patients,
+          doctors,
+          appointmentTypes,
+          medicines,
+          medicineStock,
+          medicinePurchases,
+          medicineUsage,
+          items,
+          itemCategories,
+          issuedItems,
+        ] = await Promise.all([
+          appointmentService.getAppointmentsByClinic(clinicId, reportBranchId),
+          patientService.getPatientsByClinic(clinicId, reportBranchId),
+          doctorService.getDoctorsByClinic(clinicId, reportBranchId),
+          appointmentTypeService.getAppointmentTypesByClinic(
+            clinicId,
+            reportBranchId,
+          ),
+          medicineService.getMedicinesByClinic(
+            clinicId,
+            undefined,
+            reportBranchId,
+          ),
+          medicineService.getStockByClinic(clinicId, reportBranchId),
+          pharmacyService.getMedicinePurchasesByClinic(
+            clinicId,
+            reportBranchId,
+          ),
+          pharmacyService.getMedicineUsageByClinic(clinicId, reportBranchId),
+          itemService.getItemsByClinic(clinicId, reportBranchId),
+          itemCategoryService.getCategoriesByClinic(clinicId, reportBranchId),
+          issuedItemService.getIssuedItemsByClinic(clinicId, reportBranchId),
+        ]);
+
+        // Check if component is still mounted before proceeding
+        if (!isMounted) return;
+
+        // Load billing data if enabled
+        let billings: AppointmentBilling[] = [];
+        let billingSettings: AppointmentBillingSettings | null = null;
+
+        try {
+          billingSettings =
+            await appointmentBillingService.getBillingSettings(clinicId);
+          if (
+            billingSettings &&
+            billingSettings.enabledByAdmin &&
+            billingSettings.isActive
+          ) {
+            billings = await appointmentBillingService.getBillingByClinic(
+              clinicId,
+              reportBranchId,
+            );
+          }
+        } catch (billingError) {
+          console.warn("Billing data not available:", billingError);
+          // Don't fail the entire report loading if billing fails
+        }
+
+        // TODO: Implement stockTransactions service method
+        // Currently using empty array as placeholder - future implementation needed
+        // This should be replaced with: pharmacyService.getStockTransactionsByClinic(clinicId, branchId)
+        const stockTransactions: StockTransaction[] = [];
+
+        // Log warning for missing implementation
+        console.warn(
+          "StockTransactions not implemented yet. Using empty array as placeholder.",
+        );
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setReportData({
+            appointments,
+            patients,
+            doctors,
+            appointmentTypes,
+            medicines,
+            medicineStock,
+            medicinePurchases,
+            medicineUsage,
+            stockTransactions,
+            items,
+            itemCategories,
+            issuedItems,
+            billings,
+            billingSettings,
+          });
+        }
+      } catch (error) {
+        // Only handle error if component is still mounted
+        if (isMounted) {
+          console.error("Error loading report data:", error);
+          addToast({
+            title: "Error Loading Data",
+            description: "Failed to load report data. Please try again.",
+            color: "danger",
+          });
+        }
+      } finally {
+        // Only update loading state if component is still mounted
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadReportData();
+
+    // Cleanup function to prevent memory leaks
+    return () => {
+      isMounted = false;
+      abortController.abort(); // Cancel any ongoing requests if services support AbortController
+    };
+  }, [clinicId, reportBranchId]);
+
+  // Filter appointments by date range, doctor, and appointment type
+  const getFilteredAppointments = () => {
+    return reportData.appointments.filter((appointment) => {
+      const appointmentDate = new Date(appointment.appointmentDate);
+      const startDate = new Date(dateRange.start);
+      const endDate = new Date(dateRange.end);
+
+      const isInDateRange = allDates
+        ? true
+        : appointmentDate >= startDate && appointmentDate <= endDate;
+      const matchesDoctor =
+        selectedDoctor === "all" || appointment.doctorId === selectedDoctor;
+      const matchesAppointmentType =
+        selectedAppointmentType === "all" ||
+        appointment.appointmentTypeId === selectedAppointmentType;
+
+      return isInDateRange && matchesDoctor && matchesAppointmentType;
+    });
+  };
+
+  // Filter patients by date range (createdAt) and selected doctor
+  const getFilteredPatients = () => {
+    const startDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+
+    return reportData.patients.filter((p) => {
+      // Date filter based on patient registration date
+      let createdOk = true;
+
+      if (!allDates) {
+        if (!p.createdAt) return false;
+        const created = new Date(p.createdAt as any);
+
+        if (Number.isNaN(created.getTime())) return false;
+        createdOk = created >= startDate && created <= endDate;
+      }
+
+      // Doctor filter: assigned doctor OR has any appointment with selected doctor within date window
+      let doctorOk = true;
+
+      if (selectedDoctor !== "all") {
+        const assignedMatches = (p as any).doctorId === selectedDoctor;
+        const hasAppointmentWithDoctor = reportData.appointments.some((apt) => {
+          if (apt.patientId !== p.id) return false;
+          if (apt.doctorId !== selectedDoctor) return false;
+          if (allDates) return true;
+          const aptDate = new Date(apt.appointmentDate);
+
+          return aptDate >= startDate && aptDate <= endDate;
+        });
+
+        doctorOk = assignedMatches || hasAppointmentWithDoctor;
+      }
+
+      return createdOk && doctorOk;
+    });
+  };
+
+  const visitsByPatientId = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    for (const apt of reportData.appointments) {
+      if (apt.status === "cancelled") continue;
+      const patientId = apt.patientId;
+
+      if (!patientId) continue;
+      counts[patientId] = (counts[patientId] ?? 0) + 1;
+    }
+
+    return counts;
+  }, [reportData.appointments]);
+
+  // Filter pharmacy data by date range (for Pharmacy tab)
+  const filteredPharmacyPurchases = useMemo(() => {
+    if (allDates || !dateRange.start || !dateRange.end)
+      return reportData.medicinePurchases;
+    const start = new Date(dateRange.start);
+
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateRange.end);
+
+    end.setHours(23, 59, 59, 999);
+
+    return reportData.medicinePurchases.filter((p) => {
+      const d = p.purchaseDate
+        ? new Date(p.purchaseDate)
+        : p.createdAt
+          ? new Date((p as any).createdAt)
+          : null;
+
+      if (!d || Number.isNaN(d.getTime())) return false;
+
+      return d >= start && d <= end;
+    });
+  }, [reportData.medicinePurchases, dateRange.start, dateRange.end, allDates]);
+
+  const filteredPharmacyUsage = useMemo(() => {
+    if (allDates || !dateRange.start || !dateRange.end)
+      return reportData.medicineUsage;
+    const start = new Date(dateRange.start);
+
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateRange.end);
+
+    end.setHours(23, 59, 59, 999);
+
+    return reportData.medicineUsage.filter((u) => {
+      const d = u.usageDate
+        ? new Date(u.usageDate)
+        : u.createdAt
+          ? new Date((u as any).createdAt)
+          : null;
+
+      if (!d || Number.isNaN(d.getTime())) return false;
+
+      return d >= start && d <= end;
+    });
+  }, [reportData.medicineUsage, dateRange.start, dateRange.end, allDates]);
+
+  // Filter billings by date range and doctor (for Billing tab)
+  const filteredBillings = useMemo(() => {
+    if (!reportData.billingSettings || !reportData.billings.length)
+      return reportData.billings;
+
+    // Start with all billings
+    let billings = reportData.billings;
+
+    // Apply date range filter if not showing all dates
+    if (!allDates && dateRange.start && dateRange.end) {
+      const start = new Date(dateRange.start);
+
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(dateRange.end);
+
+      end.setHours(23, 59, 59, 999);
+
+      billings = billings.filter((b) => {
+        const d = b.invoiceDate
+          ? new Date(b.invoiceDate)
+          : b.createdAt
+            ? new Date((b as any).createdAt)
+            : null;
+
+        if (!d || Number.isNaN(d.getTime())) return false;
+
+        return d >= start && d <= end;
+      });
+    }
+
+    // Apply doctor filter if a specific doctor is selected
+    if (selectedDoctor !== "all") {
+      billings = billings.filter((b) => b.doctorId === selectedDoctor);
+    }
+
+    return billings;
+  }, [
+    reportData.billings,
+    reportData.billingSettings,
+    dateRange.start,
+    dateRange.end,
+    allDates,
+    selectedDoctor,
+  ]);
+
+  // Generate statistics for overview
+  const generateOverviewStats = (): OverviewStats => {
+    const filteredAppointments = getFilteredAppointments();
+
+    const totalAppointments = filteredAppointments.length;
+    const completedAppointments = filteredAppointments.filter(
+      (a) => a.status === "completed",
+    ).length;
+    const cancelledAppointments = filteredAppointments.filter(
+      (a) => a.status === "cancelled",
+    ).length;
+    const totalPatients = reportData.patients.length;
+    const activeDoctors = reportData.doctors.filter((d) => d.isActive).length;
+    const criticalPatients = reportData.patients.filter(
+      (p) => p.isCritical,
+    ).length;
+
+    const completionRate =
+      totalAppointments > 0
+        ? Math.round((completedAppointments / totalAppointments) * 100)
+        : 0;
+
+    return {
+      totalAppointments,
+      completedAppointments,
+      cancelledAppointments,
+      totalPatients,
+      activeDoctors,
+      criticalPatients,
+      completionRate,
+    };
+  };
+
+  // Export functions
+  const exportToExcel = (data: any[], filename: string, sheetName: string) => {
+    setIsGenerating(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(data);
+
+      // Auto-size columns
+      const colWidths = Object.keys(data[0] || {}).map((key) => ({
+        wch: Math.max(key.length, 15),
+      }));
+
+      ws["!cols"] = colWidths;
+
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(
+        wb,
+        `${filename}_${new Date().toISOString().split("T")[0]}.xlsx`,
+      );
+
+      addToast({
+        title: "Export Successful",
+        description: `${filename} has been exported successfully.`,
+        color: "success",
+      });
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      addToast({
+        title: "Export Failed",
+        description: "Failed to export data. Please try again.",
+        color: "danger",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const exportAppointmentsReport = () => {
+    const filteredAppointments = getFilteredAppointments();
+    const appointmentsExportData = filteredAppointments.map((appointment) => {
+      const patient = reportData.patients.find(
+        (p) => p.id === appointment.patientId,
+      );
+      const doctor = reportData.doctors.find(
+        (d) => d.id === appointment.doctorId,
+      );
+
+      return {
+        Date: formatDate(appointment.appointmentDate),
+        Time: formatTime(appointment.startTime),
+        "Patient Name": patient?.name || "Unknown",
+        "Patient Reg #": patient?.regNumber || "N/A",
+        Doctor: doctor?.name || "Unknown",
+        Status: appointment.status,
+        Reason: appointment.reason || "N/A",
+        Notes: appointment.notes || "N/A",
+        "Created Date": formatDate(appointment.createdAt),
+      };
+    });
+
+    exportToExcel(
+      appointmentsExportData,
+      "Appointments_Report",
+      "Appointments",
+    );
+  };
+
+  const exportPatientsReport = () => {
+    const patientsData = reportData.patients.map((patient) => {
+      const assignedDoctor =
+        reportData.doctors.find((d) => d.id === (patient as any).doctorId)
+          ?.name || "N/A";
+
+      return {
+        Name: patient.name,
+        "Registration Number": patient.regNumber || "N/A",
+        Email: patient.email || "N/A",
+        Mobile: patient.phone || "N/A",
+        Gender: patient.gender || "N/A",
+        Age: patient.age || "N/A",
+        Address: patient.address || "N/A",
+        "Assigned Doctor": assignedDoctor,
+        "Critical Status": patient.isCritical ? "Critical" : "Normal",
+        "Registration Date": formatDate(patient.createdAt),
+      };
+    });
+
+    exportToExcel(patientsData, "Patients_Report", "Patients");
+  };
+
+  const exportDoctorsReport = () => {
+    const doctorsData = reportData.doctors.map((doctor) => ({
+      Name: doctor.name,
+      "NMC Number": doctor.nmcNumber || "N/A",
+      Email: doctor.email || "N/A",
+      Phone: doctor.phone || "N/A",
+      Speciality: doctor.speciality || "N/A",
+      Type: doctor.doctorType || "N/A",
+      Commission: `${doctor.defaultCommission || 0}%`,
+      Status: doctor.isActive ? "Active" : "Inactive",
+      "Joining Date": formatDate(doctor.createdAt),
+    }));
+
+    exportToExcel(doctorsData, "Doctors_Report", "Doctors");
+  };
+
+  const exportMedicinesReport = () => {
+    const medicinesData = reportData.medicines.map((medicine) => {
+      const stock = reportData.medicineStock.find(
+        (s) => s.medicineId === medicine.id,
+      );
+
+      return {
+        Name: medicine.name,
+        "Generic Name": medicine.genericName || "N/A",
+        Strength: medicine.strength || "N/A",
+        Unit: medicine.unit || "N/A",
+        Price: medicine.price ? `NPR ${medicine.price}` : "N/A",
+        "Current Stock": stock?.currentStock || 0,
+        "Minimum Stock": stock?.minimumStock || 0,
+        Status: medicine.isActive ? "Active" : "Inactive",
+        "Expiry Date": medicine.expiryDate
+          ? formatDate(medicine.expiryDate)
+          : "N/A",
+        "Added Date": formatDate(medicine.createdAt),
+      };
+    });
+
+    exportToExcel(medicinesData, "Medicines_Report", "Medicines");
+  };
+
+  const exportPharmacyReport = () => {
+    const toExport = filteredPharmacyPurchases;
+    const pharmacyData = toExport.map((purchase) => {
+      // Get medicine details from the first item if available
+      const firstItem = purchase.items?.[0];
+      const medicine = firstItem
+        ? reportData.medicines.find((m) => m.id === firstItem.medicineId)
+        : null;
+
+      return {
+        "Purchase No": purchase.purchaseNo,
+        Date: formatDate(purchase.purchaseDate),
+        "Medicine(s)": firstItem ? firstItem.medicineName : "N/A",
+        "Total Items": purchase.items?.length || 0,
+        Subtotal: `NPR ${purchase.total}`,
+        "Tax Amount": `NPR ${purchase.taxAmount}`,
+        "Net Amount": `NPR ${purchase.netAmount}`,
+        "Payment Type": purchase.paymentType || "N/A",
+        "Payment Status": purchase.paymentStatus,
+        "Payment Note": purchase.paymentNote || "N/A",
+        "Created Date": formatDate(purchase.createdAt),
+      };
+    });
+
+    exportToExcel(pharmacyData, "Pharmacy_Report", "Pharmacy");
+  };
+
+  const exportInventoryReport = () => {
+    if (!reportData) return;
+
+    // Get filtered inventory items - remove search filtering since searchTerm isn't available here
+    const filteredItems = reportData.items;
+
+    // Create main inventory worksheet
+    const inventorySheetData = filteredItems.map((item) => ({
+      "Item Name": item.name,
+      Category: item.category || "Uncategorized",
+      Barcode: item.barcode || "",
+      Quantity: item.quantity || 0,
+      Unit: item.unit || "",
+      "Purchase Price": item.purchasePrice || 0,
+      "Sale Price": item.salePrice || 0,
+      Description: item.description || "",
+      Status: item.isActive ? "Active" : "Inactive",
+      "Created Date": item.createdAt
+        ? new Date(item.createdAt).toLocaleDateString()
+        : "",
+      "Updated Date": item.updatedAt
+        ? new Date(item.updatedAt).toLocaleDateString()
+        : "",
+    }));
+
+    // Create categories worksheet
+    const categoriesSheetData = reportData.itemCategories.map((category) => ({
+      "Category Name": category.name,
+      Description: category.description || "",
+      "Items Count": reportData.items.filter(
+        (item) => item.category === category.name,
+      ).length,
+      Status: category.isActive ? "Active" : "Inactive",
+      "Created Date": category.createdAt
+        ? new Date(category.createdAt).toLocaleDateString()
+        : "",
+    }));
+
+    // Create issued items worksheet
+    const issuedItemsSheetData = reportData.issuedItems
+      .filter((issuedItem) => {
+        if (!dateRange.start || !dateRange.end) return true;
+        if (!issuedItem.issuedDate) return false;
+
+        const issuedDate = new Date(issuedItem.issuedDate);
+        const startDate = new Date(dateRange.start);
+        const endDate = new Date(dateRange.end);
+
+        return issuedDate >= startDate && issuedDate <= endDate;
+      })
+      .map((issuedItem) => ({
+        "Item Name": issuedItem.itemName || "",
+        Category: issuedItem.itemCategory || "",
+        "Quantity Issued": issuedItem.quantity || 0,
+        "Issued To": issuedItem.issuedTo || "",
+        "Issued By": issuedItem.issuedBy || "",
+        "Issued Date": issuedItem.issuedDate
+          ? new Date(issuedItem.issuedDate).toLocaleDateString()
+          : "",
+        "Issued Time": issuedItem.issuedDate
+          ? formatTime(new Date(issuedItem.issuedDate).toLocaleTimeString())
+          : "",
+        "Expected Return": issuedItem.expectedReturnDate
+          ? new Date(issuedItem.expectedReturnDate).toLocaleDateString()
+          : "",
+        "Return Date": issuedItem.returnDate
+          ? new Date(issuedItem.returnDate).toLocaleDateString()
+          : "",
+        Status: issuedItem.status || "",
+        Notes: issuedItem.notes || "",
+      }));
+
+    // Create workbook with multiple sheets
+    const wb = XLSX.utils.book_new();
+
+    // Add inventory items sheet
+    const inventoryWS = XLSX.utils.json_to_sheet(inventorySheetData);
+
+    XLSX.utils.book_append_sheet(wb, inventoryWS, "Inventory Items");
+
+    // Add categories sheet
+    const categoriesWS = XLSX.utils.json_to_sheet(categoriesSheetData);
+
+    XLSX.utils.book_append_sheet(wb, categoriesWS, "Categories");
+
+    // Add issued items sheet
+    const issuedItemsWS = XLSX.utils.json_to_sheet(issuedItemsSheetData);
+
+    XLSX.utils.book_append_sheet(wb, issuedItemsWS, "Issued Items");
+
+    // Auto-size columns
+    [inventoryWS, categoriesWS, issuedItemsWS].forEach((ws) => {
+      const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+      const wscols: any[] = [];
+
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        wscols[C] = { wch: 15 };
+      }
+      ws["!cols"] = wscols;
+    });
+
+    // Save file
+    const fileName = `inventory-report-${new Date().toISOString().split("T")[0]}.xlsx`;
+
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const exportBillingReport = () => {
+    if (!reportData.billingSettings || !reportData.billings.length) {
+      addToast({
+        title: "No Data",
+        description: "No billing data available for export.",
+        color: "warning",
+      });
+
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const billingData = filteredBillings.map((billing) => {
+        const patient = reportData.patients.find(
+          (p) => p.id === billing.patientId,
+        );
+        const doctor = reportData.doctors.find(
+          (d) => d.id === billing.doctorId,
+        );
+
+        return {
+          "Invoice Number": billing.invoiceNumber,
+          Date: formatDate(billing.invoiceDate),
+          "Patient Name": billing.patientName,
+          "Patient Reg #": patient?.regNumber || "N/A",
+          Doctor: billing.doctorName,
+          "Doctor Type":
+            billing.doctorType === "visitor" ? "Visiting" : "Regular",
+          Subtotal: `NPR ${billing.subtotal.toLocaleString()}`,
+          "Discount Type": billing.discountType,
+          "Discount Value": billing.discountValue,
+          "Discount Amount": `NPR ${billing.discountAmount.toLocaleString()}`,
+          "Tax Rate": `${billing.taxPercentage}%`,
+          "Tax Amount": `NPR ${billing.taxAmount.toLocaleString()}`,
+          "Total Amount": `NPR ${billing.totalAmount.toLocaleString()}`,
+          "Payment Status": billing.paymentStatus,
+          "Paid Amount": `NPR ${billing.paidAmount.toLocaleString()}`,
+          "Balance Amount": `NPR ${billing.balanceAmount.toLocaleString()}`,
+          "Payment Method": billing.paymentMethod || "N/A",
+          "Payment Reference": billing.paymentReference || "N/A",
+          "Payment Date": billing.paymentDate
+            ? formatDate(billing.paymentDate)
+            : "N/A",
+          Status: billing.status,
+          Notes: billing.notes || "N/A",
+          "Created Date": formatDate(billing.createdAt),
+          "Items Count": billing.items.length,
+          "Items Detail": billing.items
+            .map(
+              (item) =>
+                `${item.appointmentTypeName} (Qty: ${item.quantity}, Price: NPR ${item.price})`,
+            )
+            .join("; "),
+        };
+      });
+
+      exportToExcel(billingData, "Billing_Report", "Billing");
+    } catch (error) {
+      console.error("Error exporting billing report:", error);
+      addToast({
+        title: "Export Failed",
+        description: "Failed to export billing data. Please try again.",
+        color: "danger",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[400px]">
+        <Spinner color="primary" label="Loading reports..." size="lg" />
+      </div>
+    );
+  }
+
+  const stats = generateOverviewStats();
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Page Header — spec: clarity-page-header, clarity-page-title, clarity-page-subtitle */}
+      <div className="clarity-page-header flex-col sm:flex-row gap-4">
+        <div>
+          <h1 className="clarity-page-title">Reports & Analytics</h1>
+          <p className="clarity-page-subtitle">
+            Generate comprehensive reports and analyze clinic performance
+          </p>
+        </div>
+        {!branchId && isClinicAdmin && branches.length > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-mountain-500">Branch</span>
+            <select
+              className="h-8 px-2.5 py-0 text-[12px] border border-mountain-200 rounded bg-white text-mountain-700 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-200"
+              value={selectedBranchId ?? ""}
+              onChange={(e) => setSelectedBranchId(e.target.value || null)}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {b.isMainBranch ? " (all branches)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Report Filters — clarity-card, clarity-input, custom Select/Checkbox */}
+      <div className="clarity-card p-3">
+        <div className="flex items-center gap-2 mb-3">
+          <IoFilterOutline className="text-teal-700" />
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-mountain-600">
+            Report Filters
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <Input
+            fullWidth
+            isDisabled={allDates}
+            label="Start Date"
+            size="md"
+            type="date"
+            value={dateRange.start}
+            onValueChange={(v) =>
+              setDateRange((prev) => ({ ...prev, start: v }))
+            }
+          />
+          <Input
+            fullWidth
+            isDisabled={allDates}
+            label="End Date"
+            size="md"
+            type="date"
+            value={dateRange.end}
+            onValueChange={(v) => setDateRange((prev) => ({ ...prev, end: v }))}
+          />
+          <Select
+            label="Doctor"
+            selectedKeys={[selectedDoctor]}
+            size="md"
+            onSelectionChange={(keys) =>
+              setSelectedDoctor(Array.from(keys)[0] as string)
+            }
+          >
+            {doctorOptions.map((option) => (
+              <SelectItem key={option.key}>{option.label}</SelectItem>
+            ))}
+          </Select>
+          <Select
+            label="Appointment Type"
+            selectedKeys={[selectedAppointmentType]}
+            size="md"
+            onSelectionChange={(keys) =>
+              setSelectedAppointmentType(Array.from(keys)[0] as string)
+            }
+          >
+            {appointmentTypeOptions.map((option) => (
+              <SelectItem key={option.key}>{option.label}</SelectItem>
+            ))}
+          </Select>
+        </div>
+        <div className="mt-3 flex items-center justify-end">
+          <Checkbox isSelected={allDates} onValueChange={setAllDates}>
+            Show all dates
+          </Checkbox>
+        </div>
+      </div>
+
+      {/* Reports Tabs — custom Tabs, Tab; content in clarity-card style */}
+      <div className="clarity-card p-0 overflow-hidden">
+        <Tabs
+          className="w-full"
+          classNames={{
+            tabList:
+              "w-full relative rounded-none px-4 pt-2 border-b border-mountain-200",
+            tab: "px-3 h-10 text-xs",
+            tabContent: "text-teal-700",
+            cursor: "bg-teal-700",
+          }}
+          color="primary"
+          selectedKey={selectedTab}
+          variant="underlined"
+          onSelectionChange={(key) => setSelectedTab(key as string)}
+        >
+          <Tab
+            key="overview"
+            title={
+              <span className="flex items-center gap-2">
+                <IoStatsChartOutline className="w-4 h-4" />
+                Overview
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="clarity-stat text-center">
+                  <IoCalendarOutline className="text-teal-700 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-teal-700">
+                    {stats.totalAppointments}
+                  </p>
+                  <p className="clarity-stat-label">Total Appointments</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <IoPeopleOutline className="text-health-600 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-health-600">
+                    {stats.totalPatients}
+                  </p>
+                  <p className="clarity-stat-label">Total Patients</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <IoMedicalOutline className="text-health-600 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-health-600">
+                    {stats.activeDoctors}
+                  </p>
+                  <p className="clarity-stat-label">Active Doctors</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <IoMedkitOutline className="text-saffron-600 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-saffron-600">
+                    {stats.completionRate}%
+                  </p>
+                  <p className="clarity-stat-label">Completion Rate</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="clarity-card p-3">
+                  <h4 className="clarity-section-header">
+                    Appointment Statistics
+                  </h4>
+                  <Divider className="my-2" />
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-mountain-600">
+                        Completed Appointments
+                      </span>
+                      <Chip color="success" size="sm" variant="flat">
+                        {stats.completedAppointments}
+                      </Chip>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-mountain-600">
+                        Cancelled Appointments
+                      </span>
+                      <Chip color="danger" size="sm" variant="flat">
+                        {stats.cancelledAppointments}
+                      </Chip>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-mountain-600">
+                        Critical Patients
+                      </span>
+                      <Chip color="warning" size="sm" variant="flat">
+                        {stats.criticalPatients}
+                      </Chip>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="clarity-card p-3">
+                  <h4 className="clarity-section-header">Quick Export</h4>
+                  <Divider className="my-2" />
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      fullWidth
+                      color="primary"
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      variant="flat"
+                      onPress={exportAppointmentsReport}
+                    >
+                      Export Appointments Report
+                    </Button>
+                    <Button
+                      fullWidth
+                      color="secondary"
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      variant="flat"
+                      onPress={exportPatientsReport}
+                    >
+                      Export Patients Report
+                    </Button>
+                    <Button
+                      fullWidth
+                      color="success"
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      variant="flat"
+                      onPress={exportDoctorsReport}
+                    >
+                      Export Doctors Report
+                    </Button>
+                    <Button
+                      fullWidth
+                      color="warning"
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      variant="flat"
+                      onPress={exportMedicinesReport}
+                    >
+                      Export Medicines Report
+                    </Button>
+                    <Button
+                      fullWidth
+                      color="secondary"
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      variant="flat"
+                      onPress={exportPharmacyReport}
+                    >
+                      Export Pharmacy Report
+                    </Button>
+                    <Button
+                      fullWidth
+                      color="default"
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      variant="flat"
+                      onPress={exportInventoryReport}
+                    >
+                      Export Inventory Report
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Tab>
+
+          <Tab
+            key="appointments"
+            title={
+              <span className="flex items-center gap-2">
+                <IoCalendarOutline className="w-4 h-4" />
+                Appointments
+                <Chip color="primary" size="sm" variant="flat">
+                  {getFilteredAppointments().length}
+                </Chip>
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold">Appointments Report</h3>
+                <Button
+                  color="primary"
+                  isLoading={isGenerating}
+                  size="sm"
+                  startContent={<IoDownloadOutline className="w-3.5 h-3.5" />}
+                  onPress={exportAppointmentsReport}
+                >
+                  Export Excel
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="clarity-stat text-center">
+                  <IoCalendarOutline className="text-teal-700 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-teal-700">
+                    {
+                      getFilteredAppointments().filter(
+                        (a) => a.status === "scheduled",
+                      ).length
+                    }
+                  </p>
+                  <p className="clarity-stat-label">Scheduled</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <IoCheckmarkCircleOutline className="text-health-600 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-health-600">
+                    {
+                      getFilteredAppointments().filter(
+                        (a) => a.status === "completed",
+                      ).length
+                    }
+                  </p>
+                  <p className="clarity-stat-label">Completed</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <IoTimeOutline className="text-saffron-600 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-saffron-600">
+                    {
+                      getFilteredAppointments().filter(
+                        (a) => a.status === "in-progress",
+                      ).length
+                    }
+                  </p>
+                  <p className="clarity-stat-label">In Progress</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <IoCloseCircleOutline className="text-rose-600 text-xl mx-auto mb-1" />
+                  <p className="clarity-stat-value text-rose-600">
+                    {
+                      getFilteredAppointments().filter(
+                        (a) => a.status === "cancelled",
+                      ).length
+                    }
+                  </p>
+                  <p className="clarity-stat-label">Cancelled</p>
+                </div>
+              </div>
+
+              <div className="clarity-card p-3 mb-4">
+                <p className="text-sm text-mountain-600 mb-1">
+                  Total appointments in selected period:{" "}
+                  <strong>{getFilteredAppointments().length}</strong>
+                </p>
+                <p className="text-xs text-mountain-500">
+                  Showing appointments from {dateRange.start} to {dateRange.end}
+                  {selectedDoctor !== "all" &&
+                    ` for ${reportData.doctors.find((d) => d.id === selectedDoctor)?.name || "selected doctor"}`}
+                  {selectedAppointmentType !== "all" &&
+                    ` with ${reportData.appointmentTypes.find((at) => at.id === selectedAppointmentType)?.name || "selected appointment type"}`}
+                </p>
+              </div>
+
+              <div className="clarity-card p-0 overflow-hidden">
+                <div className="px-3 py-2 border-b border-mountain-200">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-mountain-600">
+                    Appointments Details
+                  </h4>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="clarity-table min-w-full w-full">
+                    <thead>
+                      <tr>
+                        <th>Patient</th>
+                        <th>Phone Number</th>
+                        <th>Doctor</th>
+                        <th>Date & Time</th>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Reason</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getFilteredAppointments().map((appointment) => {
+                        const patient = reportData.patients.find(
+                          (p) => p.id === appointment.patientId,
+                        );
+                        const doctor = reportData.doctors.find(
+                          (d) => d.id === appointment.doctorId,
+                        );
+                        const appointmentType =
+                          reportData.appointmentTypes.find(
+                            (at) => at.id === appointment.appointmentTypeId,
+                          );
+                        const statusColor =
+                          appointment.status === "completed"
+                            ? "success"
+                            : appointment.status === "cancelled"
+                              ? "danger"
+                              : appointment.status === "in-progress"
+                                ? "warning"
+                                : "primary";
+
+                        return (
+                          <tr key={appointment.id}>
+                            <td className="whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-8 w-8 rounded-full bg-teal-100 flex items-center justify-center">
+                                  <span className="text-xs font-medium text-teal-700">
+                                    {patient?.name?.charAt(0) || "?"}
+                                  </span>
+                                </div>
+                                <div className="ml-2">
+                                  <div className="text-[13px] font-medium text-mountain-900">
+                                    {patient?.name || "Unknown Patient"}
+                                  </div>
+                                  <div className="text-xs text-mountain-500">
+                                    Reg #{patient?.regNumber || "N/A"}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap text-[13px] text-mountain-700">
+                              {patient?.phone || patient?.mobile || "N/A"}
+                            </td>
+                            <td>
+                              <div className="text-[13px] text-mountain-700">
+                                {doctor?.name || "Unknown Doctor"}
+                              </div>
+                              <div className="text-xs text-mountain-500">
+                                {doctor?.speciality || "N/A"}
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap">
+                              <div className="text-[13px] text-mountain-900">
+                                {formatDate(appointment.appointmentDate)}
+                              </div>
+                              <div className="text-xs text-mountain-500">
+                                {formatTime(appointment.startTime)}
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap">
+                              <Chip
+                                color={
+                                  statusColor as
+                                    | "success"
+                                    | "primary"
+                                    | "warning"
+                                    | "danger"
+                                    | "default"
+                                    | "secondary"
+                                }
+                                size="sm"
+                                variant="flat"
+                              >
+                                {appointment.status}
+                              </Chip>
+                            </td>
+                            <td>
+                              <div className="text-[13px] text-mountain-700">
+                                {appointmentType?.name || "N/A"}
+                              </div>
+                              {appointmentType?.color &&
+                                appointmentType.color !== "none" && (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <div
+                                      className="w-2 h-2 rounded-full"
+                                      style={{
+                                        backgroundColor: appointmentType.color,
+                                      }}
+                                    />
+                                    <span className="text-xs text-mountain-500 capitalize">
+                                      {appointmentType.color}
+                                    </span>
+                                  </div>
+                                )}
+                            </td>
+                            <td>
+                              <div className="text-[13px] text-mountain-700 max-w-xs truncate">
+                                {appointment.reason || "N/A"}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="text-[13px] text-mountain-700 max-w-xs truncate">
+                                {appointment.notes || "N/A"}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {getFilteredAppointments().length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-sm text-mountain-500">
+                        No appointments found for the selected criteria.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Tab>
+
+          <Tab
+            key="patients"
+            title={
+              <span className="flex items-center gap-2">
+                <IoPeopleOutline className="w-4 h-4" />
+                Patients
+                <Chip color="secondary" size="sm" variant="flat">
+                  {getFilteredPatients().length}
+                </Chip>
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold">Patients Report</h3>
+                <Button
+                  color="secondary"
+                  isLoading={isGenerating}
+                  size="sm"
+                  startContent={<IoDownloadOutline className="w-3.5 h-3.5" />}
+                  onPress={exportPatientsReport}
+                >
+                  Export Excel
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+                <div className="clarity-stat text-center">
+                  <p className="clarity-stat-value text-health-600">
+                    {getFilteredPatients().length}
+                  </p>
+                  <p className="clarity-stat-label">Total Patients</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <p className="clarity-stat-value text-rose-600">
+                    {getFilteredPatients().filter((p) => p.isCritical).length}
+                  </p>
+                  <p className="clarity-stat-label">Critical Patients</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <p className="clarity-stat-value text-health-600">
+                    {getFilteredPatients().length -
+                      getFilteredPatients().filter((p) => p.isCritical).length}
+                  </p>
+                  <p className="clarity-stat-label">Normal Patients</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <p className="clarity-stat-value text-teal-700">
+                    {
+                      getFilteredPatients().filter((p) => p.gender === "male")
+                        .length
+                    }
+                  </p>
+                  <p className="clarity-stat-label">Male Patients</p>
+                </div>
+                <div className="clarity-stat text-center">
+                  <p className="clarity-stat-value text-pink-600">
+                    {
+                      getFilteredPatients().filter((p) => p.gender === "female")
+                        .length
+                    }
+                  </p>
+                  <p className="clarity-stat-label">Female Patients</p>
+                </div>
+              </div>
+              <div className="clarity-card p-0 overflow-hidden">
+                <div className="px-3 py-2 border-b border-mountain-200">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-mountain-600">
+                    Patients Details
+                  </h4>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="clarity-table min-w-full w-full">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Reg #</th>
+                        <th>Visits</th>
+                        <th>Gender</th>
+                        <th>Age</th>
+                        <th>Mobile</th>
+                        <th>Email</th>
+                        <th>Assigned Doctor</th>
+                        <th>Critical</th>
+                        <th>Registered</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getFilteredPatients().map((patient) => (
+                        <tr key={patient.id}>
+                          <td className="whitespace-nowrap">
+                            <div className="text-[13px] font-medium text-mountain-900">
+                              {patient.name}
+                            </div>
+                          </td>
+                          <td>{patient.regNumber || "N/A"}</td>
+                          <td className="whitespace-nowrap">
+                            {visitsByPatientId[patient.id] ?? 0}
+                          </td>
+                          <td className="capitalize">
+                            {patient.gender || "N/A"}
+                          </td>
+                          <td>{patient.age ?? "N/A"}</td>
+                          <td>{patient.phone || patient.mobile || "N/A"}</td>
+                          <td>{patient.email || "N/A"}</td>
+                          <td>
+                            {reportData.doctors.find(
+                              (d) => d.id === (patient as any).doctorId,
+                            )?.name || "N/A"}
+                          </td>
+                          <td>
+                            <Chip
+                              color={patient.isCritical ? "danger" : "success"}
+                              size="sm"
+                              variant="flat"
+                            >
+                              {patient.isCritical ? "Critical" : "Normal"}
+                            </Chip>
+                          </td>
+                          <td className="whitespace-nowrap">
+                            {patient.createdAt
+                              ? new Date(
+                                  patient.createdAt as any,
+                                ).toLocaleDateString()
+                              : ""}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {getFilteredPatients().length === 0 && (
+                    <div className="text-center py-8">
+                      <p className="text-sm text-mountain-500">
+                        No patients found.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Tab>
+
+          <Tab
+            key="doctors"
+            title={
+              <span className="flex items-center gap-2">
+                <IoMedicalOutline className="w-4 h-4" />
+                Doctors
+                <Chip color="success" size="sm" variant="flat">
+                  {reportData.doctors.length}
+                </Chip>
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold">Doctors Report</h3>
+                <Button
+                  color="success"
+                  isLoading={isGenerating}
+                  size="sm"
+                  startContent={<IoDownloadOutline className="w-3.5 h-3.5" />}
+                  onPress={exportDoctorsReport}
+                >
+                  Export Excel
+                </Button>
+              </div>
+              <div className="clarity-card p-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {stats.activeDoctors}
+                    </p>
+                    <p className="clarity-stat-label">Active Doctors</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-mountain-500">
+                      {reportData.doctors.length - stats.activeDoctors}
+                    </p>
+                    <p className="clarity-stat-label">Inactive Doctors</p>
+                  </div>
+                </div>
+                <Divider className="my-3" />
+                <h4 className="clarity-section-header">Doctor Types</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-teal-700">
+                      {
+                        reportData.doctors.filter(
+                          (d) => d.doctorType === "regular",
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Regular Doctors</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {
+                        reportData.doctors.filter(
+                          (d) => d.doctorType === "visiting",
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Visiting Doctors</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Tab>
+
+          <Tab
+            key="medicines"
+            title={
+              <span className="flex items-center gap-2">
+                <IoMedkitSharp className="w-4 h-4" />
+                Medicines
+                <Chip color="warning" size="sm" variant="flat">
+                  {reportData.medicines.length}
+                </Chip>
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold">Medicines Report</h3>
+                <Button
+                  color="warning"
+                  isLoading={isGenerating}
+                  size="sm"
+                  startContent={<IoDownloadOutline className="w-3.5 h-3.5" />}
+                  onPress={exportMedicinesReport}
+                >
+                  Export Excel
+                </Button>
+              </div>
+              <div className="clarity-card p-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-saffron-600">
+                      {reportData.medicines.length}
+                    </p>
+                    <p className="clarity-stat-label">Total Medicines</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {reportData.medicines.filter((m) => m.isActive).length}
+                    </p>
+                    <p className="clarity-stat-label">Active Medicines</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-rose-600">
+                      {
+                        reportData.medicineStock.filter(
+                          (s) => s.currentStock <= s.minimumStock,
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Low Stock Items</p>
+                  </div>
+                </div>
+                <Divider className="my-3" />
+                <h4 className="clarity-section-header">Stock Summary</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-teal-700">
+                      {reportData.medicineStock.reduce(
+                        (sum, stock) => sum + stock.currentStock,
+                        0,
+                      )}
+                    </p>
+                    <p className="clarity-stat-label">Total Stock Units</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      NPR{" "}
+                      {reportData.medicines
+                        .reduce(
+                          (sum, medicine) => sum + (medicine.price || 0),
+                          0,
+                        )
+                        .toLocaleString()}
+                    </p>
+                    <p className="clarity-stat-label">Total Inventory Value</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Tab>
+
+          <Tab
+            key="pharmacy"
+            title={
+              <span className="flex items-center gap-2">
+                <IoStorefrontOutline className="w-4 h-4" />
+                Pharmacy
+                <Chip color="secondary" size="sm" variant="flat">
+                  {filteredPharmacyPurchases.length}
+                </Chip>
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold">Pharmacy Report</h3>
+                <Button
+                  color="secondary"
+                  isLoading={isGenerating}
+                  size="sm"
+                  startContent={<IoDownloadOutline className="w-3.5 h-3.5" />}
+                  onPress={exportPharmacyReport}
+                >
+                  Export Excel
+                </Button>
+              </div>
+              <div className="clarity-card p-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {filteredPharmacyPurchases.length}
+                    </p>
+                    <p className="clarity-stat-label">Total Purchases</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      NPR{" "}
+                      {filteredPharmacyPurchases
+                        .reduce((sum, purchase) => sum + purchase.netAmount, 0)
+                        .toLocaleString()}
+                    </p>
+                    <p className="clarity-stat-label">Total Purchase Value</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-saffron-600">
+                      {filteredPharmacyUsage.length}
+                    </p>
+                    <p className="clarity-stat-label">Medicine Usage Records</p>
+                  </div>
+                </div>
+                <Divider className="my-3" />
+                <h4 className="clarity-section-header">Payment Status</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {
+                        filteredPharmacyPurchases.filter(
+                          (p) => p.paymentStatus === "paid",
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Paid</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-saffron-600">
+                      {
+                        filteredPharmacyPurchases.filter(
+                          (p) => p.paymentStatus === "partial",
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Partial</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-rose-600">
+                      {
+                        filteredPharmacyPurchases.filter(
+                          (p) => p.paymentStatus === "pending",
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Pending</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Tab>
+
+          {reportData.billingSettings &&
+            reportData.billingSettings.enabledByAdmin &&
+            reportData.billingSettings.isActive && (
+              <Tab
+                key="billing"
+                title={
+                  <span className="flex items-center gap-2">
+                    <IoReceiptOutline className="w-4 h-4" />
+                    Billing
+                    <Chip color="primary" size="sm" variant="flat">
+                      {filteredBillings.length}
+                    </Chip>
+                  </span>
+                }
+              >
+                <div className="px-4 py-3">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-sm font-semibold">Billing Report</h3>
+                    <Button
+                      color="primary"
+                      isDisabled={!reportData.billings.length}
+                      isLoading={isGenerating}
+                      size="sm"
+                      startContent={
+                        <IoDownloadOutline className="w-3.5 h-3.5" />
+                      }
+                      onPress={exportBillingReport}
+                    >
+                      Export Excel
+                    </Button>
+                  </div>
+                  <div className="clarity-card p-3">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="clarity-stat text-center">
+                        <p className="clarity-stat-value text-teal-700">
+                          {filteredBillings.length}
+                        </p>
+                        <p className="clarity-stat-label">Total Invoices</p>
+                      </div>
+                      <div className="clarity-stat text-center">
+                        <p className="clarity-stat-value text-health-600">
+                          NPR{" "}
+                          {filteredBillings
+                            .reduce((sum, b) => sum + b.totalAmount, 0)
+                            .toLocaleString()}
+                        </p>
+                        <p className="clarity-stat-label">Total Revenue</p>
+                      </div>
+                      <div className="clarity-stat text-center">
+                        <p className="clarity-stat-value text-saffron-600">
+                          NPR{" "}
+                          {filteredBillings
+                            .reduce((sum, b) => sum + b.paidAmount, 0)
+                            .toLocaleString()}
+                        </p>
+                        <p className="clarity-stat-label">Total Collected</p>
+                      </div>
+                      <div className="clarity-stat text-center">
+                        <p className="clarity-stat-value text-rose-600">
+                          NPR{" "}
+                          {filteredBillings
+                            .reduce((sum, b) => sum + b.balanceAmount, 0)
+                            .toLocaleString()}
+                        </p>
+                        <p className="clarity-stat-label">
+                          Outstanding Balance
+                        </p>
+                      </div>
+                    </div>
+                    <Divider className="my-3" />
+                    <h4 className="clarity-section-header">Payment Status</h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-health-600">
+                          {
+                            filteredBillings.filter(
+                              (b) => b.paymentStatus === "paid",
+                            ).length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Paid</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-saffron-600">
+                          {
+                            filteredBillings.filter(
+                              (b) => b.paymentStatus === "partial",
+                            ).length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Partial</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-rose-600">
+                          {
+                            filteredBillings.filter(
+                              (b) => b.paymentStatus === "unpaid",
+                            ).length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Unpaid</p>
+                      </div>
+                    </div>
+                    <Divider className="my-3" />
+                    <h4 className="clarity-section-header">Invoice Status</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-mountain-600">
+                          {
+                            filteredBillings.filter((b) => b.status === "draft")
+                              .length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Draft</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-teal-700">
+                          {
+                            filteredBillings.filter(
+                              (b) => b.status === "finalized",
+                            ).length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Finalized</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-health-600">
+                          {
+                            filteredBillings.filter((b) => b.status === "paid")
+                              .length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Paid</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-rose-600">
+                          {
+                            filteredBillings.filter(
+                              (b) => b.status === "cancelled",
+                            ).length
+                          }
+                        </p>
+                        <p className="clarity-stat-label">Cancelled</p>
+                      </div>
+                    </div>
+                    <Divider className="my-3" />
+                    <h4 className="clarity-section-header">Doctor Analysis</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {Array.from(
+                        new Set(filteredBillings.map((b) => b.doctorId)),
+                      )
+                        .slice(0, 6)
+                        .map((doctorId) => {
+                          const doctorBillings = filteredBillings.filter(
+                            (b) => b.doctorId === doctorId,
+                          );
+                          const doctorName =
+                            doctorBillings[0]?.doctorName || "Unknown";
+                          const totalRevenue = doctorBillings.reduce(
+                            (sum, b) => sum + b.totalAmount,
+                            0,
+                          );
+
+                          return (
+                            <div
+                              key={doctorId}
+                              className="clarity-stat text-center"
+                            >
+                              <p className="clarity-stat-value text-mountain-900">
+                                NPR {totalRevenue.toLocaleString()}
+                              </p>
+                              <p className="text-xs text-mountain-600">
+                                {doctorName}
+                              </p>
+                              <p className="text-[11px] text-mountain-500">
+                                {doctorBillings.length} invoices
+                              </p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                    {Array.from(
+                      new Set(filteredBillings.map((b) => b.doctorId)),
+                    ).length > 6 && (
+                      <p className="text-sm text-mountain-500 text-center mt-2">
+                        +
+                        {Array.from(
+                          new Set(filteredBillings.map((b) => b.doctorId)),
+                        ).length - 6}{" "}
+                        more doctors
+                      </p>
+                    )}
+                    <Divider className="my-3" />
+                    <h4 className="clarity-section-header">Revenue Trends</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-teal-700">
+                          NPR{" "}
+                          {(
+                            filteredBillings.reduce(
+                              (sum, b) => sum + b.totalAmount,
+                              0,
+                            ) / Math.max(filteredBillings.length, 1)
+                          ).toLocaleString()}
+                        </p>
+                        <p className="clarity-stat-label">
+                          Average Invoice Value
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="clarity-stat-value text-health-600">
+                          {filteredBillings.reduce(
+                            (sum, b) => sum + b.items.length,
+                            0,
+                          )}
+                        </p>
+                        <p className="clarity-stat-label">Total Items Billed</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Tab>
+            )}
+
+          <Tab
+            key="inventory"
+            title={
+              <span className="flex items-center gap-2">
+                <IoLayersOutline className="w-4 h-4" />
+                Inventory
+                <Chip color="default" size="sm" variant="flat">
+                  {reportData.items.length}
+                </Chip>
+              </span>
+            }
+          >
+            <div className="px-4 py-3">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold">Inventory Report</h3>
+                <Button
+                  color="default"
+                  isLoading={isGenerating}
+                  size="sm"
+                  startContent={<IoDownloadOutline className="w-3.5 h-3.5" />}
+                  onPress={exportInventoryReport}
+                >
+                  Export Excel
+                </Button>
+              </div>
+              <div className="clarity-card p-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-mountain-700">
+                      {reportData.items.length}
+                    </p>
+                    <p className="clarity-stat-label">Total Items</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-teal-700">
+                      {reportData.itemCategories.length}
+                    </p>
+                    <p className="clarity-stat-label">Categories</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-saffron-600">
+                      {reportData.issuedItems.length}
+                    </p>
+                    <p className="clarity-stat-label">Issued Items</p>
+                  </div>
+                  <div className="clarity-stat text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {reportData.items.reduce(
+                        (sum, item) => sum + (item.quantity || 0),
+                        0,
+                      )}
+                    </p>
+                    <p className="clarity-stat-label">Total Quantity</p>
+                  </div>
+                </div>
+                <Divider className="my-3" />
+                <h4 className="clarity-section-header">Inventory Analysis</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-teal-700">
+                      {reportData.items.filter((item) => item.isActive).length}
+                    </p>
+                    <p className="clarity-stat-label">Active Items</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-health-600">
+                      {reportData.items.filter((item) => item.barcode).length}
+                    </p>
+                    <p className="clarity-stat-label">Barcoded Items</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-saffron-600">
+                      {
+                        reportData.items.filter(
+                          (item) => (item.quantity || 0) === 0,
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Out of Stock</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="clarity-stat-value text-rose-600">
+                      {
+                        reportData.issuedItems.filter(
+                          (item) => item.status === "overdue",
+                        ).length
+                      }
+                    </p>
+                    <p className="clarity-stat-label">Overdue Returns</p>
+                  </div>
+                </div>
+                <Divider className="my-3" />
+                <h4 className="clarity-section-header">Category Breakdown</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {reportData.itemCategories.slice(0, 6).map((category) => {
+                    const categoryItems = reportData.items.filter(
+                      (item) => item.category === category.name,
+                    );
+
+                    return (
+                      <div
+                        key={category.id}
+                        className="clarity-stat text-center"
+                      >
+                        <p className="clarity-stat-value text-mountain-900">
+                          {categoryItems.length}
+                        </p>
+                        <p className="text-xs text-mountain-600">
+                          {category.name}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+                {reportData.itemCategories.length > 6 && (
+                  <p className="text-sm text-mountain-500 text-center mt-2">
+                    +{reportData.itemCategories.length - 6} more categories
+                  </p>
+                )}
+              </div>
+            </div>
+          </Tab>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
