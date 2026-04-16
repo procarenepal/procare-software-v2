@@ -10,7 +10,7 @@ export interface SelectItemProps {
 export const SelectItem: React.FC<SelectItemProps> = () => null;
 
 export interface SelectProps
-  extends React.SelectHTMLAttributes<HTMLSelectElement> {
+  extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size"> {
   label?: React.ReactNode;
   description?: React.ReactNode;
   errorMessage?: React.ReactNode;

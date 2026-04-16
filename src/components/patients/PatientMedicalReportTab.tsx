@@ -107,7 +107,7 @@ function YesNoField({
 export const PatientMedicalReportTab: React.FC<
   PatientMedicalReportTabProps
 > = ({ patientId, clinicId, isReadOnly = false }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, userData: authUserData } = useAuth();
   const [fields, setFields] = useState<MedicalReportField[]>([]);
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -155,6 +155,7 @@ export const PatientMedicalReportTab: React.FC<
     try {
       await MedicalReportResponseService.savePatientResponses(
         clinicId,
+        authUserData?.branchId || "",
         patientId,
         responses,
         currentUser.uid,

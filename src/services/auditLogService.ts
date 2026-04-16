@@ -243,7 +243,7 @@ export const auditLogService = {
       if (!performedByEmail || !performedByName) {
         try {
           const { userService } = await import("./userService");
-          const user = await userService.getUser(performedBy);
+          const user = await userService.getUserById(performedBy);
 
           if (user) {
             performedByEmail = performedByEmail || user.email;

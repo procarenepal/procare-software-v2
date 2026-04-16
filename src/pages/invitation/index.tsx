@@ -14,7 +14,7 @@ import { invitationService } from "@/services/invitationService";
 import { clinicService } from "@/services/clinicService";
 import { userService } from "@/services/userService";
 import { auth } from "@/config/firebase";
-import { Invitation } from "@/types/models";
+import { Invitation, UserRole } from "@/types/models";
 import DefaultLayout from "@/layouts/default";
 
 export default function InvitationPage() {
@@ -62,7 +62,7 @@ export default function InvitationPage() {
 
         // Check if invitation is expired by date
         const now = new Date();
-        const expiryDate = invitationData.expiresAt.toDate();
+        const expiryDate = invitationData.expiresAt;
 
         if (now > expiryDate) {
           await invitationService.cancelInvitation(id);
@@ -140,7 +140,7 @@ export default function InvitationPage() {
         displayName: name,
         email: invitation.email,
         clinicId: invitation.clinicId,
-        role: invitation.role,
+        role: invitation.role as UserRole,
         isActive: true,
       };
 
@@ -156,7 +156,7 @@ export default function InvitationPage() {
         title: "Success",
         description:
           "Your account has been created successfully. You can now log in.",
-        type: "success",
+        color: "success",
       });
 
       navigate("/login");
@@ -165,7 +165,7 @@ export default function InvitationPage() {
       addToast({
         title: "Error",
         description: "Failed to create your account. Please try again.",
-        type: "danger",
+        color: "danger",
       });
     } finally {
       setSubmitting(false);

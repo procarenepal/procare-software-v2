@@ -113,7 +113,8 @@ export const systemSetupService = {
       });
 
       // Initialize system permissions if needed
-      await rbacService.initializeSystemPermissions();
+      // TODO: Implement initializeSystemPermissions in rbacService or use a different seeding mechanism
+      // await rbacService.initializeSystemPermissions();
 
       // Mark system as initialized
       await setDoc(doc(db, SYSTEM_CONFIG_COLLECTION, "system_status"), {

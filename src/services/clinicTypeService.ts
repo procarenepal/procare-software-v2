@@ -18,6 +18,17 @@ import { pageService } from "./pageService";
 
 const CLINIC_TYPES_COLLECTION = "clinic_types";
 
+const mapClinicTypeDoc = (docSnap: any): ClinicType => {
+  const data = docSnap.data();
+
+  return {
+    id: docSnap.id,
+    ...data,
+    createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(),
+    updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(),
+  } as ClinicType;
+};
+
 /**
  * Service for managing clinic type data in Firestore
  */
@@ -70,7 +81,7 @@ export const clinicTypeService = {
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as ClinicType;
+        return mapClinicTypeDoc(docSnap);
       }
 
       return null;
@@ -89,13 +100,7 @@ export const clinicTypeService = {
       const clinicTypesRef = collection(db, CLINIC_TYPES_COLLECTION);
       const querySnapshot = await getDocs(clinicTypesRef);
 
-      return querySnapshot.docs.map(
-        (doc) =>
-          ({
-            id: doc.id,
-            ...doc.data(),
-          }) as ClinicType,
-      );
+      return querySnapshot.docs.map((doc) => mapClinicTypeDoc(doc));
     } catch (error) {
       console.error("Error getting all clinic types:", error);
       throw error;
@@ -112,13 +117,7 @@ export const clinicTypeService = {
       const q = query(clinicTypesRef, where("isActive", "==", true));
       const querySnapshot = await getDocs(q);
 
-      return querySnapshot.docs.map(
-        (doc) =>
-          ({
-            id: doc.id,
-            ...doc.data(),
-          }) as ClinicType,
-      );
+      return querySnapshot.docs.map((doc) => mapClinicTypeDoc(doc));
     } catch (error) {
       console.error("Error getting active clinic types:", error);
       throw error;

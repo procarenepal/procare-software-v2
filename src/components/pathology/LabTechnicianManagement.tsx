@@ -422,10 +422,10 @@ export default function LabTechnicianManagement({
                   }));
                 }}
               >
-                <SelectItem key="active" value="active">
+                <SelectItem key="active">
                   Active
                 </SelectItem>
-                <SelectItem key="inactive" value="inactive">
+                <SelectItem key="inactive">
                   Inactive
                 </SelectItem>
               </Select>

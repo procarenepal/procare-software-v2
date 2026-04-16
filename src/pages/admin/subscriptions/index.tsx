@@ -366,7 +366,6 @@ export default function SubscriptionsPage() {
               <Progress
                 className="h-2"
                 color="primary"
-                size="sm"
                 value={
                   stats.total
                     ? ((stats.byType?.monthly || 0) / stats.total) * 100
@@ -376,8 +375,8 @@ export default function SubscriptionsPage() {
               <div className="text-xs text-mountain-500 text-right">
                 {stats.total
                   ? Math.round(
-                      ((stats.byType?.monthly || 0) / stats.total) * 100,
-                    )
+                    ((stats.byType?.monthly || 0) / stats.total) * 100,
+                  )
                   : 0}
                 % of total
               </div>
@@ -396,7 +395,6 @@ export default function SubscriptionsPage() {
               <Progress
                 className="h-2"
                 color="secondary"
-                size="sm"
                 value={
                   stats.total
                     ? ((stats.byType?.yearly || 0) / stats.total) * 100
@@ -406,8 +404,8 @@ export default function SubscriptionsPage() {
               <div className="text-xs text-mountain-500 text-right">
                 {stats.total
                   ? Math.round(
-                      ((stats.byType?.yearly || 0) / stats.total) * 100,
-                    )
+                    ((stats.byType?.yearly || 0) / stats.total) * 100,
+                  )
                   : 0}
                 % of total
               </div>
@@ -447,7 +445,6 @@ export default function SubscriptionsPage() {
               </Select>
               <Select
                 className="w-48"
-                items={[{ id: "all", name: "All Plans" }, ...plans]}
                 placeholder="Plan"
                 selectedKeys={filterPlan ? [filterPlan] : []}
                 size="sm"
@@ -457,7 +454,9 @@ export default function SubscriptionsPage() {
                   setFilterPlan(selected || "all");
                 }}
               >
-                {(plan) => <SelectItem key={plan.id}>{plan.name}</SelectItem>}
+                {[{ id: "all", name: "All Plans" }, ...plans].map((plan) => (
+                  <SelectItem key={plan.id}>{plan.name}</SelectItem>
+                ))}
               </Select>
               <Select
                 className="w-36"
@@ -568,7 +567,7 @@ export default function SubscriptionsPage() {
                       >
                         {clinic.subscriptionType
                           ? clinic.subscriptionType.charAt(0).toUpperCase() +
-                            clinic.subscriptionType.slice(1)
+                          clinic.subscriptionType.slice(1)
                           : "Monthly"}
                       </Badge>
                     </td>

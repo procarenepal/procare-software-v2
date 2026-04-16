@@ -7,39 +7,39 @@ import { Select, SelectItem } from "@heroui/select";
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import {
-    Modal,
-    ModalContent,
-    ModalHeader,
-    ModalBody,
-    ModalFooter,
-    useDisclosure,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure,
 } from "@heroui/modal";
 import {
-    Table,
-    TableHeader,
-    TableColumn,
-    TableBody,
-    TableRow,
-    TableCell,
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
 } from "@heroui/table";
 import {
-    Dropdown,
-    DropdownTrigger,
-    DropdownMenu,
-    DropdownItem,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
 } from "@heroui/dropdown";
 import {
-    IoPeopleOutline,
-    IoArrowBackOutline,
-    IoAddOutline,
-    IoPersonOutline,
-    IoCheckmarkCircleOutline,
-    IoCloseCircleOutline,
-    IoEllipsisVerticalOutline,
-    IoTrashOutline,
-    IoShieldCheckmarkOutline,
-    IoPencilOutline,
-    IoKeyOutline,
+  IoPeopleOutline,
+  IoArrowBackOutline,
+  IoAddOutline,
+  IoPersonOutline,
+  IoCheckmarkCircleOutline,
+  IoCloseCircleOutline,
+  IoEllipsisVerticalOutline,
+  IoTrashOutline,
+  IoShieldCheckmarkOutline,
+  IoPencilOutline,
+  IoKeyOutline,
 } from "react-icons/io5";
 import { Link } from "@heroui/link";
 import { User, Role } from "@/types/models";
@@ -428,14 +428,15 @@ export default function StaffManagementPage() {
                         <TableCell>
                           <Chip
                             color={member.isActive ? "success" : "danger"}
-                                                        size="sm"
-                                                        startContent={
-                                                            member.isActive ? 
-                                                            <IoCheckmarkCircleOutline /> : 
-                                                            <IoCloseCircleOutline />
-                                                        }
-                                                        variant="flat"
+                            size="sm"
+                            startContent={
+                              member.isActive ? (
+                                <IoCheckmarkCircleOutline />
+                              ) : (
+                                <IoCloseCircleOutline />
+                              )
                             }
+                            variant="flat"
                           >
                             {member.isActive ? "Active" : "Inactive"}
                           </Chip>

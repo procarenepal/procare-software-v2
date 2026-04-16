@@ -45,7 +45,6 @@ import {
   PathologyBillingSettings,
   PathologyTest,
   PathologyTestType,
-  PathologyTestName,
 } from "@/types/models";
 import { PrintLayoutConfig } from "@/types/printLayout";
 
@@ -82,7 +81,7 @@ export default function PathologyBillingTab({
   // Data states
   const [tests, setTests] = useState<PathologyTest[]>([]);
   const [testTypes, setTestTypes] = useState<PathologyTestType[]>([]);
-  const [testNames, setTestNames] = useState<PathologyTestName[]>([]);
+  const [testNames, setTestNames] = useState<PathologyTest[]>([]);
   const [billings, setBillings] = useState<PathologyBilling[]>([]);
   const [billingSettings, setBillingSettings] =
     useState<PathologyBillingSettings | null>(null);
@@ -163,7 +162,7 @@ export default function PathologyBillingTab({
       ] = await Promise.all([
         pathologyService.getTestsByClinic(clinicId, branchId),
         pathologyService.getTestTypesByClinic(clinicId, branchId),
-        pathologyService.getTestNamesByClinic(clinicId, branchId),
+        pathologyService.getTestsByClinic(clinicId, branchId),
         pathologyBillingService.getBillingByClinic(clinicId, branchId),
         pathologyBillingService.getBillingSettings(clinicId),
         clinicService.getClinicById(clinicId),
@@ -651,19 +650,17 @@ export default function PathologyBillingTab({
     }
     .header {
       border-bottom: 2px solid #333;
-      padding-bottom: ${
-        layoutConfig?.headerHeight === "compact"
-          ? "10px"
-          : layoutConfig?.headerHeight === "expanded"
-            ? "20px"
-            : "15px"
+      padding-bottom: ${layoutConfig?.headerHeight === "compact"
+        ? "10px"
+        : layoutConfig?.headerHeight === "expanded"
+          ? "20px"
+          : "15px"
       };
-      margin-bottom: ${
-        layoutConfig?.headerHeight === "compact"
-          ? "10px"
-          : layoutConfig?.headerHeight === "expanded"
-            ? "20px"
-            : "15px"
+      margin-bottom: ${layoutConfig?.headerHeight === "compact"
+        ? "10px"
+        : layoutConfig?.headerHeight === "expanded"
+          ? "20px"
+          : "15px"
       };
     }
     .header-content {
@@ -676,33 +673,30 @@ export default function PathologyBillingTab({
       display: flex;
       align-items: center;
       gap: 20px;
-      ${
-        layoutConfig?.logoPosition === "center"
-          ? "justify-content: center; text-align: center;"
-          : layoutConfig?.logoPosition === "right"
-            ? "justify-content: flex-end; text-align: right;"
-            : "justify-content: flex-start; text-align: left;"
+      ${layoutConfig?.logoPosition === "center"
+        ? "justify-content: center; text-align: center;"
+        : layoutConfig?.logoPosition === "right"
+          ? "justify-content: flex-end; text-align: right;"
+          : "justify-content: flex-start; text-align: left;"
       }
     }
     .header-right {
       text-align: right;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "11px"
-          : layoutConfig?.fontSize === "large"
-            ? "14px"
-            : "12px"
+      font-size: ${layoutConfig?.fontSize === "small"
+        ? "11px"
+        : layoutConfig?.fontSize === "large"
+          ? "14px"
+          : "12px"
       };
       color: #333;
       line-height: 1.4;
     }
     .logo {
-      ${
-        layoutConfig?.logoSize === "small"
-          ? "height: 40px;"
-          : layoutConfig?.logoSize === "large"
-            ? "height: 80px;"
-            : "height: 60px;"
+      ${layoutConfig?.logoSize === "small"
+        ? "height: 40px;"
+        : layoutConfig?.logoSize === "large"
+          ? "height: 80px;"
+          : "height: 60px;"
       }
       width: auto;
       object-fit: contain;
@@ -714,21 +708,19 @@ export default function PathologyBillingTab({
       font-weight: bold;
       color: ${layoutConfig?.primaryColor || "#2563eb"};
       margin: 0;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "20px"
-          : layoutConfig?.fontSize === "large"
-            ? "30px"
-            : "26px"
+      font-size: ${layoutConfig?.fontSize === "small"
+        ? "20px"
+        : layoutConfig?.fontSize === "large"
+          ? "30px"
+          : "26px"
       };
     }
     .tagline {
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "12px"
-          : layoutConfig?.fontSize === "large"
-            ? "16px"
-            : "14px"
+      font-size: ${layoutConfig?.fontSize === "small"
+        ? "12px"
+        : layoutConfig?.fontSize === "large"
+          ? "16px"
+          : "14px"
       };
       color: #666;
       margin: 5px 0;
@@ -736,12 +728,11 @@ export default function PathologyBillingTab({
     .clinic-details {
       margin-top: 10px;
       color: #333;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "11px"
-          : layoutConfig?.fontSize === "large"
-            ? "14px"
-            : "12px"
+      font-size: ${layoutConfig?.fontSize === "small"
+        ? "11px"
+        : layoutConfig?.fontSize === "large"
+          ? "14px"
+          : "12px"
       };
     }
     .document-title {
@@ -844,12 +835,11 @@ export default function PathologyBillingTab({
       padding-top: 10px;
       margin-top: auto;
       text-align: center;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "11px"
-          : layoutConfig?.fontSize === "large"
-            ? "13px"
-            : "12px"
+      font-size: ${layoutConfig?.fontSize === "small"
+        ? "11px"
+        : layoutConfig?.fontSize === "large"
+          ? "13px"
+          : "12px"
       };
       color: #666;
       flex-shrink: 0;
@@ -873,22 +863,20 @@ export default function PathologyBillingTab({
     <div class="header">
       <div class="header-content">
         <div class="header-left">
-          ${
-            layoutConfig?.logoUrl
-              ? `
+          ${layoutConfig?.logoUrl
+        ? `
             <img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />
           `
-              : ""
-          }
+        : ""
+      }
           <div class="clinic-info">
             <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-            ${
-              layoutConfig?.tagline
-                ? `
+            ${layoutConfig?.tagline
+        ? `
               <p class="tagline">${layoutConfig.tagline}</p>
             `
-                : ""
-            }
+        : ""
+      }
             <div class="clinic-details">
               <p>${layoutConfig?.address || clinic?.address || ""}</p>
               <p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>
@@ -944,26 +932,24 @@ export default function PathologyBillingTab({
               <td>Subtotal</td>
               <td class="text-right">NPR ${billing.subtotal.toLocaleString()}</td>
             </tr>
-            ${
-              billing.discountAmount > 0
-                ? `
+            ${billing.discountAmount > 0
+        ? `
             <tr>
               <td>Discount (${billing.discountType === "flat" ? "Flat" : "Percent"})</td>
               <td class="text-right">- NPR ${billing.discountAmount.toLocaleString()}</td>
             </tr>
             `
-                : ""
-            }
-            ${
-              billing.taxAmount > 0
-                ? `
+        : ""
+      }
+            ${billing.taxAmount > 0
+        ? `
             <tr>
               <td>Tax (${billing.taxPercentage}%)</td>
               <td class="text-right">NPR ${billing.taxAmount.toLocaleString()}</td>
             </tr>
             `
-                : ""
-            }
+        : ""
+      }
             <tr class="font-bold">
               <td>Total Amount</td>
               <td class="text-right">NPR ${billing.totalAmount.toLocaleString()}</td>
@@ -980,9 +966,8 @@ export default function PathologyBillingTab({
         </table>
       </div>
       
-      ${
-        billing.paymentMethod
-          ? `
+      ${billing.paymentMethod
+        ? `
       <div class="payment-section">
         <h3>Payment Information</h3>
         <p><strong>Payment Method:</strong> ${billing.paymentMethod}</p>
@@ -991,12 +976,11 @@ export default function PathologyBillingTab({
         ${billing.paymentNotes ? `<p><strong>Notes:</strong> ${billing.paymentNotes}</p>` : ""}
       </div>
       `
-          : ""
+        : ""
       }
       
-      ${
-        billing.notes
-          ? `
+      ${billing.notes
+        ? `
       <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
         <h3 style="margin: 0 0 10px 0; font-size: 14px;">Notes:</h3>
         <p style="margin: 0; font-size: 12px;">
@@ -1004,7 +988,7 @@ export default function PathologyBillingTab({
         </p>
       </div>
       `
-          : ""
+        : ""
       }
     </div>
     
@@ -1133,13 +1117,13 @@ export default function PathologyBillingTab({
                         }));
                       }}
                     >
-                      <SelectItem key="male" value="male">
+                      <SelectItem key="male">
                         Male
                       </SelectItem>
-                      <SelectItem key="female" value="female">
+                      <SelectItem key="female">
                         Female
                       </SelectItem>
-                      <SelectItem key="other" value="other">
+                      <SelectItem key="other">
                         Other
                       </SelectItem>
                     </Select>
@@ -1195,10 +1179,10 @@ export default function PathologyBillingTab({
                             >
                               {(testName) => (
                                 <AutocompleteItem
-                                  key={testName.name}
-                                  textValue={testName.name}
+                                  key={testName.testName}
+                                  textValue={testName.testName}
                                 >
-                                  {testName.name}
+                                  {testName.testName}
                                 </AutocompleteItem>
                               )}
                             </Autocomplete>

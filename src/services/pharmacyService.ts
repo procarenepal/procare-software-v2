@@ -322,7 +322,7 @@ export const pharmacyService = {
 
       const current = snap.data() as any;
       const now = Timestamp.now();
-      const generatedId = returnData.id || doc(collection(db, "temp")).id;
+      const generatedId = doc(collection(db, "temp")).id;
 
       const returnRecord: MedicinePurchaseReturn = {
         ...returnData,
@@ -334,9 +334,9 @@ export const pharmacyService = {
         current.returns,
       )
         ? current.returns.map((r: any) => ({
-            ...r,
-            createdAt: r.createdAt?.toDate ? r.createdAt.toDate() : r.createdAt,
-          }))
+          ...r,
+          createdAt: r.createdAt?.toDate ? r.createdAt.toDate() : r.createdAt,
+        }))
         : [];
 
       const allReturns = [...existingReturns, returnRecord];

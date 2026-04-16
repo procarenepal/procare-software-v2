@@ -2,7 +2,7 @@ import React from "react";
 import clsx from "clsx";
 
 export interface CheckboxProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "size"> {
   isSelected?: boolean;
   /** Tri-state visual. When true, shows a minus and sets input.indeterminate */
   isIndeterminate?: boolean;
@@ -10,12 +10,12 @@ export interface CheckboxProps
   children?: React.ReactNode;
   size?: "sm" | "md" | "lg";
   color?:
-    | "default"
-    | "primary"
-    | "secondary"
-    | "success"
-    | "warning"
-    | "danger";
+  | "default"
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning"
+  | "danger";
 }
 
 export const Checkbox: React.FC<CheckboxProps> = ({

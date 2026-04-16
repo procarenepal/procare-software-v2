@@ -25,7 +25,7 @@ export const PublicNavbar = () => {
         <NavbarBrand className="gap-3 max-w-fit">
           <Link
             className="flex justify-start items-center gap-2 hover:opacity-80 transition-opacity"
-            color="foreground"
+            color="default"
             href="/"
           >
             <div className="p-1 bg-white rounded-lg">
@@ -111,7 +111,7 @@ export const PublicNavbar = () => {
                 className={clsx(
                   "font-medium text-mountain-700 hover:text-nepal-600 transition-colors py-2",
                   index === siteConfig.navMenuItems.length - 1 &&
-                    "text-nepal-600",
+                  "text-nepal-600",
                 )}
                 href={item.href}
               >

@@ -23,7 +23,12 @@ import * as XLSX from "xlsx";
 import { title } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { Dropdown } from "@/components/ui/dropdown";
+import {
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@/components/ui/dropdown";
 import { useAuthContext } from "@/context/AuthContext";
 import { addToast } from "@/components/ui/toast";
 import { prescriptionService } from "@/services/prescriptionService";
@@ -242,7 +247,7 @@ export default function PrescriptionsPage() {
               );
 
               itemsCount = items.length;
-            } catch (e) {}
+            } catch (e) { }
 
             return {
               ...prescription,
@@ -487,35 +492,36 @@ export default function PrescriptionsPage() {
               </select>
             </div>
           )}
-          <Dropdown
-            align="end"
-            items={[
-              {
-                id: "excel",
-                label: "Export to Excel",
-                icon: <IoDownloadOutline />,
-                onClick: exportPrescriptionsToXLSX,
-              },
-              {
-                id: "csv",
-                label: "Export to CSV",
-                icon: <IoDownloadOutline />,
-                onClick: exportPrescriptionsToCSV,
-              },
-              { isDivider: true, id: "div" },
-              {
-                id: "print",
-                label: "Print Report",
-                icon: <IoPrintOutline />,
-                onClick: printPrescriptions,
-              },
-            ]}
-            trigger={
+          <Dropdown placement="bottom-end">
+            <DropdownTrigger>
               <Button startContent={<IoDownloadOutline />} variant="bordered">
                 Export
               </Button>
-            }
-          />
+            </DropdownTrigger>
+            <DropdownMenu aria-label="Export options">
+              <DropdownItem
+                key="excel"
+                startContent={<IoDownloadOutline />}
+                onClick={exportPrescriptionsToXLSX}
+              >
+                Export to Excel
+              </DropdownItem>
+              <DropdownItem
+                key="csv"
+                startContent={<IoDownloadOutline />}
+                onClick={exportPrescriptionsToCSV}
+              >
+                Export to CSV
+              </DropdownItem>
+              <DropdownItem
+                key="print"
+                startContent={<IoPrintOutline />}
+                onClick={printPrescriptions}
+              >
+                Print Report
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
           <Button
             color="primary"
             startContent={<IoAddOutline />}
@@ -797,39 +803,8 @@ export default function PrescriptionsPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-[13.5px]">
-                      <Dropdown
-                        align="end"
-                        items={[
-                          {
-                            id: "view",
-                            label: "View Details",
-                            onClick: () =>
-                              navigate(
-                                `/dashboard/prescriptions/${prescription.id}`,
-                              ),
-                            icon: <IoEyeOutline />,
-                          },
-                          {
-                            id: "edit",
-                            label: "Edit Prescription",
-                            onClick: () =>
-                              navigate(
-                                `/dashboard/prescriptions/${prescription.id}/edit`,
-                              ),
-                            icon: <IoCreateOutline />,
-                          },
-                          { isDivider: true, id: "div-1" },
-                          {
-                            id: "print",
-                            label: "Print",
-                            onClick: () =>
-                              navigate(
-                                `/dashboard/prescriptions/${prescription.id}?print=true`,
-                              ),
-                            icon: <IoPrintOutline />,
-                          },
-                        ]}
-                        trigger={
+                      <Dropdown placement="bottom-end">
+                        <DropdownTrigger>
                           <Button
                             isIconOnly
                             className="text-mountain-500"
@@ -838,8 +813,35 @@ export default function PrescriptionsPage() {
                           >
                             <IoEllipsisVerticalOutline />
                           </Button>
-                        }
-                      />
+                        </DropdownTrigger>
+                        <DropdownMenu aria-label="Actions">
+                          <DropdownItem
+                            startContent={<IoEyeOutline />}
+                            onClick={() =>
+                              navigate(`/dashboard/prescriptions/${prescription.id}`)
+                            }
+                          >
+                            View Details
+                          </DropdownItem>
+                          <DropdownItem
+                            startContent={<IoCreateOutline />}
+                            onClick={() =>
+                              navigate(`/dashboard/prescriptions/${prescription.id}/edit`)
+                            }
+                          >
+                            Edit
+                          </DropdownItem>
+                          <DropdownItem
+                            color="danger"
+                            startContent={<IoTrashOutline />}
+                            onClick={() => {
+                              /* TODO: Implement delete */
+                            }}
+                          >
+                            Delete
+                          </DropdownItem>
+                        </DropdownMenu>
+                      </Dropdown>
                     </td>
                   </tr>
                 ))}

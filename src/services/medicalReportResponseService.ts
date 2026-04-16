@@ -21,24 +21,29 @@ export class MedicalReportResponseService {
    */
   static async savePatientResponses(
     clinicId: string,
+    branchId: string,
     patientId: string,
-    responses: Record<string, any>,
+    fieldValues: Record<string, any>,
     submittedBy: string,
-  ): Promise<void> {
+  ): Promise<string> {
     try {
-      const responseData: MedicalReportResponse = {
-        id: `${clinicId}_${patientId}`,
+      const responsesRef = collection(db, "medical_report_responses");
+      const now = new Date();
+
+      const responseData: Omit<MedicalReportResponse, "id"> = {
         clinicId,
+        branchId,
         patientId,
-        fieldValues: responses,
+        fieldValues,
         submittedBy,
-        submittedAt: new Date(),
-        updatedAt: new Date(),
+        submittedAt: now,
+        updatedAt: now,
       };
 
-      const docRef = doc(db, COLLECTION_NAME, responseData.id);
+      const docRef = doc(db, COLLECTION_NAME, `${clinicId}_${patientId}`);
 
-      await setDoc(docRef, responseData, { merge: true });
+      await setDoc(docRef, { ...responseData, id: docRef.id }, { merge: true });
+      return docRef.id;
     } catch (error) {
       console.error("Error saving patient responses:", error);
       throw new Error("Failed to save patient responses");
@@ -194,10 +199,10 @@ export class MedicalReportResponseService {
       const lastUpdated =
         responses.length > 0
           ? responses.reduce(
-              (latest, response) =>
-                response.updatedAt > latest ? response.updatedAt : latest,
-              responses[0].updatedAt,
-            )
+            (latest, response) =>
+              response.updatedAt > latest ? response.updatedAt : latest,
+            responses[0].updatedAt,
+          )
           : undefined;
 
       return {

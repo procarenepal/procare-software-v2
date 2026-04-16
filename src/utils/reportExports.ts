@@ -412,7 +412,7 @@ export const exportDailyReportToPDF = (
     }
 
     // Footer
-    const pageCount = doc.getNumberOfPages();
+    const pageCount = (doc.internal as any).getNumberOfPages();
 
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
@@ -547,7 +547,7 @@ export const exportPharmacyDailyReportToExcel = (
           formatCurrency(purchase.taxAmount),
           formatCurrency(purchase.netAmount),
           purchase.paymentStatus.charAt(0).toUpperCase() +
-            purchase.paymentStatus.slice(1),
+          purchase.paymentStatus.slice(1),
           purchase.paymentType || "N/A",
         ]);
       });
@@ -731,7 +731,7 @@ export const exportPharmacyDailyReportToPDF = (
           formatCurrency(purchase.taxAmount),
           formatCurrency(purchase.netAmount),
           purchase.paymentStatus.charAt(0).toUpperCase() +
-            purchase.paymentStatus.slice(1),
+          purchase.paymentStatus.slice(1),
           purchase.paymentType || "N/A",
         ];
       });
@@ -781,7 +781,7 @@ export const exportPharmacyDailyReportToPDF = (
             purchase.purchaseNo,
             item.medicineName,
             (item.type || "medicine").charAt(0).toUpperCase() +
-              (item.type || "medicine").slice(1),
+            (item.type || "medicine").slice(1),
             item.quantity.toString(),
             formatCurrency(item.salePrice),
             formatCurrency(item.amount),
@@ -812,7 +812,7 @@ export const exportPharmacyDailyReportToPDF = (
     }
 
     // Footer
-    const pageCount = doc.getNumberOfPages();
+    const pageCount = (doc.internal as any).getNumberOfPages();
 
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
@@ -1153,7 +1153,7 @@ export const exportDailyPurchasesReportToPDF = (
     }
 
     // Footer
-    const pageCount = doc.getNumberOfPages();
+    const pageCount = (doc.internal as any).getNumberOfPages();
 
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);

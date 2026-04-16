@@ -22,6 +22,7 @@ export class PatientNotesService {
    */
   static async savePatientNotes(
     clinicId: string,
+    branchId: string,
     patientId: string,
     sectionValues: Record<string, string>,
     modifiedBy: string,
@@ -32,6 +33,7 @@ export class PatientNotesService {
       const notesData: PatientNotes = {
         id: `${clinicId}_${patientId}`,
         clinicId,
+        branchId,
         patientId,
         sectionValues,
         lastModifiedBy: modifiedBy,

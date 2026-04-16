@@ -240,8 +240,8 @@ export default function ClinicTypesPage() {
           </div>
           <Button
             color="primary"
-              startContent={<IoAddOutline />}
-              onClick={openAddModal}
+            startContent={<IoAddOutline />}
+            onClick={openAddModal}
           >
             Add Clinic Type
           </Button>
@@ -319,37 +319,35 @@ export default function ClinicTypesPage() {
                     </Chip>
                   </TableCell>
                   <TableCell>
-                    {/* @ts-ignore */}
-                    {type.createdAt && type.createdAt.toDate
-                      ? type.createdAt.toDate().toLocaleDateString()
+                    {type.createdAt
+                      ? type.createdAt.toLocaleDateString()
                       : "N/A"}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button
                         isIconOnly
-                          color="primary"
-                          size="sm"
-                          variant="bordered"
-                          onClick={() => openEditModal(type)}
+                        color="primary"
+                        size="sm"
+                        variant="bordered"
+                        onClick={() => openEditModal(type)}
                       >
                         <IoCreateOutline />
                       </Button>
                       <Button
                         color="secondary"
-                          size="sm"
-                          variant="bordered"
-                          onClick={() => navigate(`/admin/clinic-types/pages/${type.id}`)}
-                        }
+                        size="sm"
+                        variant="bordered"
+                        onClick={() => navigate(`/admin/clinic-types/pages/${type.id}`)}
                       >
                         Manage Pages
                       </Button>
                       <Button
                         isIconOnly
-                          color={type.isActive ? "danger" : "success"}
-                          size="sm"
-                          variant="bordered"
-                          onClick={() => handleToggleStatus(type)}
+                        color={type.isActive ? "danger" : "success"}
+                        size="sm"
+                        variant="bordered"
+                        onClick={() => handleToggleStatus(type)}
                       >
                         {type.isActive ? (
                           <IoCloseCircleOutline />
@@ -359,10 +357,10 @@ export default function ClinicTypesPage() {
                       </Button>
                       <Button
                         isIconOnly
-                          color="danger"
-                          size="sm"
-                          variant="bordered"
-                          onClick={() => openDeleteModal(type)}
+                        color="danger"
+                        size="sm"
+                        variant="bordered"
+                        onClick={() => openDeleteModal(type)}
                       >
                         <IoTrashOutline />
                       </Button>
@@ -379,7 +377,6 @@ export default function ClinicTypesPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        placement="center"
       >
         <ModalContent>
           <ModalHeader>
@@ -408,12 +405,10 @@ export default function ClinicTypesPage() {
                 </label>
                 <Textarea
                   className="w-full"
-                    name="description"
-                    placeholder="Enter clinic type description"
-                    size="md"
-                    value={formData.description}
-                    variant="bordered"
-                    onChange={handleChange}
+                  name="description"
+                  placeholder="Enter clinic type description"
+                  value={formData.description}
+                  onChange={handleChange}
                 />
               </div>
             </div>
@@ -437,7 +432,6 @@ export default function ClinicTypesPage() {
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        placement="center"
       >
         <ModalContent>
           <ModalHeader>

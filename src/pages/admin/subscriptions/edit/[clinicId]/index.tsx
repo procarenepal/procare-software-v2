@@ -533,12 +533,11 @@ export default function EditClinicSubscriptionPage() {
                           }
                         >
                           {plans.map((plan) => (
-                            <SelectItem key={plan.id} value={plan.id}>
+                            <SelectItem key={plan.id}>
                               {plan.name}
                             </SelectItem>
                           ))}
                         </Select>
-                        {(plan) => <SelectItem>{plan.id}</SelectItem>}
                       </div>
 
                       <div>
@@ -569,15 +568,15 @@ export default function EditClinicSubscriptionPage() {
                           }
                         >
                           {/* @ts-ignore */}
-                          <SelectItem key="active" value="active">
+                          <SelectItem key="active">
                             Active
                           </SelectItem>
                           {/* @ts-ignore */}
-                          <SelectItem key="suspended" value="suspended">
+                          <SelectItem key="suspended">
                             Suspended
                           </SelectItem>
                           {/* @ts-ignore */}
-                          <SelectItem key="cancelled" value="cancelled">
+                          <SelectItem key="cancelled">
                             Cancelled
                           </SelectItem>
                         </Select>
@@ -591,11 +590,10 @@ export default function EditClinicSubscriptionPage() {
                       <div className="flex flex-col gap-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <div
-                            className={`border p-4 rounded-lg flex items-center gap-3 cursor-pointer ${
-                              formData.subscriptionType === "monthly"
+                            className={`border p-4 rounded-lg flex items-center gap-3 cursor-pointer ${formData.subscriptionType === "monthly"
                                 ? "border-primary bg-primary-50"
                                 : "border-default-200"
-                            }`}
+                              }`}
                             onClick={() => {
                               const newEndDate = calculateEndDate(
                                 formData.startDate,
@@ -610,11 +608,10 @@ export default function EditClinicSubscriptionPage() {
                             }}
                           >
                             <div
-                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                formData.subscriptionType === "monthly"
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${formData.subscriptionType === "monthly"
                                   ? "border-primary"
                                   : "border-default-300"
-                              }`}
+                                }`}
                             >
                               {formData.subscriptionType === "monthly" && (
                                 <div className="w-2 h-2 rounded-full bg-primary" />
@@ -629,11 +626,10 @@ export default function EditClinicSubscriptionPage() {
                           </div>
 
                           <div
-                            className={`border p-4 rounded-lg flex items-center gap-3 cursor-pointer ${
-                              formData.subscriptionType === "yearly"
+                            className={`border p-4 rounded-lg flex items-center gap-3 cursor-pointer ${formData.subscriptionType === "yearly"
                                 ? "border-primary bg-primary-50"
                                 : "border-default-200"
-                            }`}
+                              }`}
                             onClick={() => {
                               const newEndDate = calculateEndDate(
                                 formData.startDate,
@@ -648,11 +644,10 @@ export default function EditClinicSubscriptionPage() {
                             }}
                           >
                             <div
-                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                formData.subscriptionType === "yearly"
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${formData.subscriptionType === "yearly"
                                   ? "border-primary"
                                   : "border-default-300"
-                              }`}
+                                }`}
                             >
                               {formData.subscriptionType === "yearly" && (
                                 <div className="w-2 h-2 rounded-full bg-primary" />
@@ -879,19 +874,19 @@ export default function EditClinicSubscriptionPage() {
                             getSelectedPlan()?.discountedMonthlyPrice) ||
                             (formData.subscriptionType === "yearly" &&
                               getSelectedPlan()?.discountedYearlyPrice)) && (
-                            <div className="mt-4 p-3 bg-success-50 rounded-md text-sm border border-success-200">
-                              <div className="flex items-center gap-2">
-                                <IoCheckmarkCircleOutline className="text-success" />
-                                <span className="text-success font-medium">
-                                  Special discount applied!
-                                </span>
+                              <div className="mt-4 p-3 bg-success-50 rounded-md text-sm border border-success-200">
+                                <div className="flex items-center gap-2">
+                                  <IoCheckmarkCircleOutline className="text-success" />
+                                  <span className="text-success font-medium">
+                                    Special discount applied!
+                                  </span>
+                                </div>
+                                <p className="text-xs text-success-600 mt-1">
+                                  This plan is currently offered at a discounted
+                                  rate.
+                                </p>
                               </div>
-                              <p className="text-xs text-success-600 mt-1">
-                                This plan is currently offered at a discounted
-                                rate.
-                              </p>
-                            </div>
-                          )}
+                            )}
                         </div>
                       </div>
                     )}

@@ -6,15 +6,15 @@ import {
 } from "react-icons/io5";
 
 import { Button } from "@/components/ui/button";
-import { PathologyTestName } from "@/types/models";
+import { PathologyTest } from "@/types/models";
 
 interface PathologyTestNamesTabProps {
-  filteredTestNames: PathologyTestName[];
+  filteredTestNames: PathologyTest[];
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onAdd: () => void;
-  onEdit: (testName: PathologyTestName) => void;
-  onDelete: (testName: PathologyTestName) => void;
+  onEdit: (testName: PathologyTest) => void;
+  onDelete: (testName: PathologyTest) => void;
 }
 
 export default function PathologyTestNamesTab({
@@ -64,7 +64,7 @@ export default function PathologyTestNamesTab({
                 >
                   <td className="px-4 py-2">
                     <p className="text-[13.5px] font-medium text-mountain-900">
-                      {testName.name}
+                      {testName.testName}
                     </p>
                   </td>
                   <td className="px-4 py-2">
