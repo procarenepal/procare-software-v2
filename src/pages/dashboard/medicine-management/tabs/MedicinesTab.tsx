@@ -189,7 +189,7 @@ export default function MedicinesTab({
   });
 
   const useServerPagination =
-    filterType !== "lowStock" && filterType !== "expiring";
+    filterType !== "lowStock" && filterType !== "expiring" && !searchQuery.trim();
 
   const branchScopeId = effectiveBranchId ?? userData?.branchId ?? null;
 
