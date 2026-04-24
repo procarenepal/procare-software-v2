@@ -18,7 +18,7 @@ import {
   IoChevronDownOutline,
 } from "react-icons/io5";
 
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/context/AuthContext";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { patientService } from "@/services/patientService";
 import { doctorService } from "@/services/doctorService";
@@ -59,7 +59,7 @@ export const DashboardHeader = ({
   isSidebarOpen,
   toggleSidebar,
 }: DashboardHeaderProps) => {
-  const { currentUser, logout, clinicId } = useAuth();
+  const { currentUser, logout, clinicId } = useAuthContext();
   const navigate = useNavigate();
 
   // ── Search state ──────────────────────────────────────────────────────────

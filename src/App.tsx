@@ -138,6 +138,15 @@ const BedManagementPage = lazy(
 );
 const RbacPage = lazy(() => import("@/pages/dashboard/settings/rbac/index"));
 const EnquiriesPage = lazy(() => import("@/pages/dashboard/enquiry"));
+const ReferralPartnersPage = lazy(
+  () => import("@/pages/dashboard/referral-partners"),
+);
+const NewReferralPartnerPage = lazy(
+  () => import("@/pages/dashboard/new-referral-partner"),
+);
+const ReferralPartnerProfilePage = lazy(
+  () => import("@/pages/dashboard/referral-partners/profile"),
+);
 
 // Lazy load branch management pages
 const BranchManagementPage = lazy(
@@ -233,6 +242,14 @@ const CommunicationPage = lazy(
 const EditDoctorPage = lazy(
   () => import("@/pages/dashboard/doctors/[doctorId]/edit"),
 );
+const ExpertsPage = lazy(() => import("@/pages/dashboard/experts"));
+const NewExpertPage = lazy(() => import("@/pages/dashboard/experts/new"));
+const ExpertProfilePage = lazy(
+  () => import("@/pages/dashboard/experts/[expertId]/index"),
+);
+const EditExpertPage = lazy(
+  () => import("@/pages/dashboard/experts/[expertId]/edit"),
+);
 const ProfilePage = lazy(() => import("@/pages/dashboard/profile"));
 
 export default function App() {
@@ -258,171 +275,156 @@ export default function App() {
         <ScrollToTop />
       </Suspense>
       <Suspense fallback={<LoadingSpinner />}>
-        <Routes>
-          {/* Public routes with DefaultLayout */}
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <IndexPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/"
-          />
-          {/* ... other code keeps exactly the same ... */}
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <FeaturesPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/features"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <DocsPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/docs"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <PricingPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/pricing"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <BlogPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/blog"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <AboutPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/about"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <ContactPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/contact"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <SMSTesterPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/sms-tester"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <SMSBackendTesterPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/sms-backend-tester"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <AuthProviders>
+        <AuthProviders>
+          <Routes>
+            {/* Public routes with DefaultLayout */}
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <IndexPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <FeaturesPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/features"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <DocsPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/docs"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <PricingPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/pricing"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <BlogPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/blog"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <AboutPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/about"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <ContactPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/contact"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <SMSTesterPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/sms-tester"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <SMSBackendTesterPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/sms-backend-tester"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
                     <LoginPage />
-                  </AuthProviders>
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/login"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <ForgotPasswordPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/forgot-password"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <ResetPasswordPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/reset-password"
-          />
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <DemoPage />
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/demo"
-          />
-          {/* <Route
-                element={
-                    <DefaultLayout>
-                        <Suspense fallback={<LoadingSpinner />}>
-                            <AppwriteTestPage />
-                        </Suspense>
-                    </DefaultLayout>
-                }
-                path="/appwrite-test"
-            /> */}
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/login"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <ForgotPasswordPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/forgot-password"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <ResetPasswordPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/reset-password"
+            />
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <DemoPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/demo"
+            />
 
-          {/* Invitation handling route */}
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <AuthProviders>
+            {/* Invitation handling route */}
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
                     <InvitationPage />
-                  </AuthProviders>
-                </Suspense>
-              </DefaultLayout>
-            }
-            path="/invitation/:id"
-          />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="/invitation/:id"
+            />
 
-          {/* Super Admin routes - wrap in AuthProviders to lazy-load Firebase/Auth only here */}
-          <Route
-            element={
-              <Suspense fallback={<LoadingSpinner />}>
-                <AuthProviders>
+            {/* Super Admin routes */}
+            <Route
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
                   <SuperAdminRoute>
                     <AdminLayout>
                       <Suspense fallback={<LoadingSpinner />}>
@@ -474,17 +476,15 @@ export default function App() {
                       </Suspense>
                     </AdminLayout>
                   </SuperAdminRoute>
-                </AuthProviders>
-              </Suspense>
-            }
-            path="/admin/*"
-          />
+                </Suspense>
+              }
+              path="/admin/*"
+            />
 
-          {/* Protected Dashboard routes - wrap in AuthProviders to lazy-load Firebase/Auth only here */}
-          <Route
-            element={
-              <Suspense fallback={<LoadingSpinner />}>
-                <AuthProviders>
+            {/* Protected Dashboard routes */}
+            <Route
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
                   <BasicProtectedRoute>
                     <DashboardLayout>
                       <Suspense fallback={<LoadingSpinner />}>
@@ -557,6 +557,38 @@ export default function App() {
                               </RbacProtectedRoute>
                             }
                             path="doctors/:doctorId/edit"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/experts">
+                                <ExpertsPage />
+                              </RbacProtectedRoute>
+                            }
+                            path="experts"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/experts/new">
+                                <NewExpertPage />
+                              </RbacProtectedRoute>
+                            }
+                            path="experts/new"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/experts/:expertId">
+                                <ExpertProfilePage />
+                              </RbacProtectedRoute>
+                            }
+                            path="experts/:expertId"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/experts/:expertId/edit">
+                                <EditExpertPage />
+                              </RbacProtectedRoute>
+                            }
+                            path="experts/:expertId/edit"
                           />
                           <Route
                             element={
@@ -771,14 +803,6 @@ export default function App() {
                             }
                             path="settings/appointments"
                           />
-                          {/* <Route
-                                        path="settings/staff"
-                                        element={
-                                            <ProtectedRoute pagePath="/dashboard/settings/staff">
-                                                <StaffManagementPage />
-                                            </ProtectedRoute>
-                                        }
-                                    /> */}
                           <Route
                             element={
                               <RbacProtectedRoute pagePath="/dashboard/settings/doctor-speciality">
@@ -818,6 +842,40 @@ export default function App() {
                               </RbacProtectedRoute>
                             }
                             path="settings/staff"
+                          />
+
+                          {/* Referral Partner Routes nested under settings */}
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/settings/referral-partners">
+                                <ReferralPartnersPage />
+                              </RbacProtectedRoute>
+                            }
+                            path="settings/referral-partners"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/settings/referral-partners/new">
+                                <NewReferralPartnerPage />
+                              </RbacProtectedRoute>
+                            }
+                            path="settings/referral-partners/new"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/settings/referral-partners/:partnerId/edit">
+                                <NewReferralPartnerPage />
+                              </RbacProtectedRoute>
+                            }
+                            path="settings/referral-partners/:partnerId/edit"
+                          />
+                          <Route
+                            element={
+                              <RbacProtectedRoute pagePath="/dashboard/settings/referral-partners/:partnerId">
+                                <ReferralPartnerProfilePage />
+                              </RbacProtectedRoute>
+                            }
+                            path="settings/referral-partners/:partnerId"
                           />
 
                           {/* Clinic Super Admin Branch Management Routes */}
@@ -888,24 +946,24 @@ export default function App() {
                       </Suspense>
                     </DashboardLayout>
                   </BasicProtectedRoute>
-                </AuthProviders>
-              </Suspense>
-            }
-            path="/dashboard/*"
-          />
-
-          {/* Catch-all route for 404 Not Found */}
-          <Route
-            element={
-              <DefaultLayout>
-                <Suspense fallback={<LoadingSpinner />}>
-                  <NotFoundPage />
                 </Suspense>
-              </DefaultLayout>
-            }
-            path="*"
-          />
-        </Routes>
+              }
+              path="/dashboard/*"
+            />
+
+            {/* Catch-all route for 404 Not Found */}
+            <Route
+              element={
+                <DefaultLayout>
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <NotFoundPage />
+                  </Suspense>
+                </DefaultLayout>
+              }
+              path="*"
+            />
+          </Routes>
+        </AuthProviders>
       </Suspense>
     </>
   );

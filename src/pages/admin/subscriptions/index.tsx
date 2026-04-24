@@ -375,8 +375,8 @@ export default function SubscriptionsPage() {
               <div className="text-xs text-mountain-500 text-right">
                 {stats.total
                   ? Math.round(
-                    ((stats.byType?.monthly || 0) / stats.total) * 100,
-                  )
+                      ((stats.byType?.monthly || 0) / stats.total) * 100,
+                    )
                   : 0}
                 % of total
               </div>
@@ -404,8 +404,8 @@ export default function SubscriptionsPage() {
               <div className="text-xs text-mountain-500 text-right">
                 {stats.total
                   ? Math.round(
-                    ((stats.byType?.yearly || 0) / stats.total) * 100,
-                  )
+                      ((stats.byType?.yearly || 0) / stats.total) * 100,
+                    )
                   : 0}
                 % of total
               </div>
@@ -567,7 +567,7 @@ export default function SubscriptionsPage() {
                       >
                         {clinic.subscriptionType
                           ? clinic.subscriptionType.charAt(0).toUpperCase() +
-                          clinic.subscriptionType.slice(1)
+                            clinic.subscriptionType.slice(1)
                           : "Monthly"}
                       </Badge>
                     </td>

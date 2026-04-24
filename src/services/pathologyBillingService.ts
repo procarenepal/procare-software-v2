@@ -20,6 +20,9 @@ import {
   PathologyBillingItem,
 } from "../types/models";
 
+import { doctorCommissionService } from "./doctorCommissionService";
+import { referralCommissionService } from "./referralCommissionService";
+
 const PATHOLOGY_BILLING_COLLECTION = "pathologyBilling";
 const PATHOLOGY_BILLING_SETTINGS_COLLECTION = "pathologyBillingSettings";
 
@@ -447,11 +450,46 @@ export const pathologyBillingService = {
    */
   async finalizeInvoice(id: string, finalizedBy: string): Promise<void> {
     try {
+      const billing = await this.getBillingById(id);
+
+      if (!billing) {
+        throw new Error("Billing record not found");
+      }
+
       await this.updateBilling(id, {
         status: "finalized",
         finalizedBy,
         finalizedAt: new Date(),
       });
+
+      // Create commissions for referring sources
+      if (billing.referringDoctors && billing.referringDoctors.length > 0) {
+        for (const refDoc of billing.referringDoctors) {
+          if (refDoc.calculatedAmount <= 0) continue;
+
+          if (refDoc.type === "partner") {
+            // Handle referral partners
+            const partnerData = {
+              id: refDoc.doctorId,
+              name: refDoc.doctorName,
+              defaultCommission: refDoc.commissionValue,
+            } as any;
+
+            await referralCommissionService.createPathologyCommission(
+              billing,
+              partnerData,
+              refDoc.calculatedAmount,
+              finalizedBy,
+            );
+          } else {
+            // Default to regular doctors
+            await doctorCommissionService.createPathologyCommissions(
+              { ...billing, referringDoctors: [refDoc] } as any,
+              finalizedBy,
+            );
+          }
+        }
+      }
     } catch (error) {
       console.error("Error finalizing pathology invoice:", error);
       throw error;

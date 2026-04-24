@@ -19,6 +19,8 @@ import { PrintLayoutConfig } from "@/types/printLayout";
 import { useAuthContext } from "@/context/AuthContext";
 import { clinicService } from "@/services/clinicService";
 import { patientService } from "@/services/patientService";
+import { doctorService } from "@/services/doctorService";
+import { expertService } from "@/services/expertService";
 import { addToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 
@@ -139,6 +141,8 @@ export default function PatientOverviewTab({
     null,
   );
   const [clinic, setClinic] = useState<any>(null);
+  const [assignedDoctor, setAssignedDoctor] = useState<any>(null);
+  const [assignedExpert, setAssignedExpert] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -148,14 +152,24 @@ export default function PatientOverviewTab({
     Promise.all([
       clinicService.getClinicById(clinicId),
       clinicService.getPrintLayoutConfig(clinicId),
+      patient.doctorId
+        ? doctorService.getDoctorById(patient.doctorId).catch(() => null)
+        : Promise.resolve(null),
+      patient.assignedExpertId
+        ? expertService
+            .getExpertById(patient.assignedExpertId)
+            .catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([c, lc]) => {
+      .then(([c, lc, d, e]) => {
         setClinic(c);
         setLayoutConfig(lc);
+        setAssignedDoctor(d);
+        setAssignedExpert(e);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [clinicId]);
+  }, [clinicId, patient.doctorId, patient.assignedExpertId]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const calculateAge = (dob: Date): number => {
@@ -364,6 +378,17 @@ export default function PatientOverviewTab({
               No medical conditions recorded
             </p>
           )}
+
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-mountain-100">
+            <InfoRow
+              label="Assigned Doctor"
+              value={assignedDoctor ? assignedDoctor.name : "None"}
+            />
+            <InfoRow
+              label="Assigned Expert"
+              value={assignedExpert ? assignedExpert.name : "None"}
+            />
+          </div>
         </InfoCard>
 
         {/* Contact */}

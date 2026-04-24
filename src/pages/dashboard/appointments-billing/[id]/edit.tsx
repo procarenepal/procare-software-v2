@@ -293,7 +293,9 @@ export default function EditInvoicePage() {
   // Calculations
   const [calculations, setCalculations] = useState({
     subtotal: 0,
-    discountAmount: 0,
+    itemDiscountAmount: 0,
+    mainDiscountAmount: 0,
+    totalDiscount: 0,
     taxAmount: 0,
     totalAmount: 0,
   });
@@ -424,44 +426,51 @@ export default function EditInvoicePage() {
 
   const updateInvoiceItem = (
     index: number,
-    field: keyof AppointmentBillingItem,
-    value: any,
+    updates: Partial<AppointmentBillingItem>,
   ) => {
-    const updatedItems = [...formData.items];
+    setFormData((prev) => {
+      const updatedItems = [...prev.items];
+      const item = { ...updatedItems[index], ...updates };
 
-    if (field === "appointmentTypeId") {
-      const appointmentType = appointmentTypes.find((at) => at.id === value);
+      if ("appointmentTypeId" in updates) {
+        const appointmentType = appointmentTypes.find(
+          (at) => at.id === updates.appointmentTypeId,
+        );
 
-      if (appointmentType) {
-        const selectedDoctor = doctors.find((d) => d.id === formData.doctorId);
-        const defaultCommission = selectedDoctor?.defaultCommission || 0;
+        if (appointmentType) {
+          item.appointmentTypeName = appointmentType.name;
+          item.price = appointmentType.price;
+          item.categoryId = appointmentType.categoryId;
 
-        updatedItems[index] = {
-          ...updatedItems[index],
-          appointmentTypeId: value,
-          appointmentTypeName: appointmentType.name,
-          price: appointmentType.price,
-          commission: defaultCommission,
-          amount: appointmentType.price * updatedItems[index].quantity,
-        };
+          const selectedDoctor = doctors.find(
+            (d) => d.id === (item.doctorId || prev.doctorId),
+          );
+
+          if (selectedDoctor) {
+            item.commission = selectedDoctor.defaultCommission;
+          }
+        }
       }
-    } else if (field === "quantity") {
-      updatedItems[index] = {
-        ...updatedItems[index],
-        quantity: value,
-        amount: updatedItems[index].price * value,
-      };
-    } else if (field === "price") {
-      updatedItems[index] = {
-        ...updatedItems[index],
-        price: value,
-        amount: value * updatedItems[index].quantity,
-      };
-    } else {
-      updatedItems[index] = { ...updatedItems[index], [field]: value };
-    }
 
-    setFormData((prev) => ({ ...prev, items: updatedItems }));
+      // Always recalculate amount
+      item.amount = item.price * item.quantity;
+
+      // Handle item-level discount if it exists
+      if (item.discountType === "percent") {
+        item.discountAmount =
+          (item.price * item.quantity * (item.discountValue || 0)) / 100;
+      } else if (item.discountType === "flat") {
+        item.discountAmount = item.discountValue || 0;
+      }
+
+      if (item.discountAmount) {
+        item.amount = item.price * item.quantity - item.discountAmount;
+      }
+
+      updatedItems[index] = item;
+
+      return { ...prev, items: updatedItems };
+    });
   };
 
   const removeInvoiceItem = (index: number) => {
@@ -512,14 +521,18 @@ export default function EditInvoicePage() {
     }
 
     const hasValidItems = formData.items.every(
-      (item) => item.appointmentTypeId && item.quantity > 0 && item.price >= 0,
+      (item) =>
+        item.appointmentTypeId &&
+        item.quantity > 0 &&
+        item.price >= 0 &&
+        item.doctorId,
     );
 
     if (!hasValidItems) {
       addToast({
         title: "Validation Error",
         description:
-          "Please ensure all invoice items have valid appointment types and quantities.",
+          "Please ensure all invoice items have valid appointment types, quantities, and selected doctors.",
         color: "warning",
       });
 
@@ -528,6 +541,16 @@ export default function EditInvoicePage() {
 
     try {
       setSaving(true);
+
+      // Derive root doctor fields from the first item
+      const firstItem = formData.items[0];
+      const rootDoctorId = firstItem.doctorId || "";
+      const rootDoctorName = firstItem.doctorName || "";
+      const rootDoctor = doctors.find((d) => d.id === rootDoctorId);
+      const rootDoctorType = (
+        rootDoctor?.doctorType === "visiting" ? "visitor" : "regular"
+      ) as "regular" | "visitor";
+
       const newTotalAmount = calculations.totalAmount;
       const existingPaidAmount = invoice.paidAmount;
       const newBalanceAmount = Math.max(0, newTotalAmount - existingPaidAmount);
@@ -546,15 +569,17 @@ export default function EditInvoicePage() {
       const updateData: Partial<AppointmentBilling> = {
         patientId: formData.patientId,
         patientName: formData.patientName,
-        doctorId: formData.doctorId,
-        doctorName: formData.doctorName,
-        doctorType: formData.doctorType,
+        doctorId: rootDoctorId,
+        doctorName: rootDoctorName,
+        doctorType: rootDoctorType,
         invoiceDate: new Date(formData.invoiceDate),
         items: formData.items,
         subtotal: calculations.subtotal,
         discountType: formData.discountType,
         discountValue: formData.discountValue,
-        discountAmount: calculations.discountAmount,
+        discountAmount: calculations.totalDiscount,
+        itemDiscountAmount: calculations.itemDiscountAmount,
+        mainDiscountAmount: calculations.mainDiscountAmount,
         taxPercentage: billingSettings.enableTax
           ? billingSettings.defaultTaxPercentage
           : 0,
@@ -680,35 +705,6 @@ export default function EditInvoicePage() {
               onChange={(id) => handlePatientChange(id)}
             />
 
-            <SearchSelect
-              required
-              items={doctors.map((d) => ({
-                id: d.id,
-                primary: d.name,
-                secondary: d.speciality,
-              }))}
-              label="Doctor"
-              placeholder="Search doctor"
-              value={formData.doctorId}
-              onChange={(id) => handleDoctorChange(id)}
-            />
-
-            <CustomSelect
-              disabled={!!formData.doctorId}
-              label="Doctor Type"
-              options={[
-                { value: "regular", label: "Regular" },
-                { value: "visitor", label: "Visitor" },
-              ]}
-              value={formData.doctorType}
-              onChange={(e: any) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  doctorType: e.target.value as any,
-                }))
-              }
-            />
-
             <CustomInput
               required
               label="Invoice Date"
@@ -745,90 +741,102 @@ export default function EditInvoicePage() {
               {formData.items.map((item, index) => (
                 <div
                   key={item.id}
-                  className="p-4 border border-mountain-200 rounded bg-mountain-50/30 gap-4 flex flex-col md:flex-row md:items-end"
+                  className="p-4 border border-mountain-200 rounded bg-white shadow-sm gap-4 flex flex-col xl:flex-row xl:items-end group hover:border-teal-300 transition-colors"
                 >
-                  <div className="flex-1 w-full relative z-[50]">
+                  <div className="flex-1 min-w-[200px]">
                     <SearchSelect
                       items={appointmentTypes.map((at) => ({
                         id: at.id,
                         primary: at.name,
                         secondary: `NPR ${at.price}`,
                       }))}
-                      label="Service Type"
+                      label="Service"
                       placeholder="Select service"
                       value={item.appointmentTypeId}
                       onChange={(id) =>
-                        updateInvoiceItem(index, "appointmentTypeId", id)
+                        updateInvoiceItem(index, { appointmentTypeId: id })
                       }
                     />
                   </div>
 
-                  <div className="w-full md:w-32">
-                    <CustomInput
-                      label="Price"
-                      min="0"
-                      startContent="NPR"
-                      step="0.01"
-                      type="number"
-                      value={item.price.toString()}
-                      onChange={(e: any) =>
-                        updateInvoiceItem(
-                          index,
-                          "price",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
+                  <div className="flex-1 min-w-[200px]">
+                    <SearchSelect
+                      items={doctors.map((d) => ({
+                        id: d.id,
+                        primary: d.name,
+                        secondary: d.speciality || d.doctorType,
+                      }))}
+                      label="Doctor"
+                      placeholder="Select doctor"
+                      value={item.doctorId || ""}
+                      onChange={(id) => {
+                        const d = doctors.find((doc) => doc.id === id);
+
+                        updateInvoiceItem(index, {
+                          doctorId: id,
+                          doctorName: d?.name || "",
+                          commission:
+                            d?.defaultCommission ??
+                            billingSettings?.defaultCommission ??
+                            0,
+                        });
+                      }}
                     />
                   </div>
 
-                  <div className="w-full md:w-24">
-                    <CustomInput
-                      label="Qty"
-                      min="1"
-                      type="number"
-                      value={item.quantity.toString()}
-                      onChange={(e: any) =>
-                        updateInvoiceItem(
-                          index,
-                          "quantity",
-                          parseInt(e.target.value) || 1,
-                        )
-                      }
-                    />
-                  </div>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="w-full">
+                      <CustomInput
+                        label="Price"
+                        min="0"
+                        startContent="NPR"
+                        step="0.01"
+                        type="number"
+                        value={item.price.toString()}
+                        onChange={(e: any) =>
+                          updateInvoiceItem(index, {
+                            price: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
 
-                  <div className="w-full md:w-32">
-                    <CustomInput
-                      endContent="%"
-                      label="Commission"
-                      type="number"
-                      value={item.commission.toString()}
-                      onChange={(e: any) =>
-                        updateInvoiceItem(
-                          index,
-                          "commission",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
-                    />
-                  </div>
+                    <div className="w-full">
+                      <CustomInput
+                        label="Qty"
+                        min="1"
+                        type="number"
+                        value={item.quantity.toString()}
+                        onChange={(e: any) =>
+                          updateInvoiceItem(index, {
+                            quantity: parseInt(e.target.value) || 1,
+                          })
+                        }
+                      />
+                    </div>
 
-                  <div className="w-full md:w-32">
-                    <CustomInput
-                      label="Amount"
-                      min="0"
-                      startContent="NPR"
-                      step="0.01"
-                      type="number"
-                      value={item.amount.toString()}
-                      onChange={(e: any) =>
-                        updateInvoiceItem(
-                          index,
-                          "amount",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
-                    />
+                    <div className="w-full">
+                      <CustomInput
+                        endContent="%"
+                        label="Comm."
+                        type="number"
+                        value={item.commission.toString()}
+                        onChange={(e: any) =>
+                          updateInvoiceItem(index, {
+                            commission: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div className="w-full">
+                      <CustomInput
+                        readOnly
+                        label="Amount"
+                        startContent="NPR"
+                        value={item.amount.toString()}
+                      />
+                    </div>
                   </div>
 
                   <Button
@@ -932,10 +940,22 @@ export default function EditInvoicePage() {
                       {formatCurrency(calculations.subtotal)}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[13.5px] text-health-600">
-                    <span>Discount:</span>
-                    <span>- {formatCurrency(calculations.discountAmount)}</span>
-                  </div>
+                  {calculations.itemDiscountAmount > 0 && (
+                    <div className="flex justify-between text-[13.5px] text-health-600">
+                      <span>Service Discounts:</span>
+                      <span>
+                        - {formatCurrency(calculations.itemDiscountAmount)}
+                      </span>
+                    </div>
+                  )}
+                  {calculations.mainDiscountAmount > 0 && (
+                    <div className="flex justify-between text-[13.5px] text-health-600">
+                      <span>Main Discount:</span>
+                      <span>
+                        - {formatCurrency(calculations.mainDiscountAmount)}
+                      </span>
+                    </div>
+                  )}
                   {billingSettings.enableTax && (
                     <div className="flex justify-between text-[13.5px] text-mountain-700">
                       <span>

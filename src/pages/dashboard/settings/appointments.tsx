@@ -25,8 +25,9 @@ import {
   ModalFooter,
   Link,
 } from "@/components/ui";
-import { AppointmentType } from "@/types/models";
+import { AppointmentType, TreatmentCategory } from "@/types/models";
 import { appointmentTypeService } from "@/services/appointmentTypeService";
+import { treatmentCategoryService } from "@/services/treatmentCategoryService";
 import { useAuthContext } from "@/context/AuthContext";
 import {
   APPOINTMENT_COLORS,
@@ -42,6 +43,9 @@ export default function AppointmentSettingsPage() {
     [],
   );
   const [editingType, setEditingType] = useState<AppointmentType | null>(null);
+  const [treatmentCategories, setTreatmentCategories] = useState<
+    TreatmentCategory[]
+  >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [showInactive, setShowInactive] = useState(true);
@@ -57,8 +61,23 @@ export default function AppointmentSettingsPage() {
   useEffect(() => {
     if (clinicId) {
       loadAppointmentTypes();
+      loadCategories();
     }
   }, [clinicId]);
+
+  const loadCategories = async () => {
+    if (!clinicId) return;
+    try {
+      const cats = await treatmentCategoryService.getCategoriesByClinic(
+        clinicId,
+        branchId,
+      );
+
+      setTreatmentCategories(cats);
+    } catch (e) {
+      console.error("Error loading categories:", e);
+    }
+  };
 
   const loadAppointmentTypes = async () => {
     if (!clinicId) return;
@@ -145,6 +164,7 @@ export default function AppointmentSettingsPage() {
           price: type.price,
           isActive: type.isActive,
           color: type.color,
+          categoryId: type.categoryId,
         });
         savedId = editingType.id;
       } else {
@@ -158,6 +178,7 @@ export default function AppointmentSettingsPage() {
           color: type.color || "none",
           clinicId,
           createdBy: currentUser.uid,
+          categoryId: type.categoryId,
         };
 
         // Only include branchId if the user has one (for multi-branch clinics)
@@ -565,6 +586,7 @@ export default function AppointmentSettingsPage() {
           <AppointmentTypeModal
             isLoading={isLoading}
             modalState={modalState}
+            treatmentCategories={treatmentCategories}
             type={editingType}
             onClose={modalState.close}
             onSave={handleSaveAppointmentType}
@@ -582,12 +604,14 @@ function AppointmentTypeModal({
   onClose,
   modalState,
   isLoading,
+  treatmentCategories,
 }: {
   type: AppointmentType | null;
   onSave: (type: Partial<AppointmentType>) => void;
   onClose: () => void;
   modalState: ReturnType<typeof useModalState>;
   isLoading: boolean;
+  treatmentCategories: TreatmentCategory[];
 }) {
   const [formData, setFormData] = useState<Partial<AppointmentType>>(
     type || {
@@ -661,6 +685,28 @@ function AppointmentTypeModal({
               }))
             }
           />
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-mountain-700">
+              Treatment Category
+            </label>
+            <select
+              className="w-full h-10 px-3 text-sm border-2 border-mountain-200 rounded-lg bg-white focus:border-primary focus:outline-none transition-colors"
+              value={formData.categoryId || ""}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  categoryId: e.target.value,
+                }))
+              }
+            >
+              <option value="">No Category</option>
+              {treatmentCategories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-mountain-700">
               Color Theme

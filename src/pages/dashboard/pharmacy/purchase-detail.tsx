@@ -18,6 +18,11 @@ import { clinicService } from "@/services/clinicService";
 import { medicineService } from "@/services/medicineService";
 import { MedicinePurchase } from "@/types/models";
 import { PrintLayoutConfig } from "@/types/printLayout";
+import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
 import { useAuthContext } from "@/context/AuthContext";
 
 // Custom Clinic Clarity UI
@@ -660,9 +665,9 @@ export default function PurchaseDetailPage() {
     purchase?.totalReturnedAmount && purchase.totalReturnedAmount > 0
       ? purchase.totalReturnedAmount
       : (purchase?.returns ?? []).reduce(
-          (sum, r) => sum + Math.abs(r.totalAmount || 0),
-          0,
-        );
+        (sum, r) => sum + Math.abs(r.totalAmount || 0),
+        0,
+      );
   const netAfterReturns = Math.max(0, totalAmount - totalReturnedAmount);
   const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
   const dueAmount = Math.max(0, netAfterReturns - paidAmount);
@@ -800,14 +805,15 @@ export default function PurchaseDetailPage() {
     if (printWindow) {
       // Build the items HTML (price = LIFO when available, else stored salePrice)
       const itemsHtml = purchase.items
-        .map((item) => {
+        .map((item, index) => {
           const price = itemLifoPrices[item.id] ?? item.salePrice;
 
           return `<tr>
-          <td class="text-left">${item.medicineName}</td>
-          <td class="text-center">${item.quantity}</td>
-          <td class="text-right">NPR ${price.toLocaleString()}</td>
-          <td class="text-right">NPR ${item.amount.toLocaleString()}</td>
+          <td class="text-center" style="text-align: center;">${index + 1}</td>
+          <td class="text-center" style="text-align: center;">${item.medicineName}</td>
+          <td class="text-center" style="text-align: center;">${item.quantity}</td>
+          <td class="text-center" style="text-align: center;">NPR ${price.toLocaleString()}</td>
+          <td class="text-center" style="text-align: center;">NPR ${item.amount.toLocaleString()}</td>
         </tr>`;
         })
         .join("");
@@ -829,16 +835,16 @@ export default function PurchaseDetailPage() {
             </thead>
             <tbody>
               ${payments
-                .map(
-                  (payment) =>
-                    `<tr>
+            .map(
+              (payment) =>
+                `<tr>
                   <td class="text-left">${payment.paymentDate.toLocaleDateString()}</td>
                   <td class="text-center">${payment.paymentMethod.toUpperCase()}</td>
                   <td class="text-right">NPR ${payment.amount.toLocaleString()}</td>
                   <td class="text-center">${payment.reference || "-"}</td>
                 </tr>`,
-                )
-                .join("")}
+            )
+            .join("")}
             </tbody>
           </table>
           
@@ -855,10 +861,16 @@ export default function PurchaseDetailPage() {
                 </tr>
               </tbody>
             </table>
-          </div>
         </div>
       `
           : "";
+
+      // Use Global Branding Utility
+      const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
+      const headerHTML = layoutConfig
+        ? getPrintHeaderHTML(layoutConfig, clinic)
+        : "";
+      const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
       // Generate the HTML content for printing with dynamic clinic data
       const printContent = `<!DOCTYPE html>
@@ -866,276 +878,117 @@ export default function PurchaseDetailPage() {
 <head>
   <title>Purchase Receipt - ${purchase.purchaseNo}</title>
   <style>
-    /* Thermal printer optimizations */
-    * {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    
+    @page { margin: 0; size: A4; }
     body {
-      font-family: 'Courier New', monospace;
+      font-family: Arial, sans-serif;
       margin: 0;
       padding: 0;
       background: white;
-      color: #000;
-      font-weight: bold;
-      font-size: 12px;
-      line-height: 1.2;
+      color: #333;
     }
-    
-    body * {
-      font-weight: bold !important;
-      color: #000 !important;
-    }
-    
     .print-container {
-      max-width: 100%;
+      width: 100%;
       margin: 0;
       background: white;
-      padding: 5mm;
+      display: flex;
+      flex-direction: column;
+      min-height: auto;
+      padding: 20mm;
       box-sizing: border-box;
     }
     
-    .header {
-      border-bottom: 1px solid #000;
-      padding-bottom: 10px;
-      margin-bottom: 10px;
+    ${brandingCSS}
+
+    .content {
+      flex: 1;
+      padding: 15mm;
+      min-height: 0;
     }
-    
-    .header-content {
-      display: block;
-    }
-    
-    .header-left {
-      display: block;
-      margin-bottom: 10px;
-    }
-    
-    .header-right {
-      text-align: left;
-      font-size: 11px;
-      color: #000;
-      line-height: 1.3;
-    }
-    
-    .logo {
-      display: none; /* Hide logo for thermal printing to avoid pixelation */
-    }
-    
-    .clinic-info {
-      text-align: left;
-    }
-    
-    .clinic-name {
-      font-weight: bold;
-      color: #000;
-      margin: 0;
-      font-size: 16px;
-    }
-    
-    .tagline {
-      font-size: 11px;
-      color: #000;
-      margin: 3px 0;
-    }
-    
-    .clinic-details {
-      margin-top: 5px;
-      color: #000;
-      font-size: 10px;
-    }
-    
-    .clinic-details p {
-      margin: 2px 0;
-    }
-    
     .document-title {
       text-align: center;
-      margin: 15px 0;
+      margin: 10px 0 20px 0;
     }
-    
     .document-title h2 {
-      font-size: 14px;
-      font-weight: bold;
+      font-size: 18px;
+      font-weight: 800;
       margin: 0;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #475569;
     }
-    
-    .document-subtitle {
+    .receipt-info-section {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 25px;
+      padding: 15px;
+      background-color: #f8fafc;
+      border-radius: 8px;
+      border: 1px solid #f1f5f9;
+    }
+    .info-column h3 {
+      margin: 0 0 8px 0;
       font-size: 11px;
-      color: #000;
-      margin: 3px 0;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    
-    .document-info {
-      display: block;
-      margin-top: 8px;
-      font-size: 10px;
-      color: #000;
-      text-align: center;
-    }
-    
-    .document-info span {
-      display: block;
+    .info-column p {
       margin: 2px 0;
+      font-size: 13px;
+      color: #475569;
     }
-    
-    .content {
-      padding: 5px 0;
-    }
-    
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 15px;
-      font-size: 10px;
+      margin-bottom: 30px;
     }
-    
     .items-table th,
     .items-table td {
-      border: 1px solid #000;
-      padding: 4px;
-      font-size: 10px;
-      background: white !important;
+      border: 1px solid #e2e8f0;
+      padding: 12px 10px;
+      font-size: 12px;
+      color: #475569;
     }
-    
     .items-table th {
-      background-color: white !important;
-      font-weight: bold;
+      background-color: #f8fafc;
+      font-weight: 700;
       text-align: center;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      color: #64748b;
     }
-    
-    .items-table td.text-left {
-      text-align: left;
-    }
-    
-    .items-table td.text-center {
-      text-align: center;
-    }
-    
-    .items-table td.text-right {
-      text-align: right;
-    }
-    
     .summary-section {
-      margin-bottom: 15px;
-    }
-    
-    .summary-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 10px;
-    }
-    
-    .summary-table td {
-      border: 1px solid #000;
-      padding: 4px;
-      font-size: 10px;
-      background: white !important;
-    }
-    
-    .summary-table .font-bold {
-      font-weight: bold;
-    }
-    
-    .payment-section {
+      display: flex;
+      justify-content: flex-end;
       margin-top: 20px;
     }
-    
-    .payment-section h3 {
+    .summary-table {
+      width: 280px;
+      border-collapse: collapse;
+    }
+    .summary-table td {
+      border: 1px solid #e2e8f0;
+      padding: 10px;
       font-size: 12px;
-      font-weight: bold;
-      margin-bottom: 10px;
+      color: #475569;
+    }
+    .font-bold {
+      font-weight: 700;
+    }
+    .total-row {
+      background-color: #f8fafc;
+      font-size: 14px !important;
+      color: #1e293b !important;
     }
     
-    .payment-section table {
-      font-size: 10px;
-    }
-    
-    .payment-section th,
-    .payment-section td {
-      background: white !important;
-    }
-    
-    .footer {
-      border-top: 1px solid #000;
-      padding-top: 8px;
-      margin-top: 15px;
-      text-align: center;
-      font-size: 10px;
-      color: #000;
-    }
-    
-    @media print {
-      @page {
-        size: 80mm auto; /* Standard thermal paper width */
-        margin: 0;
-      }
-      
-      body {
-        padding: 0;
-        margin: 0;
-        font-size: 10px;
-      }
-      
-      .print-container {
-        padding: 2mm;
-        max-width: 100%;
-        box-sizing: border-box;
-      }
-      
-      /* Force black and white for thermal printers */
-      * {
-        color: #000 !important;
-        background: white !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      
-      /* Hide images to prevent pixelation */
-      img {
-        display: none !important;
-      }
-      
-      /* Ensure borders print correctly */
-      table, th, td {
-        border: 1px solid #000 !important;
-      }
-    }
+    @page { margin: 0; size: A4; }
   </style>
 </head>
 <body>
   <div class="print-container">
-    <div class="header">
-      <div class="header-content">
-        <div class="header-left">
-          ${
-            layoutConfig?.logoUrl
-              ? `
-            <img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />
-          `
-              : ""
-          }
-          <div class="clinic-info">
-            <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-            ${
-              layoutConfig?.tagline
-                ? `
-              <p class="tagline">${layoutConfig.tagline}</p>
-            `
-                : ""
-            }
-            <div class="clinic-details">
-              <p>${layoutConfig?.address || clinic?.address || ""}</p>
-              <p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>
-              ${layoutConfig?.phone ? `<p>Phone: ${layoutConfig.phone || clinic?.phone || ""}</p>` : ""}
-              ${layoutConfig?.email ? `<p>Email: ${layoutConfig.email || clinic?.email || ""}</p>` : ""}
-              ${layoutConfig?.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    ${headerHTML}
     
     <div class="document-title">
       <h2>Purchase Receipt</h2>
@@ -1151,10 +1004,11 @@ export default function PurchaseDetailPage() {
       <table class="items-table">
         <thead>
           <tr>
-            <th>Medicine</th>
-            <th>Qty</th>
-            <th>Price (LIFO)</th>
-            <th>Amount</th>
+            <th style="width: 40px; text-align: center;">S.N.</th>
+            <th class="text-center" style="text-align: center;">Medicine</th>
+            <th style="width: 50px; text-align: center;">Qty</th>
+            <th style="width: 100px; text-align: center;">Price (LIFO)</th>
+            <th style="width: 100px; text-align: center;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -1184,9 +1038,7 @@ export default function PurchaseDetailPage() {
       ${paymentsHtml}
     </div>
     
-    <div class="footer">
-      <p>Thank you for choosing us</p>
-    </div>
+    ${footerHTML}
   </div>
   
   <script>

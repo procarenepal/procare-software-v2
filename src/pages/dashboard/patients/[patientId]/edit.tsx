@@ -16,7 +16,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuthContext } from "@/context/AuthContext";
 import { patientService } from "@/services/patientService";
 import { doctorService } from "@/services/doctorService";
-import { Patient, Doctor } from "@/types/models";
+import { referralPartnerService } from "@/services/referralPartnerService";
+import { expertService } from "@/services/expertService";
+import { Patient, Doctor, ReferralPartner, Expert } from "@/types/models";
 import { addToast } from "@/components/ui/toast";
 
 // ── Custom UI Helpers ────────────────────────────────────────────────────────
@@ -118,6 +120,115 @@ function CustomSelect({
   );
 }
 
+/** Referral Source selection for Edit Page */
+function ReferralSourceSelect({
+  sources,
+  value,
+  onChange,
+  loading,
+}: {
+  sources: {
+    id: string;
+    name: string;
+    type: string;
+    rawType: "doctor" | "partner";
+  }[];
+  value: string;
+  onChange: (id: string, name: string, type: "doctor" | "partner" | "") => void;
+  loading?: boolean;
+}) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const filtered = q
+    ? sources.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()))
+    : sources;
+  const selected = sources.find((s) => s.id === value);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={triggerRef} className="flex flex-col gap-1.5 w-full relative">
+      <label className="text-[13px] font-medium text-mountain-700">
+        Referred By
+      </label>
+      <div
+        className="flex items-center border border-mountain-200 rounded h-[38px] bg-white focus-within:border-teal-500 focus-within:ring-1 focus-within:ring-teal-100 px-3 cursor-pointer"
+        onClick={() => setOpen(!open)}
+      >
+        <input
+          autoComplete="off"
+          className="flex-1 bg-transparent outline-none text-[13.5px] text-mountain-800 placeholder:text-mountain-400"
+          placeholder={loading ? "Loading sources..." : "Search source..."}
+          type="text"
+          value={selected && !open ? selected.name : q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {value && (
+          <button
+            className="text-mountain-400 hover:text-mountain-700 ml-1"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange("", "", "");
+              setQ("");
+            }}
+          >
+            <IoCloseOutline className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-[50] bg-white border border-mountain-200 rounded shadow-lg max-h-48 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-[12.5px] text-mountain-400">
+              No sources found
+            </p>
+          ) : (
+            filtered.map((p) => (
+              <button
+                key={p.id}
+                className={`w-full text-left px-3 py-2 hover:bg-teal-50 flex flex-col items-start ${p.id === value ? "bg-teal-50" : ""}`}
+                type="button"
+                onClick={() => {
+                  onChange(p.id!, p.name, p.rawType);
+                  setQ("");
+                  setOpen(false);
+                }}
+              >
+                <span className="text-[13.5px] text-mountain-800 font-medium">
+                  {p.name}
+                </span>
+                <span className="text-[11px] text-mountain-400 capitalize">
+                  {p.type}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function PatientEditPage() {
   const { patientId } = useParams<{ patientId: string }>();
@@ -126,8 +237,14 @@ export default function PatientEditPage() {
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [referralPartners, setReferralPartners] = useState<ReferralPartner[]>(
+    [],
+  );
+  const [experts, setExperts] = useState<Expert[]>([]);
   const [loading, setLoading] = useState(true);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [expertsLoading, setExpertsLoading] = useState(true);
+  const [partnersLoading, setPartnersLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [convertingDate, setConvertingDate] = useState(false);
 
@@ -143,11 +260,33 @@ export default function PatientEditPage() {
     bsDate: "",
     bloodGroup: "",
     age: "",
+    referralPartnerId: "",
     referredBy: "",
+    referralType: "" as "doctor" | "partner" | "",
     phone: "",
     doctor: "",
+    expert: "",
     medicalConditions: [] as string[],
   });
+
+  const referralSources = React.useMemo(() => {
+    return [
+      ...referralPartners.map((p) => ({
+        id: p.id!,
+        name: p.name,
+        type: p.partnerType || "Partner",
+        rawType: "partner" as const,
+      })),
+      ...doctors
+        .filter((d) => !d.isDeleted)
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          type: d.doctorType || "Doctor",
+          rawType: "doctor" as const,
+        })),
+    ];
+  }, [referralPartners, doctors]);
 
   // State for medical conditions input
   const [medicalConditionInput, setMedicalConditionInput] = useState("");
@@ -157,6 +296,8 @@ export default function PatientEditPage() {
     if (patientId && clinicId) {
       loadPatientData();
       loadDoctors();
+      loadExperts();
+      loadPartners();
     } else if (patientId && !clinicId) {
       addToast({
         title: "Error",
@@ -207,9 +348,16 @@ export default function PatientEditPage() {
                   new Date(patientData.dob).toISOString().split("T")[0],
                 )
               : "",
+        referralPartnerId: patientData.referralPartnerId || "",
         referredBy: patientData.referredBy || "",
+        referralType: patientData.referralPartnerId
+          ? "partner"
+          : patientData.referredBy
+            ? "doctor"
+            : "",
         phone: patientData.phone || "",
-        doctor: patientData.doctorId,
+        doctor: patientData.doctorId || "",
+        expert: patientData.assignedExpertId || "",
         medicalConditions: patientData.medicalConditions || [],
       });
     } catch (error) {
@@ -240,6 +388,35 @@ export default function PatientEditPage() {
       });
     } finally {
       setDoctorsLoading(false);
+    }
+  };
+
+  const loadExperts = async () => {
+    if (!clinicId) return;
+    try {
+      setExpertsLoading(true);
+      const expertsData = await expertService.getExpertsByClinic(clinicId);
+
+      setExperts(expertsData.filter((e) => e.isActive));
+    } catch (error) {
+      console.error("Error loading experts:", error);
+    } finally {
+      setExpertsLoading(false);
+    }
+  };
+
+  const loadPartners = async () => {
+    if (!clinicId) return;
+    try {
+      setPartnersLoading(true);
+      const partnersData =
+        await referralPartnerService.getReferralPartnersByClinic(clinicId);
+
+      setReferralPartners(partnersData);
+    } catch (error) {
+      console.error("Error loading partners:", error);
+    } finally {
+      setPartnersLoading(false);
     }
   };
 
@@ -340,8 +517,7 @@ export default function PatientEditPage() {
       !formData.regNumber ||
       !formData.name ||
       !formData.address ||
-      !formData.mobile ||
-      !formData.doctor
+      !formData.mobile
     ) {
       addToast({
         title: "Validation Error",
@@ -377,9 +553,16 @@ export default function PatientEditPage() {
         email: formData.email || "",
         referredBy: formData.referredBy || "",
         phone: formData.phone || "",
-        doctorId: formData.doctor,
+        doctorId: formData.doctor || "",
+        assignedExpertId: formData.expert || "",
         medicalConditions: formData.medicalConditions,
       };
+
+      if (formData.referralPartnerId && formData.referralType === "partner") {
+        updatedPatientData.referralPartnerId = formData.referralPartnerId;
+      } else {
+        updatedPatientData.referralPartnerId = null; // Clear if it was changed to a doctor
+      }
 
       if (formData.gender) updatedPatientData.gender = formData.gender;
       if (formData.bloodGroup)
@@ -611,15 +794,20 @@ export default function PatientEditPage() {
                 onChange={handleFormChange}
               />
               <div className="flex flex-col gap-6">
-                <CustomInput
-                  label="Referred By"
-                  name="referredBy"
-                  placeholder="Enter referral source"
-                  value={formData.referredBy}
-                  onChange={handleFormChange}
+                <ReferralSourceSelect
+                  loading={partnersLoading || doctorsLoading}
+                  sources={referralSources}
+                  value={formData.referralPartnerId}
+                  onChange={(id, name, type) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      referralPartnerId: id,
+                      referredBy: name,
+                      referralType: type,
+                    }))
+                  }
                 />
                 <CustomSelect
-                  required
                   disabled={doctorsLoading}
                   label="Assigned Doctor"
                   name="doctor"
@@ -628,6 +816,17 @@ export default function PatientEditPage() {
                     label: `${d.name} - ${d.speciality}`,
                   }))}
                   value={formData.doctor}
+                  onChange={handleFormChange}
+                />
+                <CustomSelect
+                  disabled={expertsLoading}
+                  label="Assigned Expert"
+                  name="expert"
+                  options={experts.map((e) => ({
+                    value: e.id,
+                    label: `${e.name} - ${e.speciality || "Expert"}`,
+                  }))}
+                  value={formData.expert}
                   onChange={handleFormChange}
                 />
               </div>

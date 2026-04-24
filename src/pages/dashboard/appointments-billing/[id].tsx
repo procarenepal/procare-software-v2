@@ -31,6 +31,12 @@ import { PrintLayoutConfig } from "@/types/printLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { useModalState } from "@/hooks/useModalState";
 import { adToBS } from "@/utils/dateConverter";
+import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
+import { generateAppointmentInvoiceHTML } from "@/utils/invoicePrinting";
 
 // ── UI Helpers (spec: flat, compact, border-based) ─────────────────────────
 function StatusBadge({
@@ -303,10 +309,13 @@ export default function InvoiceDetailPage() {
   // Trigger automatic print if the URL contains `?print=true` once data is loaded
   useEffect(() => {
     if (!loading && invoice && searchParams.get("print") === "true") {
-      // Slight delay to ensure the page is fully rendered before printing
-      setTimeout(() => window.print(), 300);
+      // Overwrite current window with the generated invoice HTML
+      const html = generateAppointmentInvoiceHTML(invoice, clinic, layoutConfig, patient);
+      document.open();
+      document.write(html);
+      document.close();
     }
-  }, [loading, invoice, searchParams]);
+  }, [loading, invoice, searchParams, clinic, layoutConfig, patient]);
 
   const formatCurrency = (amount: number) => {
     return `NPR ${amount.toLocaleString()}`;
@@ -480,759 +489,7 @@ export default function InvoiceDetailPage() {
     const printWindow = window.open("", "_blank", "width=800,height=600");
 
     if (printWindow) {
-      // Build the items HTML
-      const itemsHtml = invoice.items
-        .map(
-          (item) =>
-            `<tr>
-          <td class="text-left">${item.appointmentTypeName}</td>
-          <td class="text-center">${item.quantity}</td>
-          <td class="text-right">NPR ${item.price.toLocaleString()}</td>
-          <td class="text-right">NPR ${item.amount.toLocaleString()}</td>
-        </tr>`,
-        )
-        .join("");
-
-      // Format both AD and BS dates
-      const dateInfo = formatDateWithBS(invoice.invoiceDate);
-
-      // Calculate patient age for print
-      const patientAge = getPatientAge(patient);
-      const patientAgeText = patientAge !== null ? `${patientAge} years` : "";
-      const patientGenderText = patient?.gender
-        ? patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)
-        : "";
-
-      // Generate the HTML content for printing with dynamic clinic data
-      const printContent = `<!DOCTYPE html>
-<html>
-<head>
-  <title>Invoice - ${invoice.invoiceNumber}</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: white;
-      color: #333;
-    }
-    .print-container {
-      max-width: 100%;
-      margin: 0;
-      background: white;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      padding: 10mm;
-      box-sizing: border-box;
-    }
-    .header {
-      border-bottom: 2px solid #333;
-      padding-bottom: ${
-        layoutConfig?.headerHeight === "compact"
-          ? "10px"
-          : layoutConfig?.headerHeight === "expanded"
-            ? "20px"
-            : "15px"
-      };
-      margin-bottom: ${
-        layoutConfig?.headerHeight === "compact"
-          ? "10px"
-          : layoutConfig?.headerHeight === "expanded"
-            ? "20px"
-            : "15px"
-      };
-    }
-    .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 20px;
-    }
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      ${
-        layoutConfig?.logoPosition === "center"
-          ? "justify-content: center; text-align: center;"
-          : layoutConfig?.logoPosition === "right"
-            ? "justify-content: flex-end; text-align: right;"
-            : "justify-content: flex-start; text-align: left;"
-      }
-    }
-    .header-right {
-      text-align: right;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "11px"
-          : layoutConfig?.fontSize === "large"
-            ? "14px"
-            : "12px"
-      };
-      color: #333;
-      line-height: 1.4;
-    }
-    .logo {
-      ${
-        layoutConfig?.logoSize === "small"
-          ? "height: 40px;"
-          : layoutConfig?.logoSize === "large"
-            ? "height: 80px;"
-            : "height: 60px;"
-      }
-      width: auto;
-      object-fit: contain;
-    }
-    .clinic-info {
-      ${layoutConfig?.logoPosition === "center" ? "text-align: center;" : ""}
-    }
-    .clinic-name {
-      font-weight: bold;
-      color: ${layoutConfig?.primaryColor || "#2563eb"};
-      margin: 0;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "20px"
-          : layoutConfig?.fontSize === "large"
-            ? "30px"
-            : "26px"
-      };
-    }
-    .tagline {
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "12px"
-          : layoutConfig?.fontSize === "large"
-            ? "16px"
-            : "14px"
-      };
-      color: #666;
-      margin: 5px 0;
-    }
-    .clinic-details {
-      margin-top: 10px;
-      color: #333;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "11px"
-          : layoutConfig?.fontSize === "large"
-            ? "14px"
-            : "12px"
-      };
-    }
-
-    .clinic-flex{
-        display: flex;
-        justify-content: space-between;
-    }
-
-    .document-title {
-      text-align: center;
-      margin: 20px 0;
-    }
-    .document-title h2 {
-      font-size: 18px;
-      font-weight: 600;
-      margin: 0;
-      text-transform: uppercase;
-    }
-    .document-subtitle {
-      font-size: 14px;
-      color: #666;
-      margin: 5px 0;
-    }
-    .document-info {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 10px;
-      font-size: 14px;
-      color: #666;
-    }
-    .date-info {
-      text-align: right;
-    }
-    .date-bs {
-      font-size: 12px;
-      color: #888;
-      font-style: italic;
-    }
-    .content {
-      flex: 1;
-      padding: 10px 0;
-      min-height: 0;
-    }
-    .bill-to-section {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 30px;
-      padding: 15px;
-      background-color: #f8f9fa;
-      border-radius: 5px;
-    }
-    .bill-to-section h3 {
-      margin: 0 0 10px 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: #333;
-    }
-    .bill-to-section p {
-      margin: 2px 0;
-      font-size: 12px;
-    }
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    .items-table th,
-    .items-table td {
-      border: 1px solid #333;
-      padding: 8px;
-      font-size: 12px;
-    }
-    .items-table th {
-      background-color: #f5f5f5;
-      font-weight: bold;
-      text-align: center;
-    }
-    .items-table td.text-left {
-      text-align: left;
-    }
-    .items-table td.text-center {
-      text-align: center;
-    }
-    .items-table td.text-right {
-      text-align: right;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 20px;
-    }
-    .summary-table {
-      width: 300px;
-      border-collapse: collapse;
-    }
-    .summary-table td {
-      border: 1px solid #333;
-      padding: 8px;
-      font-size: 12px;
-    }
-    .summary-table .font-bold {
-      font-weight: bold;
-    }
-
-    .footer {
-      border-top: 1px solid #333;
-      padding-top: 10px;
-      margin-top: auto;
-      text-align: center;
-      font-size: ${
-        layoutConfig?.fontSize === "small"
-          ? "11px"
-          : layoutConfig?.fontSize === "large"
-            ? "13px"
-            : "12px"
-      };
-      color: #666;
-      flex-shrink: 0;
-    }
-
-    /* Responsive adjustments for smaller page sizes - preserving layout */
-    @media print and (max-width: 7in), print and (max-height: 9in) {
-      .print-container {
-        padding: 4mm !important;
-      }
-      
-      .header {
-        padding-bottom: ${
-          layoutConfig?.headerHeight === "compact"
-            ? "8px"
-            : layoutConfig?.headerHeight === "expanded"
-              ? "15px"
-              : "12px"
-        } !important;
-        margin-bottom: ${
-          layoutConfig?.headerHeight === "compact"
-            ? "8px"
-            : layoutConfig?.headerHeight === "expanded"
-              ? "15px"
-              : "12px"
-        } !important;
-      }
-      
-      .header-content {
-        gap: 15px !important;
-      }
-      
-      .header-left {
-        gap: 15px !important;
-      }
-      
-      .clinic-name {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "18px"
-            : layoutConfig?.fontSize === "large"
-              ? "26px"
-              : "22px"
-        } !important;
-      }
-      
-      .tagline {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "11px"
-            : layoutConfig?.fontSize === "large"
-              ? "14px"
-              : "12px"
-        } !important;
-        margin: 4px 0 !important;
-      }
-      
-      .clinic-details {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "10px"
-            : layoutConfig?.fontSize === "large"
-              ? "12px"
-              : "11px"
-        } !important;
-        margin-top: 8px !important;
-      }
-      
-      .header-right {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "10px"
-            : layoutConfig?.fontSize === "large"
-              ? "12px"
-              : "11px"
-        } !important;
-      }
-      
-      .logo {
-        height: ${
-          layoutConfig?.logoSize === "small"
-            ? "35px"
-            : layoutConfig?.logoSize === "large"
-              ? "65px"
-              : "50px"
-        } !important;
-      }
-      
-      .document-title {
-        margin: 15px 0 !important;
-      }
-      
-      .document-title h2 {
-        font-size: 16px !important;
-      }
-      
-      .document-subtitle {
-        font-size: 12px !important;
-        margin: 4px 0 !important;
-      }
-      
-      .document-info {
-        font-size: 12px !important;
-        margin-top: 8px !important;
-      }
-      
-      .date-bs {
-        font-size: 10px !important;
-      }
-      
-      .content {
-        padding: 8px 0 !important;
-      }
-      
-      .bill-to-section {
-        margin-bottom: 20px !important;
-        padding: 12px !important;
-      }
-      
-      .bill-to-section h3 {
-        font-size: 12px !important;
-        margin: 0 0 8px 0 !important;
-      }
-      
-      .bill-to-section p {
-        font-size: 10px !important;
-        margin: 1px 0 !important;
-      }
-      
-      .bill-to-section p[style*="color: #666"] {
-        font-size: 9px !important;
-        margin: 1px 0 !important;
-      }
-      
-      .items-table {
-        margin-bottom: 15px !important;
-      }
-      
-      .items-table th,
-      .items-table td {
-        padding: 6px !important;
-        font-size: 10px !important;
-      }
-      
-      .summary-section {
-        margin-bottom: 15px !important;
-      }
-      
-      .summary-table {
-        width: 280px !important;
-      }
-      
-      .summary-table td {
-        padding: 6px !important;
-        font-size: 10px !important;
-      }
-      
-      .footer {
-        padding-top: 8px !important;
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "10px"
-            : layoutConfig?.fontSize === "large"
-              ? "12px"
-              : "11px"
-        } !important;
-      }
-    }
-
-    /* Only for very small page sizes - minimal layout changes */
-    @media print and (max-width: 5in), print and (max-height: 7in) {
-      .print-container {
-        padding: 2mm !important;
-      }
-      
-      .header {
-        padding-bottom: ${
-          layoutConfig?.headerHeight === "compact"
-            ? "6px"
-            : layoutConfig?.headerHeight === "expanded"
-              ? "12px"
-              : "8px"
-        } !important;
-        margin-bottom: ${
-          layoutConfig?.headerHeight === "compact"
-            ? "6px"
-            : layoutConfig?.headerHeight === "expanded"
-              ? "12px"
-              : "8px"
-        } !important;
-      }
-      
-      .header-content {
-        gap: 10px !important;
-      }
-      
-      .header-left {
-        gap: 10px !important;
-      }
-      
-      .clinic-name {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "16px"
-            : layoutConfig?.fontSize === "large"
-              ? "22px"
-              : "18px"
-        } !important;
-      }
-      
-      .tagline {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "9px"
-            : layoutConfig?.fontSize === "large"
-              ? "12px"
-              : "10px"
-        } !important;
-        margin: 3px 0 !important;
-      }
-      
-      .clinic-details {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "9px"
-            : layoutConfig?.fontSize === "large"
-              ? "11px"
-              : "10px"
-        } !important;
-        margin-top: 6px !important;
-      }
-      
-      .header-right {
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "9px"
-            : layoutConfig?.fontSize === "large"
-              ? "11px"
-              : "10px"
-        } !important;
-      }
-      
-      .logo {
-        height: ${
-          layoutConfig?.logoSize === "small"
-            ? "30px"
-            : layoutConfig?.logoSize === "large"
-              ? "55px"
-              : "45px"
-        } !important;
-      }
-      
-      .document-title {
-        margin: 10px 0 !important;
-      }
-      
-      .document-title h2 {
-        font-size: 14px !important;
-      }
-      
-      .document-subtitle {
-        font-size: 10px !important;
-        margin: 3px 0 !important;
-      }
-      
-      .document-info {
-        font-size: 10px !important;
-        margin-top: 6px !important;
-      }
-      
-      .date-bs {
-        font-size: 9px !important;
-      }
-      
-      .content {
-        padding: 6px 0 !important;
-      }
-      
-      .bill-to-section {
-        margin-bottom: 15px !important;
-        padding: 8px !important;
-      }
-      
-      .bill-to-section h3 {
-        font-size: 11px !important;
-        margin: 0 0 6px 0 !important;
-      }
-      
-      .bill-to-section p {
-        font-size: 9px !important;
-        margin: 1px 0 !important;
-      }
-      
-      .bill-to-section p[style*="color: #666"] {
-        font-size: 8px !important;
-        margin: 1px 0 !important;
-      }
-      
-      .items-table {
-        margin-bottom: 10px !important;
-      }
-      
-      .items-table th,
-      .items-table td {
-        padding: 4px !important;
-        font-size: 9px !important;
-      }
-      
-      .summary-section {
-        margin-bottom: 10px !important;
-      }
-      
-      .summary-table {
-        width: 240px !important;
-      }
-      
-      .summary-table td {
-        padding: 4px !important;
-        font-size: 9px !important;
-      }
-      
-      .footer {
-        padding-top: 6px !important;
-        font-size: ${
-          layoutConfig?.fontSize === "small"
-            ? "8px"
-            : layoutConfig?.fontSize === "large"
-              ? "10px"
-              : "9px"
-        } !important;
-      }
-
-      .clinic-flex {
-          display: flex;
-          justify-content: space-between;
-      }
-    }
-
-    @media print {
-      body {
-        padding: 0;
-        margin: 0;
-      }
-      .print-container {
-        height: 100vh;
-        padding: 5mm;
-        max-width: 100%;
-        box-sizing: border-box;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="print-container">
-    <div class="header">
-      <div class="header-content">
-        <div class="header-left">
-          ${
-            layoutConfig?.logoUrl
-              ? `
-            <img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />
-          `
-              : ""
-          }
-          <div class="clinic-info">
-            <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-            ${
-              layoutConfig?.tagline
-                ? `
-              <p class="tagline">${layoutConfig.tagline}</p>
-            `
-                : ""
-            }
-            <div class="clinic-flex">
-              <div class="clinic-details">
-                <p>${layoutConfig?.address || clinic?.address || ""}</p>
-                <p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>
-                ${layoutConfig?.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
-              </div>
-              <div class="clinic-contact">
-                <p><strong>Phone:</strong> ${layoutConfig?.phone || clinic?.phone || ""}</p>
-                <p><strong>Email:</strong> ${layoutConfig?.email || clinic?.email || ""}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-      </div>
-    </div>
-    
-    <div class="document-title">
-      <h2>Invoice</h2>
-      <p class="document-subtitle">Appointment Billing</p>
-      <div class="document-info">
-        <span>Invoice No: ${invoice.invoiceNumber}</span>
-        <div class="date-info">
-          <div>${dateInfo.ad}</div>
-          ${dateInfo.bsReadable ? `<div class="date-bs">${dateInfo.bsReadable} BS</div>` : ""}
-        </div>
-      </div>
-    </div>
-    
-    <div class="content">
-      <div class="bill-to-section">
-        <div>
-          <h3>Bill To:</h3>
-          <p><strong>Name: ${invoice.patientName}</strong></p>
-          ${patientAgeText ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Age: ${patientAgeText}</p>` : ""}
-          ${patientGenderText ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Gender: ${patientGenderText}</p>` : ""}
-          ${patient?.address ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Address: ${patient.address}</p>` : ""}
-        </div>
-        <div>
-          <h3></h3>
-          <p><strong></strong></p>
-        </div>
-      </div>
-      
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th>Service</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml}
-        </tbody>
-      </table>
-      
-      <div class="summary-section">
-        <table class="summary-table">
-          <tbody>
-            <tr>
-              <td>Subtotal</td>
-              <td class="text-right">NPR ${invoice.subtotal.toLocaleString()}</td>
-            </tr>
-            <tr>
-              <td>Discount${invoice.discountType === "percent" ? ` (${invoice.discountValue}%)` : " (Flat)"}</td>
-              <td class="text-right">- NPR ${invoice.discountAmount.toLocaleString()}</td>
-            </tr>
-            ${
-              invoice.taxAmount > 0
-                ? `
-            <tr>
-              <td>Tax (${invoice.taxPercentage}%)</td>
-              <td class="text-right">NPR ${invoice.taxAmount.toLocaleString()}</td>
-            </tr>
-            `
-                : ""
-            }
-            <tr class="font-bold">
-              <td>Total Amount</td>
-              <td class="text-right">NPR ${invoice.totalAmount.toLocaleString()}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      
-
-      
-      ${
-        invoice.notes
-          ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px;">Notes:</h3>
-        <p style="margin: 0; font-size: 12px;">${invoice.notes}</p>
-      </div>
-      `
-          : ""
-      }
-    </div>
-    
-    <div class="footer">
-      ${layoutConfig?.footerText ? `<p>${layoutConfig.footerText}</p>` : ""}
-    </div>
-  </div>
-  
-  <script>
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        window.print();
-      }, 500);
-    });
-    
-    window.addEventListener('afterprint', function() {
-      window.close();
-    });
-    
-    window.addEventListener('beforeunload', function() {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage('printComplete', '*');
-      }
-    });
-  </script>
-</body>
-</html>`;
-
+      const printContent = generateAppointmentInvoiceHTML(invoice, clinic, layoutConfig, patient);
       printWindow.document.write(printContent);
       printWindow.document.close();
     } else {
@@ -1459,15 +716,19 @@ export default function InvoiceDetailPage() {
               <table className="w-full clarity-table border-collapse">
                 <thead>
                   <tr>
+                    <th className="text-center w-10">S.N.</th>
                     <th className="text-left">Service</th>
-                    <th className="text-center">Qty</th>
-                    <th className="text-right">Price</th>
-                    <th className="text-right">Amount</th>
+                    <th className="text-center w-16">Qty</th>
+                    <th className="text-right w-24">Price</th>
+                    <th className="text-right w-24">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
                   {invoice.items.map((item, index) => (
                     <tr key={index}>
+                      <td className="text-center text-[13px] text-mountain-400">
+                        {index + 1}
+                      </td>
                       <td>
                         <div>
                           <p className="font-medium text-mountain-800 text-[13px]">
@@ -1480,11 +741,13 @@ export default function InvoiceDetailPage() {
                           )}
                         </div>
                       </td>
-                      <td className="text-center">{item.quantity}</td>
-                      <td className="text-right">
+                      <td className="text-center text-[13px]">
+                        {item.quantity}
+                      </td>
+                      <td className="text-right text-[13px]">
                         {formatCurrency(item.price)}
                       </td>
-                      <td className="text-right">
+                      <td className="text-right text-[13px]">
                         {formatCurrency(item.amount)}
                       </td>
                     </tr>
@@ -1556,17 +819,69 @@ export default function InvoiceDetailPage() {
               </div>
               <div>
                 <h4 className="text-[11px] font-semibold text-mountain-500 uppercase tracking-wider mb-1.5">
-                  Doctor Information
+                  {((): boolean => {
+                    const docIds = new Set(
+                      invoice.items
+                        .filter((i) => i.doctorId)
+                        .map((i) => i.doctorId),
+                    );
+
+                    if (invoice.doctorId) docIds.add(invoice.doctorId);
+
+                    return docIds.size > 1;
+                  })()
+                    ? "Clinical Team"
+                    : "Doctor Information"}
                 </h4>
-                <div className="space-y-0.5 text-mountain-800">
-                  <p>
-                    <span className="font-medium">Name:</span>{" "}
-                    {invoice.doctorName}
-                  </p>
-                  <p>
-                    <span className="font-medium">Type:</span>{" "}
-                    {invoice.doctorType}
-                  </p>
+                <div className="space-y-3">
+                  {(() => {
+                    const uniqueDocs = new Map();
+
+                    // Add items' doctors
+                    invoice.items.forEach((item) => {
+                      if (item.doctorId && !uniqueDocs.has(item.doctorId)) {
+                        uniqueDocs.set(item.doctorId, {
+                          id: item.doctorId,
+                          name: item.doctorName,
+                          isPrimary: item.doctorId === invoice.doctorId,
+                        });
+                      }
+                    });
+                    // Ensure primary doctor is in list if not already
+                    if (invoice.doctorId && !uniqueDocs.has(invoice.doctorId)) {
+                      uniqueDocs.set(invoice.doctorId, {
+                        id: invoice.doctorId,
+                        name: invoice.doctorName,
+                        isPrimary: true,
+                      });
+                    }
+
+                    const docs = Array.from(uniqueDocs.values());
+
+                    return docs.map((doc, idx) => (
+                      <div
+                        key={idx}
+                        className="space-y-0.5 text-mountain-800 border-l-2 border-teal-100 pl-2"
+                      >
+                        <p className="flex items-center gap-2">
+                          <span className="font-medium">Name:</span> {doc.name}
+                          {doc.isPrimary && docs.length > 1 && (
+                            <span className="text-[9px] font-bold text-teal-600 bg-teal-50 px-1 border border-teal-100 rounded">
+                              Primary
+                            </span>
+                          )}
+                        </p>
+                        {doc.isPrimary && (
+                          <p>
+                            <span className="font-medium text-mountain-500">
+                              Type:
+                            </span>{" "}
+                            {invoice.doctorType}
+                          </p>
+                        )}
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
               <div>
@@ -1753,14 +1068,14 @@ export default function InvoiceDetailPage() {
                     className={
                       invoice.balanceAmount -
                         (parseFloat(paymentForm.amount) || 0) <=
-                      0
+                        0
                         ? "text-health-600"
                         : "text-red-600"
                     }
                   >
                     {formatCurrency(
                       invoice.balanceAmount -
-                        (parseFloat(paymentForm.amount) || 0),
+                      (parseFloat(paymentForm.amount) || 0),
                     )}
                   </span>
                 </div>
@@ -1770,14 +1085,14 @@ export default function InvoiceDetailPage() {
                     className={
                       invoice.balanceAmount -
                         (parseFloat(paymentForm.amount) || 0) <=
-                      0
+                        0
                         ? "text-health-600 font-semibold"
                         : "text-saffron-600 font-semibold"
                     }
                   >
                     {invoice.balanceAmount -
                       (parseFloat(paymentForm.amount) || 0) <=
-                    0
+                      0
                       ? "Fully Paid"
                       : "Partially Paid"}
                   </span>

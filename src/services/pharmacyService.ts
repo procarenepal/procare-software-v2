@@ -334,9 +334,9 @@ export const pharmacyService = {
         current.returns,
       )
         ? current.returns.map((r: any) => ({
-          ...r,
-          createdAt: r.createdAt?.toDate ? r.createdAt.toDate() : r.createdAt,
-        }))
+            ...r,
+            createdAt: r.createdAt?.toDate ? r.createdAt.toDate() : r.createdAt,
+          }))
         : [];
 
       const allReturns = [...existingReturns, returnRecord];

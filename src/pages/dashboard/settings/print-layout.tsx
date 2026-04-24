@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Input, Textarea } from "@heroui/input";
 import { Button } from "@heroui/button";
@@ -24,6 +24,11 @@ import { Progress } from "@heroui/progress";
 
 import { uploadImage } from "@/services/appwriteStorageService";
 import { clinicService } from "@/services/clinicService";
+import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
 import { useAuthContext } from "@/context/AuthContext";
 import { title } from "@/components/primitives";
 import {
@@ -41,9 +46,15 @@ export default function PrintLayoutPage() {
   const [clinic, setClinic] = useState<any>(null); // Store clinic object
   const [isPrinting, setIsPrinting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [zoom, setZoom] = useState(0.85); // Default zoom logic
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [layoutConfig, setLayoutConfig] = useState<PrintLayoutConfig>(
     createPrintLayoutConfig(clinicId || "", currentUser?.uid || ""),
+  );
+
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(
+    null,
   );
 
   useEffect(() => {
@@ -61,17 +72,33 @@ export default function PrintLayoutPage() {
         if (config) {
           setLayoutConfig({
             ...config,
-            clinicName: clinicObj?.name || config.clinicName || "",
-            phone: config.phone || clinicObj?.phone || "",
-            email: config.email || clinicObj?.email || "",
+            clinicName: config.clinicName ?? clinicObj?.name ?? "",
+            phone: config.phone ?? clinicObj?.phone ?? "",
+            email: config.email ?? clinicObj?.email ?? "",
+            // Use existing address or provide a clean default
+            address: config.address ?? "",
+            city: config.city ?? clinicObj?.city ?? "Kathmandu",
+            state: config.state ?? "Bagmati",
+            zipCode: config.zipCode ?? "44600",
+            country: config.country ?? "Nepal",
           });
         } else if (clinicObj) {
+          // New configuration: Compose everything for the user
+          const defaultCity = clinicObj.city || "Kathmandu";
+          const defaultState = "Bagmati";
+          const defaultZip = "44600";
+
           setLayoutConfig((prev) => ({
             ...prev,
-            clinicName: clinicObj.name || "",
-            city: clinicObj.city || "",
-            phone: clinicObj.phone || "",
-            email: clinicObj.email || "",
+            clinicName: clinicObj.name ?? "",
+            city: defaultCity,
+            state: defaultState,
+            zipCode: defaultZip,
+            country: "Nepal",
+            phone: clinicObj.phone ?? "",
+            email: clinicObj.email ?? "",
+            // Compose the full address string for the Studio by default
+            address: `${clinicObj.address || "Street Address"}\n${defaultCity}, ${defaultState} ${defaultZip}\nNepal`,
           }));
         }
       } catch (error) {
@@ -117,6 +144,39 @@ export default function PrintLayoutPage() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCoordinateChange = (
+    elementId:
+      | "logo"
+      | "clinicName"
+      | "tagline"
+      | "address"
+      | "phone"
+      | "email"
+      | "website",
+    pos: { x: number; y: number },
+  ) => {
+    setLayoutConfig((prev) => ({
+      ...prev,
+      [`${elementId}Pos`]: pos,
+    }));
+  };
+
+  const handleTextChange = (field: string, text: string) => {
+    setLayoutConfig((prev) => ({
+      ...prev,
+      [field]: text,
+    }));
+  };
+
+  const handleWidthChange = (elementId: string, width: number) => {
+    if (elementId === "logo") {
+      setLayoutConfig((prev) => ({
+        ...prev,
+        logoWidth: Math.max(40, width),
+      }));
     }
   };
 
@@ -199,277 +259,123 @@ export default function PrintLayoutPage() {
   };
 
   const handlePrint = () => {
+    if (!layoutConfig) return;
     setIsPrinting(true);
 
-    // Create a new window for printing
-    const printWindow = window.open("", "_blank", "width=800,height=600");
+    // Create hidden iframe for printing
+    const iframeId = "print-layout-iframe";
+    let iframe = document.getElementById(iframeId) as HTMLIFrameElement;
 
-    if (printWindow) {
-      // Generate the HTML content for printing using the shared template structure
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Print Layout - ${clinic?.name || "Clinic"}</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              margin: 0;
-              padding: 0;
-              background: white;
-              color: #333;
-            }
-            .print-container {
-              max-width: 100%;
-              margin: 0;
-              background: white;
-              display: flex;
-              flex-direction: column;
-              height: 100vh;
-              padding: 10mm;
-              box-sizing: border-box;
-            }
-            .header {
-              border-bottom: 2px solid #333;
-              padding-bottom: ${
-                layoutConfig.headerHeight === "compact"
-                  ? "10px"
-                  : layoutConfig.headerHeight === "expanded"
-                    ? "20px"
-                    : "15px"
-              };
-              margin-bottom: ${
-                layoutConfig.headerHeight === "compact"
-                  ? "10px"
-                  : layoutConfig.headerHeight === "expanded"
-                    ? "20px"
-                    : "15px"
-              };
-            }
-            .header-content {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              gap: 20px;
-            }
-            .header-left {
-              display: flex;
-              align-items: center;
-              gap: 20px;
-              ${
-                layoutConfig.logoPosition === "center"
-                  ? "justify-content: center; text-align: center;"
-                  : layoutConfig.logoPosition === "right"
-                    ? "justify-content: flex-end; text-align: right;"
-                    : "justify-content: flex-start; text-align: left;"
-              }
-            }
-            .header-right {
-              text-align: right;
-              font-size: ${
-                layoutConfig.fontSize === "small"
-                  ? "11px"
-                  : layoutConfig.fontSize === "large"
-                    ? "14px"
-                    : "12px"
-              };
-              color: #333;
-              line-height: 1.4;
-            }
-            .logo {
-              ${
-                layoutConfig.logoSize === "small"
-                  ? "height: 40px;"
-                  : layoutConfig.logoSize === "large"
-                    ? "height: 80px;"
-                    : "height: 60px;"
-              }
-              width: auto;
-              object-fit: contain;
-            }
-            .clinic-info {
-              ${layoutConfig.logoPosition === "center" ? "text-align: center;" : ""}
-            }
-            .clinic-name {
-              font-weight: bold;
-              color: ${layoutConfig.primaryColor};
-              margin: 0;
-              ${
-                layoutConfig.fontSize === "small"
-                  ? "font-size: 20px;"
-                  : layoutConfig.fontSize === "large"
-                    ? "font-size: 30px;"
-                    : "font-size: 26px;"
-              }
-            }
-            .tagline {
-              font-size: ${
-                layoutConfig.fontSize === "small"
-                  ? "12px"
-                  : layoutConfig.fontSize === "large"
-                    ? "16px"
-                    : "14px"
-              };
-              color: #666;
-              margin: 5px 0;
-            }
-            .clinic-details {
-              margin-top: 10px;
-              color: #333;
-              ${
-                layoutConfig.fontSize === "small"
-                  ? "font-size: 11px;"
-                  : layoutConfig.fontSize === "large"
-                    ? "font-size: 14px;"
-                    : "font-size: 12px;"
-              }
-            }
-            .content {
-              flex: 1;
-              padding: 10px 0;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              min-height: 0;
-            }
-            .content-placeholder {
-              text-align: center;
-              color: #999;
-              font-size: 18px;
-            }
-            .footer {
-              border-top: 1px solid #333;
-              padding-top: 10px;
-              margin-top: auto;
-              text-align: center;
-              ${
-                layoutConfig.fontSize === "small"
-                  ? "font-size: 11px;"
-                  : layoutConfig.fontSize === "large"
-                    ? "font-size: 13px;"
-                    : "font-size: 12px;"
-              }
-              color: #666;
-              flex-shrink: 0;
-            }
-            @media print {
-              body {
-                padding: 0;
-                margin: 0;
-              }
-              .print-container {
-                height: 100vh;
-                padding: 5mm;
-                max-width: 100%;
-                box-sizing: border-box;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-container">
-            <div class="header">
-              <div class="header-content">
-                <div class="header-left">
-                  ${
-                    layoutConfig.logoUrl
-                      ? `
-                    <img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />
-                  `
-                      : ""
-                  }
-                  <div class="clinic-info">
-                    <h1 class="clinic-name">${clinic?.name || "Clinic Name"}</h1>
-                    ${
-                      layoutConfig.tagline
-                        ? `
-                      <p class="tagline">${layoutConfig.tagline}</p>
-                    `
-                        : ""
-                    }
-                    <div class="clinic-details">
-                      <p>${layoutConfig.address}</p>
-                      <p>${layoutConfig.city || clinic?.city || ""}${layoutConfig.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig.zipCode || ""}</p>
-                      ${layoutConfig.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
-                    </div>
-                  </div>
-                </div>
-                <div class="header-right">
-                  <p><strong>Phone:</strong> ${layoutConfig.phone || clinic?.phone || ""}</p>
-                  <p><strong>Email:</strong> ${layoutConfig.email || clinic?.email || ""}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div class="content">
-              <div class="content-placeholder">
-                <p><strong>Document Content Area</strong></p>
-                <p>This is where your document content will appear</p>
-              </div>
-            </div>
-            
-            ${
-              layoutConfig.showFooter && layoutConfig.footerText
-                ? `
-              <div class="footer">
-                <p>${layoutConfig.footerText}</p>
-              </div>
-            `
-                : ""
-            }
-          </div>
-          
-          <script>
-            // Wait for images to load, then trigger print
-            window.addEventListener('load', function() {
-              setTimeout(function() {
-                window.print();
-              }, 500);
-            });
-            
-            // Handle print dialog events
-            window.addEventListener('afterprint', function() {
-              window.close();
-            });
-            
-            // Fallback to close window if user cancels print
-            window.addEventListener('beforeunload', function() {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage('printComplete', '*');
-              }
-            });
-          </script>
-        </body>
-        </html>
-      `;
-
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-
-      // Listen for messages from the print window
-      const handleMessage = (event: MessageEvent) => {
-        if (event.data === "printComplete") {
-          setIsPrinting(false);
-          window.removeEventListener("message", handleMessage);
-        }
-      };
-
-      window.addEventListener("message", handleMessage);
-
-      // Fallback timeout to reset printing state
-      setTimeout(() => {
-        setIsPrinting(false);
-        window.removeEventListener("message", handleMessage);
-      }, 10000); // 10 seconds timeout
-    } else {
-      setIsPrinting(false);
-      addToast({
-        title: "Error",
-        description:
-          "Unable to open print window. Please check your browser settings.",
-        color: "danger",
-      });
+    if (iframe) {
+      document.body.removeChild(iframe);
     }
+
+    iframe = document.createElement("iframe");
+    iframe.id = iframeId;
+    iframe.style.position = "absolute";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
+      setIsPrinting(false);
+      return;
+    }
+
+    const headerHeight =
+      layoutConfig.headerHeight === "compact" ? 140 :
+        layoutConfig.headerHeight === "expanded" ? 220 : 180;
+
+    const primaryColor = layoutConfig.primaryColor || "#0ea5e9";
+    const fontSize = layoutConfig.fontSize || "medium";
+
+    const brandingCSS = getPrintBrandingCSS(layoutConfig);
+    const headerHTML = getPrintHeaderHTML(layoutConfig, clinic);
+    const footerHTML = getPrintFooterHTML(layoutConfig);
+
+    const printHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Print Layout - ${clinic?.name || "Clinic"}</title>
+        <style>
+          @page { margin: 0; size: A4; }
+          body {
+            margin: 0;
+            padding: 0;
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .print-container {
+            width: 210mm;
+            height: 297mm;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+          }
+          
+          ${brandingCSS}
+
+          .content-area {
+            flex: 1;
+            padding: 20mm 15mm;
+          }
+          .placeholder-box {
+            padding: 60px;
+            border: 2px dashed #e5e7eb;
+            border-radius: 16px;
+            text-align: center;
+            color: #cbd5e1;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-container">
+          ${headerHTML}
+
+          <div class="content-area">
+            <div class="placeholder-box">
+              <h2 style="margin: 0 0 12px 0; color: #94a3b8; font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.01em;">Document Content Area</h2>
+              <p style="margin: 4px 0; font-size: 13px;">This represents where your clinical findings, prescriptions,</p>
+              <p style="margin: 4px 0; font-size: 13px;">and pathology reports will be rendered automatically.</p>
+            </div>
+          </div>
+
+          ${footerHTML}
+        </div>
+      </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(printHtml);
+    doc.close();
+
+    // Small delay to ensure styles and fonts are loaded (especially for Inter)
+    setTimeout(() => {
+      if (iframe.contentWindow) {
+        // Setup cleanup listeners BEFORE calling print()
+        const handleAfterPrint = () => {
+          setIsPrinting(false);
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+          window.removeEventListener('focus', handleAfterPrint);
+        };
+
+        // Listen for the dialog closing (either Print or Cancel)
+        iframe.contentWindow.addEventListener('afterprint', handleAfterPrint);
+        window.addEventListener('focus', handleAfterPrint, { once: true });
+
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      }
+    }, 1000);
   };
 
   if (loading) {
@@ -765,11 +671,10 @@ export default function PrintLayoutPage() {
                     <div className="space-y-3">
                       {/* File Drop Zone */}
                       <div
-                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                          isUploading
-                            ? "border-primary bg-primary/5 opacity-50"
-                            : "border-default-300 hover:border-default-400 cursor-pointer"
-                        }`}
+                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${isUploading
+                          ? "border-primary bg-primary/5 opacity-50"
+                          : "border-default-300 hover:border-default-400 cursor-pointer"
+                          }`}
                         onDragEnter={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -941,9 +846,12 @@ export default function PrintLayoutPage() {
                           | "medium"
                           | "large";
 
+                        const width = size === "small" ? 60 : size === "large" ? 140 : 100;
+
                         setLayoutConfig((prev) => ({
                           ...prev,
                           logoSize: size,
+                          logoWidth: width,
                         }));
                       }}
                     >
@@ -1060,7 +968,7 @@ export default function PrintLayoutPage() {
                       type="number"
                       value={
                         layoutConfig.contentTopMarginWithoutLetterheadMm !==
-                        undefined
+                          undefined
                           ? layoutConfig.contentTopMarginWithoutLetterheadMm.toString()
                           : "20"
                       }
@@ -1089,61 +997,106 @@ export default function PrintLayoutPage() {
           >
             <Card>
               <CardHeader className="bg-default-50 border-b border-default-200">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
                     <IoEyeOutline className="w-5 h-5 text-primary" />
-                    <h3 className="text-lg font-semibold">
+                    <h3 className="text-lg font-semibold whitespace-nowrap">
                       Print Layout Preview
                     </h3>
                   </div>
-                  {previewMode && (
-                    <div className="flex gap-2">
+
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                       <Button
-                        color="default"
-                        isDisabled={isPrinting}
-                        isLoading={isPrinting}
+                        isIconOnly
                         size="sm"
-                        startContent={<IoPrintOutline />}
-                        variant="flat"
-                        onPress={handlePrint}
+                        variant="light"
+                        className="h-7 w-7 min-w-0"
+                        onPress={() => setZoom(prev => Math.max(0.4, prev - 0.1))}
                       >
-                        {isPrinting ? "Printing..." : "Print"}
+                        -
                       </Button>
+                      <span className="text-[10px] font-bold text-slate-500 w-12 text-center">
+                        {Math.round(zoom * 100)}%
+                      </span>
                       <Button
-                        color="primary"
+                        isIconOnly
                         size="sm"
-                        startContent={<IoEyeOutline />}
-                        variant="flat"
-                        onPress={() => setPreviewMode(false)}
+                        variant="light"
+                        className="h-7 w-7 min-w-0"
+                        onPress={() => setZoom(prev => Math.min(1.5, prev + 0.1))}
                       >
-                        Edit
+                        +
                       </Button>
                     </div>
-                  )}
+
+                    {previewMode && (
+                      <div className="flex gap-2">
+                        <Button
+                          color="default"
+                          isDisabled={isPrinting}
+                          isLoading={isPrinting}
+                          size="sm"
+                          startContent={<IoPrintOutline />}
+                          variant="flat"
+                          onPress={handlePrint}
+                        >
+                          {isPrinting ? "Printing..." : "Print"}
+                        </Button>
+                        <Button
+                          color="primary"
+                          size="sm"
+                          startContent={<IoEyeOutline />}
+                          variant="flat"
+                          onPress={() => setPreviewMode(false)}
+                        >
+                          Edit
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
-              <CardBody>
-                <PrintLayoutTemplate
-                  className={`${previewMode ? "min-h-[800px]" : "min-h-[600px]"} print-preview`}
-                  clinicName={clinic?.name}
-                  layoutConfig={layoutConfig}
-                  showInPrint={true}
+              <CardBody className="p-0 overflow-auto bg-slate-50 flex justify-center">
+                <div
+                  ref={containerRef}
+                  className="relative p-10 transition-all duration-300 origin-top"
+                  style={{
+                    transform: `scale(${zoom})`,
+                  }}
                 >
-                  {/* Sample Content - This will take up the remaining space */}
-                  <div
-                    className="flex-1 flex items-center justify-center"
-                    style={{ padding: previewMode ? "20px" : "10px" }}
+                  <PrintLayoutTemplate
+                    className="min-h-[842px] print-preview shadow-2xl"
+                    clinicName={clinic?.name}
+                    isDesignMode={!previewMode}
+                    layoutConfig={layoutConfig}
+                    selectedElementId={selectedElementId}
+                    showInPrint={false}
+                    zoom={zoom}
+                    onCoordinateChange={handleCoordinateChange}
+                    onElementClick={setSelectedElementId}
+                    onTextChange={handleTextChange}
+                    onWidthChange={handleWidthChange}
                   >
-                    <div className="text-center text-gray-400">
-                      <p className="text-lg font-medium">
-                        Document Content Area
-                      </p>
-                      <p className="text-sm mt-2">
-                        This is where your document content will appear
-                      </p>
+                    {/* Sample Content - This will take up the remaining space */}
+                    <div
+                      className="flex-1 flex items-center justify-center p-10"
+                    >
+                      <div className="text-center w-full max-w-md">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-slate-200">
+                          <IoBusinessOutline className="w-8 h-8 text-slate-300" />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-400 mb-2 uppercase tracking-tight">
+                          Document Content Area
+                        </h2>
+                        <div className="h-0.5 w-12 bg-slate-100 mx-auto mb-4" />
+                        <p className="text-sm text-slate-400 leading-relaxed">
+                          This area represents where your clinical findings, prescriptions, and reports will be rendered. The header and footer above are what you are currently customizing.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </PrintLayoutTemplate>
+                  </PrintLayoutTemplate>
+                </div>
               </CardBody>
             </Card>
           </div>

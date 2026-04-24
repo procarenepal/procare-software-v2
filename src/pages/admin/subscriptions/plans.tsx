@@ -544,8 +544,9 @@ export default function SubscriptionPlansPage() {
         {plans.map((plan) => (
           <Card
             key={plan.id}
-            className={`border transition-colors ${plan.isActive ? "border-teal-200" : "border-mountain-200"
-              } ${editModeId === plan.id ? "ring-2 ring-teal-500" : ""}`}
+            className={`border transition-colors ${
+              plan.isActive ? "border-teal-200" : "border-mountain-200"
+            } ${editModeId === plan.id ? "ring-2 ring-teal-500" : ""}`}
           >
             <CardHeader className="flex justify-between items-start bg-mountain-50 border-b border-mountain-100">
               {editModeId === plan.id ? (

@@ -14,7 +14,7 @@ import {
   IoKeyOutline,
 } from "react-icons/io5";
 
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/context/AuthContext";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { Button, Avatar } from "@/components/ui";
 import {
@@ -37,7 +37,7 @@ export const AdminHeader = ({
   isSidebarOpen,
   toggleSidebar,
 }: AdminHeaderProps) => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout } = useAuthContext();
   const navigate = useNavigate();
   const {
     isOpen: isPasswordModalOpen,

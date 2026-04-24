@@ -3,9 +3,6 @@ import {
   IoGridOutline,
   IoStorefrontOutline,
   IoAddOutline,
-  IoPeopleOutline,
-  IoPersonOutline,
-  IoShieldOutline,
 } from "react-icons/io5";
 import * as Icons from "react-icons/io5";
 import React from "react";
@@ -151,29 +148,6 @@ class NavigationService {
       });
     }
 
-    // Add RBAC / User Management only for single-branch clinics (hidden for multi-branch)
-    if (!isMultiBranchEnabled) {
-      items.push({
-        title: "User Management",
-        href: "/dashboard/rbac",
-        icon: <IoPeopleOutline className="w-5 h-5" />,
-        children: [
-          {
-            title: "Users",
-            href: "/dashboard/rbac",
-            icon: <IoPersonOutline className="w-5 h-5" />,
-            children: [],
-          },
-          {
-            title: "Roles & Permissions",
-            href: "/dashboard/rbac/roles",
-            icon: <IoShieldOutline className="w-5 h-5" />,
-            children: [],
-          },
-        ],
-      });
-    }
-
     // Get pages assigned to clinic type (clinic super admins should see all clinic type pages)
     const clinicTypePages =
       await rbacService.getAvailablePagesForClinic(clinicId);
@@ -233,6 +207,7 @@ class NavigationService {
           page.path !== "/dashboard/clinic-overview" &&
           page.path !== "/dashboard/branches" &&
           page.path !== "/dashboard/rbac" &&
+          page.name !== "User Management" &&
           page.showInSidebar !== false &&
           !page.parentId
         ) {
@@ -312,6 +287,28 @@ class NavigationService {
         "Skipped:",
         skippedCount,
       );
+
+
+      // FORCE INJECT Experts
+      const hasExpertItem = items.some(
+        (item) => item.href === "/dashboard/experts",
+      );
+
+      if (!hasExpertItem) {
+        items.push({
+          title: "Experts",
+          href: "/dashboard/experts",
+          icon: this.renderIcon("IoPeopleOutline"),
+          children: [
+            {
+              title: "Add Expert",
+              href: "/dashboard/experts/new",
+              icon: this.renderIcon("IoAddOutline"),
+              children: [],
+            },
+          ],
+        });
+      }
     }
 
     return items;
@@ -414,6 +411,8 @@ class NavigationService {
         // Skip dashboard as it's already added
         if (
           page.path !== "/dashboard" &&
+          page.path !== "/dashboard/rbac" &&
+          page.name !== "User Management" &&
           page.showInSidebar !== false &&
           !page.parentId
         ) {
@@ -487,6 +486,7 @@ class NavigationService {
         "Skipped:",
         skippedCount,
       );
+
     }
 
     return items;
@@ -566,6 +566,7 @@ class NavigationService {
           break;
 
         case "clinic-super-admin":
+        case "clinic-admin":
           navItems = await this.buildClinicSuperAdminNavigation(clinicId);
           break;
 

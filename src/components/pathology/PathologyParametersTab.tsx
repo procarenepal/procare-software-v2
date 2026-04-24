@@ -6,10 +6,15 @@ import {
 } from "react-icons/io5";
 
 import { Button } from "@/components/ui/button";
-import { PathologyParameter, PathologyUnit } from "@/types/models";
+import {
+  PathologyParameter,
+  PathologyUnit,
+  PathologyCategory,
+} from "@/types/models";
 
 interface PathologyParametersTabProps {
   filteredParameters: PathologyParameter[];
+  categories: PathologyCategory[];
   units: PathologyUnit[];
   searchQuery: string;
   onSearchChange: (value: string) => void;
@@ -20,6 +25,7 @@ interface PathologyParametersTabProps {
 
 export default function PathologyParametersTab({
   filteredParameters,
+  categories,
   units,
   searchQuery,
   onSearchChange,
@@ -54,6 +60,9 @@ export default function PathologyParametersTab({
                   Name
                 </th>
                 <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                  Category
+                </th>
+                <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
                   Reference Range
                 </th>
                 <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
@@ -77,6 +86,12 @@ export default function PathologyParametersTab({
                       <p className="text-[13.5px] font-medium text-mountain-900">
                         {parameter.name}
                       </p>
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-semibold bg-mountain-100 text-mountain-700 border-mountain-200">
+                        {categories.find((c) => c.id === parameter.categoryId)
+                          ?.name || "—"}
+                      </span>
                     </td>
                     <td className="px-4 py-2 text-[13px] text-mountain-700">
                       {parameter.referenceRange}

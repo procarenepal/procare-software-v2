@@ -9,80 +9,182 @@ import {
   orderBy,
   Timestamp,
   getDoc,
+  increment,
 } from "firebase/firestore";
 
 import { db } from "@/config/firebase";
-import { DoctorCommission, AppointmentBilling } from "@/types/models";
+import {
+  DoctorCommission,
+  AppointmentBilling,
+  PathologyBilling,
+} from "@/types/models";
 
 class DoctorCommissionService {
   private collectionName = "doctorCommissions";
 
-  // Create commission record when invoice is created
+  // Create commission records when invoice is created
   async createCommission(
     billing: AppointmentBilling,
     doctorCommissionPercent: number,
     createdBy: string,
-  ): Promise<string> {
+  ): Promise<string[]> {
     try {
-      // Create commission for both regular and visiting doctors
-      // Commission will be created if doctor has commission percentage configured
+      // Group items by doctorId (fallback to billing.doctorId if not specified on item)
+      const doctorGroups: Record<
+        string,
+        { doctorName: string; items: typeof billing.items }
+      > = {};
 
-      // Calculate total commission amount from all items.
-      // Prefer per-item commission percentage when available, otherwise fall back to doctor's default.
-      const totalCommissionAmount = billing.items.reduce((total, item) => {
-        const percentage =
-          typeof item.commission === "number"
-            ? item.commission
-            : doctorCommissionPercent;
+      billing.items.forEach((item) => {
+        const dId = item.doctorId || billing.doctorId;
+        const dName = item.doctorName || billing.doctorName;
 
-        if (!percentage || percentage <= 0) {
-          return total;
+        if (!doctorGroups[dId]) {
+          doctorGroups[dId] = { doctorName: dName, items: [] };
         }
-
-        const itemCommissionAmount = (item.amount * percentage) / 100;
-
-        return total + itemCommissionAmount;
-      }, 0);
-
-      // Derive an effective commission percentage for the record
-      const invoiceBaseAmount =
-        billing.totalAmount ||
-        billing.items.reduce((sum, item) => sum + item.amount, 0);
-      const effectiveCommissionPercentage =
-        invoiceBaseAmount > 0
-          ? (totalCommissionAmount / invoiceBaseAmount) * 100
-          : doctorCommissionPercent;
-
-      const commissionData: Omit<DoctorCommission, "id"> = {
-        doctorId: billing.doctorId,
-        doctorName: billing.doctorName,
-        clinicId: billing.clinicId,
-        branchId: billing.branchId,
-        billingId: billing.id,
-        invoiceNumber: billing.invoiceNumber,
-        appointmentDate: billing.invoiceDate,
-        patientId: billing.patientId,
-        patientName: billing.patientName,
-        appointmentTypes: billing.items.map((item) => item.appointmentTypeName),
-        totalInvoiceAmount: billing.totalAmount,
-        commissionPercentage: effectiveCommissionPercentage,
-        commissionAmount: totalCommissionAmount,
-        status: "pending",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy,
-      };
-
-      const docRef = await addDoc(collection(db, this.collectionName), {
-        ...commissionData,
-        createdAt: Timestamp.fromDate(commissionData.createdAt),
-        updatedAt: Timestamp.fromDate(commissionData.updatedAt),
-        appointmentDate: Timestamp.fromDate(commissionData.appointmentDate),
+        doctorGroups[dId].items.push(item);
       });
 
-      return docRef.id;
+      const promises = Object.entries(doctorGroups).map(
+        async ([dId, group]) => {
+          // Calculate total commission amount for this doctor's items
+          const groupCommissionAmount = group.items.reduce((total, item) => {
+            const percentage =
+              typeof item.commission === "number"
+                ? item.commission
+                : doctorCommissionPercent;
+
+            if (!percentage || percentage <= 0) {
+              return total;
+            }
+
+            const itemCommissionAmount = (item.amount * percentage) / 100;
+
+            return total + itemCommissionAmount;
+          }, 0);
+
+          if (groupCommissionAmount <= 0) return null;
+
+          const groupSubtotal = group.items.reduce(
+            (sum, item) => sum + item.amount,
+            0,
+          );
+          const effectivePercentage =
+            groupSubtotal > 0
+              ? (groupCommissionAmount / groupSubtotal) * 100
+              : doctorCommissionPercent;
+
+          const commissionData: Omit<DoctorCommission, "id"> = {
+            doctorId: dId,
+            doctorName: group.doctorName,
+            clinicId: billing.clinicId,
+            branchId: billing.branchId,
+            billingId: billing.id,
+            billingType: "appointment",
+            invoiceNumber: billing.invoiceNumber,
+            appointmentDate: billing.invoiceDate,
+            patientId: billing.patientId || "",
+            patientName: billing.patientName,
+            serviceNames: group.items.map((item) => item.appointmentTypeName),
+            totalInvoiceAmount: billing.totalAmount, // Total for the whole invoice
+            commissionPercentage: effectivePercentage,
+            commissionAmount: groupCommissionAmount,
+            status: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy,
+          };
+
+          const docRef = await addDoc(collection(db, this.collectionName), {
+            ...commissionData,
+            createdAt: Timestamp.fromDate(commissionData.createdAt),
+            updatedAt: Timestamp.fromDate(commissionData.updatedAt),
+            appointmentDate: Timestamp.fromDate(commissionData.appointmentDate),
+          });
+
+          // Update doctor's balance and lifetime earnings
+          const doctorRef = doc(db, "doctors", dId);
+
+          await updateDoc(doctorRef, {
+            totalCommissionEarned: increment(groupCommissionAmount),
+            totalCommissionBalance: increment(groupCommissionAmount),
+            updatedAt: Timestamp.now(),
+          });
+
+          return docRef.id;
+        },
+      );
+
+      const results = await Promise.all(promises);
+
+      return results.filter((r): r is string => r !== null);
     } catch (error) {
       console.error("Error creating commission:", error);
+      throw error;
+    }
+  }
+
+  // Create commission records for pathology (supports multiple doctors)
+  async createPathologyCommissions(
+    billing: PathologyBilling,
+    createdBy: string,
+  ): Promise<string[]> {
+    try {
+      if (!billing.referringDoctors || billing.referringDoctors.length === 0) {
+        return [];
+      }
+
+      const commissionIds: string[] = [];
+      const now = new Date();
+      const serviceNames = billing.items.map((item) => item.testName);
+
+      for (const refDoc of billing.referringDoctors) {
+        if (refDoc.calculatedAmount <= 0) continue;
+
+        const commissionData: Omit<DoctorCommission, "id"> = {
+          doctorId: refDoc.doctorId,
+          doctorName: refDoc.doctorName,
+          clinicId: billing.clinicId,
+          branchId: billing.branchId,
+          billingId: billing.id,
+          billingType: "pathology",
+          invoiceNumber: billing.invoiceNumber,
+          appointmentDate: billing.invoiceDate, // Using invoiceDate as appointmentDate
+          patientId: "", // Pathology might not always have a patient link in our model yet
+          patientName: billing.patientName,
+          serviceNames: serviceNames,
+          totalInvoiceAmount: billing.totalAmount,
+          commissionPercentage:
+            refDoc.commissionType === "percent" ? refDoc.commissionValue : 0,
+          commissionAmount: refDoc.calculatedAmount,
+          status: "pending",
+          createdAt: now,
+          updatedAt: now,
+          createdBy,
+        };
+
+        const docRef = await addDoc(collection(db, this.collectionName), {
+          ...commissionData,
+          createdAt: Timestamp.fromDate(commissionData.createdAt),
+          updatedAt: Timestamp.fromDate(commissionData.updatedAt),
+          appointmentDate: Timestamp.fromDate(commissionData.appointmentDate),
+        });
+
+        // Update doctor's balance and lifetime earnings
+        const doctorRef = doc(db, "doctors", refDoc.doctorId);
+
+        await updateDoc(doctorRef, {
+          totalCommissionEarned: increment(refDoc.calculatedAmount),
+          totalCommissionBalance: increment(refDoc.calculatedAmount),
+          updatedAt: Timestamp.now(),
+        });
+
+        commissionIds.push(docRef.id);
+      }
+
+      return commissionIds;
+    } catch (error) {
+      console.error("Error creating pathology commissions:", error);
       throw error;
     }
   }
@@ -219,6 +321,14 @@ class DoctorCommissionService {
       }
 
       await updateDoc(docRef, updateData);
+
+      // Update doctor's pending balance (decrease it as payment is made)
+      const doctorRef = doc(db, "doctors", currentCommission.doctorId);
+
+      await updateDoc(doctorRef, {
+        totalCommissionBalance: increment(-paidAmount),
+        updatedAt: Timestamp.now(),
+      });
     } catch (error) {
       console.error("Error paying commission:", error);
       throw error;

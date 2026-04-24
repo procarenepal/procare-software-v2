@@ -1,4 +1,16 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  IoBusinessOutline,
+  IoCheckmarkCircleOutline,
+  IoCloseCircleOutline,
+  IoAddOutline,
+  IoTrashOutline,
+  IoCreateOutline,
+  IoAlertCircleOutline,
+  IoInformationCircleOutline,
+  IoSearchOutline,
+} from "react-icons/io5";
 
 import {
   Card,
@@ -25,19 +37,6 @@ import { title } from "@/components/primitives";
 import { clinicTypeService } from "@/services/clinicTypeService";
 import { ClinicType } from "@/types/models";
 import { useAuth } from "@/hooks/useAuth";
-
-import { useNavigate } from "react-router-dom";
-import {
-  IoBusinessOutline,
-  IoCheckmarkCircleOutline,
-  IoCloseCircleOutline,
-  IoAddOutline,
-  IoTrashOutline,
-  IoCreateOutline,
-  IoAlertCircleOutline,
-  IoInformationCircleOutline,
-  IoSearchOutline,
-} from "react-icons/io5";
 
 export default function ClinicTypesPage() {
   const { userData } = useAuth();
@@ -267,11 +266,11 @@ export default function ClinicTypesPage() {
       {/* Search and filters */}
       <div className="mb-6">
         <Input
+          className="max-w-md"
           placeholder="Search clinic types..."
+          startContent={<IoSearchOutline className="text-default-400" />}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          startContent={<IoSearchOutline className="text-default-400" />}
-          className="max-w-md"
         />
       </div>
 
@@ -305,7 +304,6 @@ export default function ClinicTypesPage() {
                   <TableCell>
                     <Chip
                       color={type.isActive ? "success" : "danger"}
-                      variant="flat"
                       size="sm"
                       startContent={
                         type.isActive ? (
@@ -314,6 +312,7 @@ export default function ClinicTypesPage() {
                           <IoCloseCircleOutline />
                         )
                       }
+                      variant="flat"
                     >
                       {type.isActive ? "Active" : "Inactive"}
                     </Chip>
@@ -338,7 +337,9 @@ export default function ClinicTypesPage() {
                         color="secondary"
                         size="sm"
                         variant="bordered"
-                        onClick={() => navigate(`/admin/clinic-types/pages/${type.id}`)}
+                        onClick={() =>
+                          navigate(`/admin/clinic-types/pages/${type.id}`)
+                        }
                       >
                         Manage Pages
                       </Button>
@@ -374,10 +375,7 @@ export default function ClinicTypesPage() {
       </Card>
 
       {/* Add/Edit Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-      >
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
         <ModalContent>
           <ModalHeader>
             {currentClinicType ? "Edit Clinic Type" : "Add Clinic Type"}
@@ -389,14 +387,14 @@ export default function ClinicTypesPage() {
                   Name <span className="text-danger">*</span>
                 </label>
                 <Input
+                  required
+                  className="w-full"
                   name="name"
-                  value={formData.name}
-                  onChange={handleChange}
                   placeholder="Enter clinic type name"
                   size="md"
+                  value={formData.name}
                   variant="bordered"
-                  className="w-full"
-                  required
+                  onChange={handleChange}
                 />
               </div>
               <div>
@@ -421,7 +419,7 @@ export default function ClinicTypesPage() {
             >
               Cancel
             </Button>
-            <Button color="primary" onClick={handleSave} isLoading={isLoading}>
+            <Button color="primary" isLoading={isLoading} onClick={handleSave}>
               Save
             </Button>
           </ModalFooter>
@@ -457,7 +455,7 @@ export default function ClinicTypesPage() {
             >
               Cancel
             </Button>
-            <Button color="danger" onClick={handleDelete} isLoading={isLoading}>
+            <Button color="danger" isLoading={isLoading} onClick={handleDelete}>
               Delete
             </Button>
           </ModalFooter>

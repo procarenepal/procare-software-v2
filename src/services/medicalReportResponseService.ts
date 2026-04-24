@@ -43,6 +43,7 @@ export class MedicalReportResponseService {
       const docRef = doc(db, COLLECTION_NAME, `${clinicId}_${patientId}`);
 
       await setDoc(docRef, { ...responseData, id: docRef.id }, { merge: true });
+
       return docRef.id;
     } catch (error) {
       console.error("Error saving patient responses:", error);
@@ -199,10 +200,10 @@ export class MedicalReportResponseService {
       const lastUpdated =
         responses.length > 0
           ? responses.reduce(
-            (latest, response) =>
-              response.updatedAt > latest ? response.updatedAt : latest,
-            responses[0].updatedAt,
-          )
+              (latest, response) =>
+                response.updatedAt > latest ? response.updatedAt : latest,
+              responses[0].updatedAt,
+            )
           : undefined;
 
       return {

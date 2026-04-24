@@ -33,6 +33,7 @@ import {
   IoSearchOutline,
   IoPrintOutline,
 } from "react-icons/io5";
+import { IoBusinessOutline, IoMedkitOutline } from "react-icons/io5";
 
 import { useAuthContext } from "@/context/AuthContext";
 import { useModalState } from "@/hooks/useModalState";
@@ -45,8 +46,14 @@ import {
   PathologyBillingSettings,
   PathologyTest,
   PathologyTestType,
+  ReferringDoctor,
+  Doctor,
+  ReferralPartner,
 } from "@/types/models";
 import { PrintLayoutConfig } from "@/types/printLayout";
+import { generateInvoiceHTML, PrintFormat } from "@/utils/invoicePrinting";
+import { doctorService } from "@/services/doctorService";
+import { referralPartnerService } from "@/services/referralPartnerService";
 
 interface PathologyBillingTabProps {
   clinicId: string;
@@ -64,7 +71,8 @@ interface InvoiceFormData {
   items: PathologyBillingItem[];
   discountType: "flat" | "percent";
   discountValue: number;
-  notes: string;
+  referringDoctors: ReferringDoctor[];
+  notes?: string;
 }
 
 export default function PathologyBillingTab({
@@ -107,6 +115,10 @@ export default function PathologyBillingTab({
     notes: "",
   });
 
+  // Doctors & Partners list
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [partners, setPartners] = useState<ReferralPartner[]>([]);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -122,8 +134,12 @@ export default function PathologyBillingTab({
     items: [],
     discountType: "percent",
     discountValue: 0,
+    referringDoctors: [],
     notes: "",
   });
+
+  const [selectedPrintFormat, setSelectedPrintFormat] =
+    useState<PrintFormat>("A4");
 
   // Calculations
   const [calculations, setCalculations] = useState({
@@ -132,6 +148,28 @@ export default function PathologyBillingTab({
     taxAmount: 0,
     totalAmount: 0,
   });
+
+  // Unified referral sources for search
+  const allReferralSources = useMemo(() => {
+    const combined = [
+      ...doctors.map((d) => ({
+        id: d.id,
+        name: d.name,
+        type: "doctor" as const,
+        icon: <IoMedkitOutline className="text-primary" />,
+        defaultCommission: d.defaultCommission,
+      })),
+      ...partners.map((p) => ({
+        id: p.id,
+        name: p.name,
+        type: "partner" as const,
+        icon: <IoBusinessOutline className="text-secondary" />,
+        defaultCommission: p.defaultCommission,
+      })),
+    ];
+
+    return combined;
+  }, [doctors, partners]);
 
   useEffect(() => {
     loadData();
@@ -159,6 +197,8 @@ export default function PathologyBillingTab({
         settingsData,
         clinicData,
         layoutConfigData,
+        doctorsList,
+        partnersList,
       ] = await Promise.all([
         pathologyService.getTestsByClinic(clinicId, branchId),
         pathologyService.getTestTypesByClinic(clinicId, branchId),
@@ -167,6 +207,8 @@ export default function PathologyBillingTab({
         pathologyBillingService.getBillingSettings(clinicId),
         clinicService.getClinicById(clinicId),
         clinicService.getPrintLayoutConfig(clinicId),
+        doctorService.getDoctorsByClinic(clinicId),
+        referralPartnerService.getReferralPartnersByClinic(clinicId),
       ]);
 
       setTests(testsData);
@@ -176,6 +218,8 @@ export default function PathologyBillingTab({
       setBillingSettings(settingsData);
       setClinic(clinicData);
       setLayoutConfig(layoutConfigData);
+      setDoctors(doctorsList);
+      setPartners(partnersList);
 
       // Initialize settings if they don't exist
       if (!settingsData && currentUser) {
@@ -199,12 +243,11 @@ export default function PathologyBillingTab({
         }
       }
 
-      // Set default discount values from settings
+      // Set defaults from settings
       if (settingsData) {
         setFormData((prev) => ({
           ...prev,
-          discountType: settingsData.defaultDiscountType,
-          discountValue: settingsData.defaultDiscountValue,
+          referringDoctors: [],
         }));
       }
     } catch (error) {
@@ -237,33 +280,39 @@ export default function PathologyBillingTab({
       0,
     );
 
-    // Calculate discount
-    let discountAmount = 0;
-
-    if (formData.discountType === "flat") {
-      discountAmount = Math.min(formData.discountValue, subtotal);
-    } else if (formData.discountType === "percent") {
-      discountAmount = (subtotal * formData.discountValue) / 100;
-    }
-
-    // Calculate amount after discount
-    const amountAfterDiscount = subtotal - discountAmount;
-
     // Calculate tax
     const taxPercentage = billingSettings.enableTax
       ? billingSettings.defaultTaxPercentage
       : 0;
-    const taxAmount = (amountAfterDiscount * taxPercentage) / 100;
+    const taxAmount = (subtotal * taxPercentage) / 100;
 
     // Calculate total
-    const totalAmount = amountAfterDiscount + taxAmount;
+    const totalAmount = subtotal + taxAmount;
+
+    // Recalculate doctor commissions based on new subtotal
+    const updatedReferringDoctors = formData.referringDoctors.map((doc) => {
+      let calculatedAmount = 0;
+
+      if (doc.commissionType === "percent") {
+        calculatedAmount = (subtotal * doc.commissionValue) / 100;
+      } else {
+        calculatedAmount = doc.commissionValue;
+      }
+
+      return { ...doc, calculatedAmount };
+    });
 
     setCalculations({
       subtotal,
-      discountAmount,
+      discountAmount: 0,
       taxAmount,
       totalAmount,
     });
+
+    setFormData((prev) => ({
+      ...prev,
+      referringDoctors: updatedReferringDoctors,
+    }));
   };
 
   const addInvoiceItem = () => {
@@ -342,6 +391,78 @@ export default function PathologyBillingTab({
     setFormData((prev) => ({
       ...prev,
       items: updatedItems,
+    }));
+  };
+
+  const addReferralSource = (sourceId: string) => {
+    const source = allReferralSources.find((s) => s.id === sourceId);
+
+    if (!source) return;
+
+    // Check if already added
+    if (formData.referringDoctors.some((rd) => rd.doctorId === source.id)) {
+      addToast({
+        title: "Warning",
+        description: "This referral source is already added.",
+        color: "warning",
+      });
+
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      referringDoctors: [
+        ...prev.referringDoctors,
+        {
+          type: source.type,
+          doctorId: source.id,
+          doctorName: source.name,
+          commissionType: "percent",
+          commissionValue: source.defaultCommission || 0,
+          calculatedAmount:
+            (calculations.subtotal * (source.defaultCommission || 0)) / 100,
+        },
+      ],
+    }));
+  };
+
+  const removeReferringDoctor = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      referringDoctors: prev.referringDoctors.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateReferringDoctor = (
+    index: number,
+    data: Partial<ReferringDoctor>,
+  ) => {
+    const newDocs = [...formData.referringDoctors];
+    const subtotal = calculations.subtotal;
+
+    newDocs[index] = { ...newDocs[index], ...data };
+
+    // Handle type specific updates
+    if (data.type) {
+      // Reset if type changes
+      newDocs[index].doctorId = "";
+      newDocs[index].doctorName = "";
+      newDocs[index].commissionValue = 0;
+    }
+
+    // Recalculate amount for this entry
+    const entry = newDocs[index];
+
+    if (entry.commissionType === "percent") {
+      entry.calculatedAmount = (subtotal * entry.commissionValue) / 100;
+    } else {
+      entry.calculatedAmount = entry.commissionValue;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      referringDoctors: newDocs,
     }));
   };
 
@@ -424,6 +545,7 @@ export default function PathologyBillingTab({
         paymentStatus: "unpaid",
         paidAmount: 0,
         balanceAmount: calculations.totalAmount,
+        referringDoctors: formData.referringDoctors,
         notes: formData.notes.trim() || undefined,
         createdBy: currentUser.uid,
       };
@@ -446,8 +568,9 @@ export default function PathologyBillingTab({
         patientGender: "",
         invoiceDate: new Date().toISOString().split("T")[0],
         items: [],
-        discountType: billingSettings.defaultDiscountType,
-        discountValue: billingSettings.defaultDiscountValue,
+        discountType: billingSettings?.defaultDiscountType || "percent",
+        discountValue: billingSettings?.defaultDiscountValue || 0,
+        referringDoctors: [],
         notes: "",
       });
 
@@ -537,7 +660,7 @@ export default function PathologyBillingTab({
     } catch (error) {
       console.error("Error recording payment:", error);
       addToast({
-        title: "Payment Error",
+        title: "Error",
         description: "Failed to record payment. Please try again.",
         color: "danger",
       });
@@ -546,6 +669,36 @@ export default function PathologyBillingTab({
     }
   };
 
+  const handleFinalize = async (billing: PathologyBilling) => {
+    if (!currentUser) return;
+
+    try {
+      setSubmitting(true);
+      await pathologyBillingService.finalizeInvoice(
+        billing.id,
+        currentUser.uid,
+      );
+
+      addToast({
+        title: "Invoice Finalized",
+        description:
+          "Commission details have been synced to referral profiles.",
+        color: "success",
+      });
+
+      // Reload data
+      await loadData();
+    } catch (error) {
+      console.error("Error finalizing invoice:", error);
+      addToast({
+        title: "Error",
+        description: "Failed to finalize invoice.",
+        color: "danger",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
       case "paid":
@@ -598,7 +751,6 @@ export default function PathologyBillingTab({
   const handlePrint = (billing: PathologyBilling) => {
     if (!billing) return;
 
-    // Create a new window for printing
     const printWindow = window.open("", "_blank", "width=800,height=600");
 
     if (!printWindow) {
@@ -612,410 +764,12 @@ export default function PathologyBillingTab({
       return;
     }
 
-    // Build the items HTML
-    const itemsHtml = billing.items
-      .map(
-        (item) =>
-          `<tr>
-        <td class="text-left">${item.testName}${item.testType ? ` (${item.testType})` : ""}</td>
-        <td class="text-center">${item.quantity}</td>
-        <td class="text-right">NPR ${item.price.toLocaleString()}</td>
-        <td class="text-right">NPR ${item.amount.toLocaleString()}</td>
-      </tr>`,
-      )
-      .join("");
-
-    // Generate the HTML content for printing with dynamic clinic data
-    const printContent = `<!DOCTYPE html>
-<html>
-<head>
-  <title>Pathology Invoice - ${billing.invoiceNumber}</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: white;
-      color: #333;
-    }
-    .print-container {
-      max-width: 100%;
-      margin: 0;
-      background: white;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      padding: 10mm;
-      box-sizing: border-box;
-    }
-    .header {
-      border-bottom: 2px solid #333;
-      padding-bottom: ${layoutConfig?.headerHeight === "compact"
-        ? "10px"
-        : layoutConfig?.headerHeight === "expanded"
-          ? "20px"
-          : "15px"
-      };
-      margin-bottom: ${layoutConfig?.headerHeight === "compact"
-        ? "10px"
-        : layoutConfig?.headerHeight === "expanded"
-          ? "20px"
-          : "15px"
-      };
-    }
-    .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 20px;
-    }
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      ${layoutConfig?.logoPosition === "center"
-        ? "justify-content: center; text-align: center;"
-        : layoutConfig?.logoPosition === "right"
-          ? "justify-content: flex-end; text-align: right;"
-          : "justify-content: flex-start; text-align: left;"
-      }
-    }
-    .header-right {
-      text-align: right;
-      font-size: ${layoutConfig?.fontSize === "small"
-        ? "11px"
-        : layoutConfig?.fontSize === "large"
-          ? "14px"
-          : "12px"
-      };
-      color: #333;
-      line-height: 1.4;
-    }
-    .logo {
-      ${layoutConfig?.logoSize === "small"
-        ? "height: 40px;"
-        : layoutConfig?.logoSize === "large"
-          ? "height: 80px;"
-          : "height: 60px;"
-      }
-      width: auto;
-      object-fit: contain;
-    }
-    .clinic-info {
-      ${layoutConfig?.logoPosition === "center" ? "text-align: center;" : ""}
-    }
-    .clinic-name {
-      font-weight: bold;
-      color: ${layoutConfig?.primaryColor || "#2563eb"};
-      margin: 0;
-      font-size: ${layoutConfig?.fontSize === "small"
-        ? "20px"
-        : layoutConfig?.fontSize === "large"
-          ? "30px"
-          : "26px"
-      };
-    }
-    .tagline {
-      font-size: ${layoutConfig?.fontSize === "small"
-        ? "12px"
-        : layoutConfig?.fontSize === "large"
-          ? "16px"
-          : "14px"
-      };
-      color: #666;
-      margin: 5px 0;
-    }
-    .clinic-details {
-      margin-top: 10px;
-      color: #333;
-      font-size: ${layoutConfig?.fontSize === "small"
-        ? "11px"
-        : layoutConfig?.fontSize === "large"
-          ? "14px"
-          : "12px"
-      };
-    }
-    .document-title {
-      text-align: center;
-      margin: 20px 0;
-    }
-    .document-title h2 {
-      font-size: 18px;
-      font-weight: 600;
-      margin: 0;
-      text-transform: uppercase;
-    }
-    .document-subtitle {
-      font-size: 14px;
-      color: #666;
-      margin: 5px 0;
-    }
-    .document-info {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 10px;
-      font-size: 14px;
-      color: #666;
-    }
-    .content {
-      flex: 1;
-      padding: 10px 0;
-      min-height: 0;
-    }
-    .bill-to-section {
-      margin-bottom: 20px;
-      padding: 15px;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-    }
-    .bill-to-section h3 {
-      margin: 0 0 10px 0;
-      font-size: 16px;
-      font-weight: 600;
-    }
-    .bill-to-section p {
-      margin: 5px 0;
-      font-size: 12px;
-    }
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    .items-table th,
-    .items-table td {
-      border: 1px solid #333;
-      padding: 8px;
-      font-size: 12px;
-    }
-    .items-table th {
-      background-color: #f5f5f5;
-      font-weight: bold;
-      text-align: center;
-    }
-    .items-table td.text-left {
-      text-align: left;
-    }
-    .items-table td.text-center {
-      text-align: center;
-    }
-    .items-table td.text-right {
-      text-align: right;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 20px;
-    }
-    .summary-table {
-      width: 250px;
-      border-collapse: collapse;
-    }
-    .summary-table td {
-      border: 1px solid #333;
-      padding: 8px;
-      font-size: 12px;
-    }
-    .summary-table .font-bold {
-      font-weight: bold;
-    }
-    .payment-section {
-      margin-top: 30px;
-      padding: 15px;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-    }
-    .payment-section h3 {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 15px;
-    }
-    .footer {
-      border-top: 1px solid #333;
-      padding-top: 10px;
-      margin-top: auto;
-      text-align: center;
-      font-size: ${layoutConfig?.fontSize === "small"
-        ? "11px"
-        : layoutConfig?.fontSize === "large"
-          ? "13px"
-          : "12px"
-      };
-      color: #666;
-      flex-shrink: 0;
-    }
-    @media print {
-      body {
-        padding: 0;
-        margin: 0;
-      }
-      .print-container {
-        height: 100vh;
-        padding: 5mm;
-        max-width: 100%;
-        box-sizing: border-box;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="print-container">
-    <div class="header">
-      <div class="header-content">
-        <div class="header-left">
-          ${layoutConfig?.logoUrl
-        ? `
-            <img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />
-          `
-        : ""
-      }
-          <div class="clinic-info">
-            <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-            ${layoutConfig?.tagline
-        ? `
-              <p class="tagline">${layoutConfig.tagline}</p>
-            `
-        : ""
-      }
-            <div class="clinic-details">
-              <p>${layoutConfig?.address || clinic?.address || ""}</p>
-              <p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>
-              ${layoutConfig?.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
-            </div>
-          </div>
-        </div>
-        <div class="header-right">
-          <p><strong>Phone:</strong> ${layoutConfig?.phone || clinic?.phone || ""}</p>
-          <p><strong>Email:</strong> ${layoutConfig?.email || clinic?.email || ""}</p>
-        </div>
-      </div>
-    </div>
-    
-    <div class="document-title">
-      <h2>Pathology Invoice</h2>
-      <p class="document-subtitle">Laboratory Test Billing</p>
-      <div class="document-info">
-        <span>Invoice No: ${billing.invoiceNumber}</span>
-        <span>Date: ${new Date(billing.invoiceDate).toLocaleDateString()}</span>
-      </div>
-    </div>
-    
-    <div class="content">
-      <div class="bill-to-section">
-        <h3>Bill To:</h3>
-        <p><strong>Name: ${billing.patientName}</strong></p>
-        ${billing.patientAddress ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Address: ${billing.patientAddress}</p>` : ""}
-        ${billing.patientPhone ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Phone: ${billing.patientPhone}</p>` : ""}
-        ${billing.patientEmail ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Email: ${billing.patientEmail}</p>` : ""}
-        ${billing.patientAge ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Age: ${billing.patientAge}</p>` : ""}
-        ${billing.patientGender ? `<p style="margin: 2px 0; font-size: 12px; color: #666;">Gender: ${billing.patientGender.charAt(0).toUpperCase() + billing.patientGender.slice(1)}</p>` : ""}
-      </div>
-      
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th>Test Name (Type)</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml}
-        </tbody>
-      </table>
-      
-      <div class="summary-section">
-        <table class="summary-table">
-          <tbody>
-            <tr>
-              <td>Subtotal</td>
-              <td class="text-right">NPR ${billing.subtotal.toLocaleString()}</td>
-            </tr>
-            ${billing.discountAmount > 0
-        ? `
-            <tr>
-              <td>Discount (${billing.discountType === "flat" ? "Flat" : "Percent"})</td>
-              <td class="text-right">- NPR ${billing.discountAmount.toLocaleString()}</td>
-            </tr>
-            `
-        : ""
-      }
-            ${billing.taxAmount > 0
-        ? `
-            <tr>
-              <td>Tax (${billing.taxPercentage}%)</td>
-              <td class="text-right">NPR ${billing.taxAmount.toLocaleString()}</td>
-            </tr>
-            `
-        : ""
-      }
-            <tr class="font-bold">
-              <td>Total Amount</td>
-              <td class="text-right">NPR ${billing.totalAmount.toLocaleString()}</td>
-            </tr>
-            <tr>
-              <td>Paid Amount</td>
-              <td class="text-right">NPR ${billing.paidAmount.toLocaleString()}</td>
-            </tr>
-            <tr class="font-bold">
-              <td>Balance</td>
-              <td class="text-right">NPR ${billing.balanceAmount.toLocaleString()}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      
-      ${billing.paymentMethod
-        ? `
-      <div class="payment-section">
-        <h3>Payment Information</h3>
-        <p><strong>Payment Method:</strong> ${billing.paymentMethod}</p>
-        ${billing.paymentReference ? `<p><strong>Reference:</strong> ${billing.paymentReference}</p>` : ""}
-        ${billing.paymentDate ? `<p><strong>Payment Date:</strong> ${new Date(billing.paymentDate).toLocaleDateString()}</p>` : ""}
-        ${billing.paymentNotes ? `<p><strong>Notes:</strong> ${billing.paymentNotes}</p>` : ""}
-      </div>
-      `
-        : ""
-      }
-      
-      ${billing.notes
-        ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 5px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px;">Notes:</h3>
-        <p style="margin: 0; font-size: 12px;">
-          ${billing.notes}
-        </p>
-      </div>
-      `
-        : ""
-      }
-    </div>
-    
-    <div class="footer">
-      <p>Thank you for choosing us</p>
-    </div>
-  </div>
-  
-  <script>
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        window.print();
-      }, 500);
-    });
-    
-    window.addEventListener('afterprint', function() {
-      window.close();
-    });
-    
-    window.addEventListener('beforeunload', function() {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage('printComplete', '*');
-      }
-    });
-  </script>
-</body>
-</html>`;
+    const printContent = generateInvoiceHTML(
+      billing,
+      selectedPrintFormat,
+      clinic,
+      layoutConfig,
+    );
 
     printWindow.document.write(printContent);
     printWindow.document.close();
@@ -1039,7 +793,7 @@ export default function PathologyBillingTab({
         {/* Create Invoice Tab */}
         <Tab key="create" title="Create Invoice">
           <div className="space-y-4 py-4">
-            <Card>
+            <Card className="border border-mountain-100" shadow="none">
               <CardHeader>
                 <h3 className="text-lg font-semibold">New Pathology Invoice</h3>
               </CardHeader>
@@ -1117,15 +871,9 @@ export default function PathologyBillingTab({
                         }));
                       }}
                     >
-                      <SelectItem key="male">
-                        Male
-                      </SelectItem>
-                      <SelectItem key="female">
-                        Female
-                      </SelectItem>
-                      <SelectItem key="other">
-                        Other
-                      </SelectItem>
+                      <SelectItem key="male">Male</SelectItem>
+                      <SelectItem key="female">Female</SelectItem>
+                      <SelectItem key="other">Other</SelectItem>
                     </Select>
                   </div>
                 </div>
@@ -1215,7 +963,7 @@ export default function PathologyBillingTab({
                               {(testType) => (
                                 <AutocompleteItem
                                   key={testType.name}
-                                  textValue={`${testType.name} - NPR ${testType.price.toFixed(2)}`}
+                                  textValue={`${testType.name} - NPR ${testType.price.toFixed(2)} `}
                                 >
                                   <div className="flex flex-col">
                                     <span className="text-small">
@@ -1287,38 +1035,182 @@ export default function PathologyBillingTab({
                   )}
                 </div>
 
-                {/* Discount and Totals */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Select
-                      label="Discount Type"
-                      selectedKeys={new Set([formData.discountType])}
-                      onSelectionChange={(keys) => {
-                        const value = Array.from(keys)[0] as "flat" | "percent";
+                {/* Referral Source Section */}
+                <div className="space-y-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 py-3 border-b border-default-100">
+                    <div>
+                      <h3 className="text-lg font-bold text-default-800">
+                        Referral Sources
+                      </h3>
+                      <p className="text-xs text-default-500">
+                        Search and add doctors or partners for this invoice
+                      </p>
+                    </div>
+                    <div className="w-full md:w-80">
+                      <Autocomplete
+                        aria-label="Add Referral Source"
+                        classNames={{
+                          base: "max-w-full",
+                        }}
+                        placeholder="Search doctor or partner..."
+                        radius="full"
+                        size="sm"
+                        startContent={
+                          <IoSearchOutline className="text-default-400" />
+                        }
+                        variant="bordered"
+                        onSelectionChange={(key) => {
+                          if (key) addReferralSource(key.toString());
+                        }}
+                      >
+                        {allReferralSources.map((source) => (
+                          <AutocompleteItem
+                            key={source.id}
+                            startContent={
+                              <div
+                                className={`p-1 rounded-md ${source.type === "doctor" ? "bg-primary-50" : "bg-secondary-50"}`}
+                              >
+                                {source.icon}
+                              </div>
+                            }
+                            textValue={source.name}
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">
+                                {source.name}
+                              </span>
+                              <span className="text-xs text-default-400 capitalize">
+                                {source.type}
+                              </span>
+                            </div>
+                          </AutocompleteItem>
+                        ))}
+                      </Autocomplete>
+                    </div>
+                  </div>
 
-                        setFormData((prev) => ({
-                          ...prev,
-                          discountType: value,
-                        }));
-                      }}
-                    >
-                      <SelectItem key="flat">Flat Amount</SelectItem>
-                      <SelectItem key="percent">Percentage</SelectItem>
-                    </Select>
-                  </div>
-                  <div>
-                    <Input
-                      label="Discount Value"
-                      type="number"
-                      value={formData.discountValue.toString()}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          discountValue: parseFloat(value) || 0,
-                        }))
-                      }
-                    />
-                  </div>
+                  {formData.referringDoctors.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 bg-default-50/50 rounded-2xl border-2 border-dashed border-default-200 transition-all hover:bg-default-100/50">
+                      <div className="p-4 rounded-full bg-white shadow-sm mb-3">
+                        <IoMedkitOutline className="text-3xl text-primary/60" />
+                      </div>
+                      <p className="text-sm font-medium text-default-600">
+                        No referral sources added yet
+                      </p>
+                      <p className="text-xs text-default-400 mt-1">
+                        Use the search bar above to add doctors or partners
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {formData.referringDoctors.map((refDoc, index) => {
+                        const sourceInfo = allReferralSources.find(
+                          (s) => s.id === refDoc.doctorId,
+                        );
+
+                        return (
+                          <div
+                            key={index}
+                            className="bg-white border border-default-200 rounded-xl p-4 transition-all hover:shadow-md group"
+                          >
+                            <div className="grid grid-cols-12 gap-4 items-center">
+                              {/* Left: Info */}
+                              <div className="col-span-12 md:col-span-4 flex items-center gap-3">
+                                <div
+                                  className={`p-2.5 rounded-xl ${refDoc.type === "doctor" ? "bg-primary-50 text-primary" : "bg-secondary-50 text-secondary"}`}
+                                >
+                                  {refDoc.type === "doctor" ? (
+                                    <IoMedkitOutline size={20} />
+                                  ) : (
+                                    <IoBusinessOutline size={20} />
+                                  )}
+                                </div>
+                                <div className="overflow-hidden">
+                                  <p className="font-bold text-default-800 truncate">
+                                    {refDoc.doctorName}
+                                  </p>
+                                  <span
+                                    className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${refDoc.type === "doctor" ? "bg-primary-100 text-primary-700" : "bg-secondary-100 text-secondary-700"}`}
+                                  >
+                                    {refDoc.type}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Middle: Controls */}
+                              <div className="col-span-12 md:col-span-7 flex flex-wrap items-center gap-3">
+                                <div className="flex items-center gap-2 bg-default-50 p-1.5 rounded-lg border border-default-100">
+                                  <Select
+                                    aria-label="Commission Type"
+                                    className="w-28"
+                                    selectedKeys={[refDoc.commissionType]}
+                                    size="sm"
+                                    variant="flat"
+                                    onSelectionChange={(keys) => {
+                                      const type = Array.from(keys)[0] as
+                                        | "percent"
+                                        | "flat";
+
+                                      updateReferringDoctor(index, {
+                                        commissionType: type,
+                                      });
+                                    }}
+                                  >
+                                    <SelectItem
+                                      key="percent"
+                                      textValue="% Percent"
+                                    >
+                                      % Percent
+                                    </SelectItem>
+                                    <SelectItem key="flat" textValue="NPR Flat">
+                                      NPR Flat
+                                    </SelectItem>
+                                  </Select>
+                                  <Input
+                                    aria-label="Commission Value"
+                                    className="w-20"
+                                    size="sm"
+                                    type="number"
+                                    value={refDoc.commissionValue.toString()}
+                                    variant="flat"
+                                    onValueChange={(val) =>
+                                      updateReferringDoctor(index, {
+                                        commissionValue: parseFloat(val) || 0,
+                                      })
+                                    }
+                                  />
+                                </div>
+
+                                <div className="flex flex-col">
+                                  <span className="text-[10px] text-default-400 font-bold uppercase tracking-wider">
+                                    Estimated Earned
+                                  </span>
+                                  <span className="text-md font-black text-primary">
+                                    NPR{" "}
+                                    {refDoc.calculatedAmount.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Right: Action */}
+                              <div className="col-span-12 md:col-span-1 flex justify-end">
+                                <Button
+                                  isIconOnly
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
+                                  color="danger"
+                                  size="sm"
+                                  variant="light"
+                                  onPress={() => removeReferringDoctor(index)}
+                                >
+                                  <IoTrashOutline className="w-5 h-5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t pt-4">
@@ -1329,14 +1221,6 @@ export default function PathologyBillingTab({
                         {formatCurrency(calculations.subtotal)}
                       </span>
                     </div>
-                    {calculations.discountAmount > 0 && (
-                      <div className="flex justify-between text-warning">
-                        <span>Discount:</span>
-                        <span>
-                          -{formatCurrency(calculations.discountAmount)}
-                        </span>
-                      </div>
-                    )}
                     {billingSettings?.enableTax &&
                       calculations.taxAmount > 0 && (
                         <div className="flex justify-between">
@@ -1403,7 +1287,7 @@ export default function PathologyBillingTab({
                   <TableColumn>PAID</TableColumn>
                   <TableColumn>BALANCE</TableColumn>
                   <TableColumn>STATUS</TableColumn>
-                  <TableColumn>ACTIONS</TableColumn>
+                  <TableColumn align="center">Actions</TableColumn>
                 </TableHeader>
                 <TableBody>
                   {filteredBillings.map((billing) => {
@@ -1460,28 +1344,53 @@ export default function PathologyBillingTab({
                           </Chip>
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            {billing.balanceAmount > 0 && (
+                          <div className="flex gap-1 justify-center">
+                            {billing.status === "draft" && (
                               <Button
-                                color="success"
+                                isIconOnly
+                                color="primary"
+                                isLoading={submitting}
                                 size="sm"
-                                startContent={<IoWalletOutline />}
-                                variant="flat"
-                                onPress={() => handlePaymentOpen(billing)}
+                                title="Finalize"
+                                variant="light"
+                                onPress={() => handleFinalize(billing)}
                               >
-                                Pay
+                                <IoCheckmark className="text-lg" />
                               </Button>
                             )}
+                            {billing.balanceAmount > 0 &&
+                              billing.status !== "draft" && (
+                                <Button
+                                  isIconOnly
+                                  color="success"
+                                  size="sm"
+                                  title="Pay"
+                                  variant="light"
+                                  onPress={() => handlePaymentOpen(billing)}
+                                >
+                                  <IoWalletOutline className="text-lg" />
+                                </Button>
+                              )}
                             <Button
+                              isIconOnly
                               size="sm"
-                              startContent={<IoEyeOutline />}
+                              title="Print"
+                              variant="light"
+                              onPress={() => handlePrint(billing)}
+                            >
+                              <IoPrintOutline className="text-lg text-default-500 hover:text-primary" />
+                            </Button>
+                            <Button
+                              isIconOnly
+                              size="sm"
+                              title="View"
                               variant="light"
                               onPress={() => {
                                 setSelectedBilling(billing);
                                 invoiceModal.open();
                               }}
                             >
-                              View
+                              <IoEyeOutline className="text-lg text-default-500 hover:text-primary" />
                             </Button>
                           </div>
                         </TableCell>
@@ -1567,7 +1476,7 @@ export default function PathologyBillingTab({
                 >
                   {getAvailablePaymentMethods().map((method) => {
                     const displayText =
-                      `${method.icon || ""} ${method.name}`.trim();
+                      `${method.icon || ""} ${method.name} `.trim();
 
                     return (
                       <SelectItem key={method.key} textValue={method.name}>
@@ -1755,21 +1664,42 @@ export default function PathologyBillingTab({
               </div>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button
-              startContent={<IoPrintOutline />}
-              variant="light"
-              onPress={() => {
-                if (selectedBilling) {
-                  handlePrint(selectedBilling);
-                }
-              }}
-            >
-              Print
-            </Button>
-            <Button variant="light" onPress={invoiceModal.close}>
-              Close
-            </Button>
+          <ModalFooter className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Select
+                className="w-48"
+                label="Print Format"
+                selectedKeys={[selectedPrintFormat]}
+                size="sm"
+                onOpenChange={invoiceModal.handleDropdownInteraction}
+                onSelectionChange={(keys) => {
+                  const format = Array.from(keys)[0] as PrintFormat;
+
+                  if (format) setSelectedPrintFormat(format);
+                }}
+              >
+                <SelectItem key="A4">A4 Full Page</SelectItem>
+                <SelectItem key="A4_HALF">A4 Half (A5)</SelectItem>
+                <SelectItem key="THERMAL_80MM">Thermal 80mm</SelectItem>
+                <SelectItem key="THERMAL_58MM">Thermal 58mm</SelectItem>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                color="primary"
+                startContent={<IoPrintOutline />}
+                onPress={() => {
+                  if (selectedBilling) {
+                    handlePrint(selectedBilling);
+                  }
+                }}
+              >
+                Print Invoice
+              </Button>
+              <Button variant="light" onPress={invoiceModal.close}>
+                Close
+              </Button>
+            </div>
           </ModalFooter>
         </ModalContent>
       </Modal>

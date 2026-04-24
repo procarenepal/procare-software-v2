@@ -24,6 +24,11 @@ import { useAuthContext } from "@/context/AuthContext";
 import { Prescription, PrescriptionItem } from "@/types/medical-records";
 import { Patient, Doctor, Appointment } from "@/types/models";
 import { PrintLayoutConfig } from "@/types/printLayout";
+import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
 
 interface PrescriptionWithDetails extends Prescription {
   patientName?: string;
@@ -108,7 +113,7 @@ export default function PrescriptionDetailPage() {
           patientData = await patientService.getPatientById(
             prescriptionData.patientId,
           );
-        } catch (e) {}
+        } catch (e) { }
 
         let doctorData: Doctor | null = null;
 
@@ -116,7 +121,7 @@ export default function PrescriptionDetailPage() {
           doctorData = await doctorService.getDoctorById(
             prescriptionData.doctorId,
           );
-        } catch (e) {}
+        } catch (e) { }
 
         let appointmentData: Appointment | null = null;
         let appointmentTypeName: string | undefined;
@@ -134,7 +139,7 @@ export default function PrescriptionDetailPage() {
 
               appointmentTypeName = appointmentType?.name;
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         const combinedData: PrescriptionWithDetails = {
@@ -177,6 +182,13 @@ export default function PrescriptionDetailPage() {
     if (!prescription) return;
     const printWindow = window.open("", "_blank", "width=800,height=600");
 
+    // Global Branding Utility
+    const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
+    const headerHtml = layoutConfig
+      ? getPrintHeaderHTML(layoutConfig, clinic)
+      : "";
+    const footerHtml = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+
     if (printWindow) {
       const itemsHtml =
         prescription.items
@@ -197,113 +209,121 @@ export default function PrescriptionDetailPage() {
 <head>
   <title>Prescription - ${prescription.prescriptionNo}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; color: #333; }
-    .print-container { max-width: 100%; margin: 0; background: white; display: flex; flex-direction: column; height: 100vh; padding: 10mm; box-sizing: border-box; }
-    .header { border-bottom: 2px solid #333; padding-bottom: ${layoutConfig?.headerHeight === "compact" ? "10px" : layoutConfig?.headerHeight === "expanded" ? "20px" : "15px"}; margin-bottom: ${layoutConfig?.headerHeight === "compact" ? "10px" : layoutConfig?.headerHeight === "expanded" ? "20px" : "15px"}; }
-    .header-content { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
-    .header-left { display: flex; align-items: center; gap: 20px; ${layoutConfig?.logoPosition === "center" ? "justify-content: center; text-align: center;" : layoutConfig?.logoPosition === "right" ? "justify-content: flex-end; text-align: right;" : "justify-content: flex-start; text-align: left;"} }
-    .header-right { text-align: right; font-size: ${layoutConfig?.fontSize === "small" ? "11px" : layoutConfig?.fontSize === "large" ? "14px" : "12px"}; color: #333; line-height: 1.4; }
-    .logo { ${layoutConfig?.logoSize === "small" ? "height: 40px;" : layoutConfig?.logoSize === "large" ? "height: 80px;" : "height: 60px;"} width: auto; object-fit: contain; }
-    .clinic-info { ${layoutConfig?.logoPosition === "center" ? "text-align: center;" : ""} }
-    .clinic-name { font-weight: bold; color: ${layoutConfig?.primaryColor || "#2563eb"}; margin: 0; font-size: ${layoutConfig?.fontSize === "small" ? "20px" : layoutConfig?.fontSize === "large" ? "30px" : "26px"}; }
-    .tagline { font-size: ${layoutConfig?.fontSize === "small" ? "12px" : layoutConfig?.fontSize === "large" ? "16px" : "14px"}; color: #666; margin: 5px 0; }
-    .clinic-details { margin-top: 10px; color: #333; font-size: ${layoutConfig?.fontSize === "small" ? "11px" : layoutConfig?.fontSize === "large" ? "14px" : "12px"}; }
-    .document-title { text-align: center; margin: 20px 0; }
-    .document-title h2 { font-size: 18px; font-weight: 600; margin: 0; text-transform: uppercase; }
-    .document-subtitle { font-size: 14px; color: #666; margin: 5px 0; }
-    .document-info { display: flex; justify-content: space-between; margin-top: 10px; font-size: 14px; color: #666; }
-    .content { flex: 1; padding: 10px 0; min-height: 0; }
-    .patient-doctor-info { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 20px; }
-    .info-section { border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
-    .info-section h3 { margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #333; }
-    .info-item { margin-bottom: 5px; }
-    .info-label { font-weight: 500; color: #666; display: inline-block; width: 80px; }
-    .info-value { color: #333; }
-    .prescription-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    .prescription-table th, .prescription-table td { border: 1px solid #333; padding: 10px; font-size: 12px; }
-    .prescription-table th { background-color: #f5f5f5; font-weight: bold; text-align: center; }
-    .prescription-table td.text-left { text-align: left; }
-    .prescription-table td.text-center { text-align: center; }
-    .prescription-table td.text-right { text-align: right; }
-    .notes-section { margin-top: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
-    .notes-section h3 { margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #333; }
-    .signature-section { margin-top: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .signature-box { text-align: center; border-top: 1px solid #333; padding-top: 5px; min-width: 200px; }
-    .footer { border-top: 1px solid #333; padding-top: 10px; margin-top: auto; text-align: center; font-size: ${layoutConfig?.fontSize === "small" ? "11px" : layoutConfig?.fontSize === "large" ? "13px" : "12px"}; color: #666; flex-shrink: 0; }
-    @media print { body { padding: 0; margin: 0; } .print-container { height: 100vh; padding: 5mm; max-width: 100%; box-sizing: border-box; } }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; color: #333; line-height: 1.5; }
+    .print-container { max-width: 100%; margin: 0; background: white; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; }
+    
+    ${brandingCSS}
+
+    .content { flex: 1; padding: 15mm; min-height: 0; }
+    
+    .document-title { text-align: center; margin: 10px 0 25px 0; }
+    .document-title h2 { font-size: 20px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.1em; color: #475569; }
+    .document-subtitle { font-size: 13px; color: #64748b; margin: 5px 0; font-weight: 500; }
+    
+    .prescription-meta { display: flex; justify-content: space-between; margin-bottom: 25px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #f1f5f9; }
+    .meta-box h3 { margin: 0 0 5px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .meta-box p { margin: 0; font-size: 14px; font-weight: 600; color: #1e293b; }
+
+    .patient-doctor-info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+    .info-section { border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; }
+    .info-section h3 { margin: 0 0 12px 0; font-size: 14px; font-weight: 700; color: #475569; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
+    .info-item { margin-bottom: 6px; display: flex; font-size: 13px; }
+    .info-label { font-weight: 600; color: #64748b; width: 90px; shrink: 0; }
+    .info-value { color: #1e293b; font-weight: 500; }
+
+    .prescription-table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+    .prescription-table th, .prescription-table td { border: 1px solid #e2e8f0; padding: 12px 10px; font-size: 12.5px; }
+    .prescription-table th { background-color: #f8fafc; font-weight: 700; text-align: center; color: #475569; text-transform: uppercase; font-size: 11px; }
+    
+    .notes-section { margin-top: 20px; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; background: #fff; }
+    .notes-section h3 { margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: #475569; }
+    .notes-section p { margin: 0; font-size: 13px; color: #1e293b; line-height: 1.6; }
+
+    .signature-section { margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .signature-box { text-align: center; width: 180px; }
+    .sign-line { border-top: 1px solid #475569; margin-bottom: 5px; }
+    .sign-label { font-size: 11px; color: #64748b; font-weight: 500; }
+
+    @media print { body { padding: 0; margin: 0; } .print-container { height: 100vh; padding: 0; max-width: 100%; } }
   </style>
 </head>
 <body>
   <div class="print-container">
-    <div class="header">
-      <div class="header-content">
-        <div class="header-left">
-          ${layoutConfig?.logoUrl ? `<img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />` : ""}
-          <div class="clinic-info">
-            <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-            ${layoutConfig?.tagline ? `<p class="tagline">${layoutConfig.tagline}</p>` : ""}
-            <div class="clinic-details">
-              <p>${layoutConfig?.address || clinic?.address || ""}</p>
-              <p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>
-              ${layoutConfig?.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
-            </div>
-          </div>
-        </div>
-        <div class="header-right">
-          <p><strong>Phone:</strong> ${layoutConfig?.phone || clinic?.phone || ""}</p>
-          <p><strong>Email:</strong> ${layoutConfig?.email || clinic?.email || ""}</p>
-        </div>
-      </div>
-    </div>
-    <div class="document-title">
-      <h2>Medical Prescription</h2>
-      <p class="document-subtitle">Patient Treatment Plan</p>
-      <div class="document-info">
-        <span>Prescription No: ${prescription.prescriptionNo}</span>
-        <span>Date: ${formatDate(prescription.prescriptionDate)}</span>
-      </div>
-    </div>
+    ${headerHtml}
+
     <div class="content">
+      <div class="document-title">
+        <h2>Medical Prescription</h2>
+        <p class="document-subtitle">Professional Treatment Plan</p>
+      </div>
+
+      <div class="prescription-meta">
+        <div class="meta-box">
+          <h3>Prescription No.</h3>
+          <p>#${prescription.prescriptionNo}</p>
+        </div>
+        <div class="meta-box" style="text-align: right;">
+          <h3>Date Issued</h3>
+          <p>${formatDate(prescription.prescriptionDate)}</p>
+        </div>
+      </div>
+
       <div class="patient-doctor-info">
         <div class="info-section">
-          <h3>Patient Information</h3>
+          <h3>Patient Detail</h3>
           <div class="info-item"><span class="info-label">Name:</span><span class="info-value">${prescription.patientName}</span></div>
-          <div class="info-item"><span class="info-label">Age:</span><span class="info-value">${prescription.patientAge || "N/A"} years</span></div>
-          <div class="info-item"><span class="info-label">Gender:</span><span class="info-value">${prescription.patientGender || "N/A"}</span></div>
-          <div class="info-item"><span class="info-label">Phone:</span><span class="info-value">${prescription.patientPhone || "N/A"}</span></div>
+          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${prescription.patientAge || "N/A"}Y / ${prescription.patientGender || "N/A"}</span></div>
+          <div class="info-item"><span class="info-label">Contact:</span><span class="info-value">${prescription.patientPhone || "N/A"}</span></div>
         </div>
         <div class="info-section">
-          <h3>Doctor Information</h3>
-          <div class="info-item"><span class="info-label">Name:</span><span class="info-value">${prescription.doctorName}</span></div>
+          <h3>Doctor Detail</h3>
+          <div class="info-item"><span class="info-label">Physician:</span><span class="info-value">${prescription.doctorName}</span></div>
           <div class="info-item"><span class="info-label">Speciality:</span><span class="info-value">${prescription.doctorSpeciality || "N/A"}</span></div>
-          ${
-            prescription.appointmentInfo
-              ? `
-            <div class="info-item"><span class="info-label">Appt. Date:</span><span class="info-value">${formatDate(prescription.appointmentInfo.appointmentDate)}</span></div>
-            <div class="info-item"><span class="info-label">Appt. Type:</span><span class="info-value">${prescription.appointmentTypeName || (prescription.appointmentInfo.appointmentType ? prescription.appointmentInfo.appointmentType.replace(/-/g, " ") : "N/A")}</span></div>
+          ${prescription.appointmentInfo
+          ? `
+            <div class="info-item"><span class="info-label">Visit Type:</span><span class="info-value">${prescription.appointmentTypeName || "Consultation"}</span></div>
           `
-              : ""
-          }
+          : ""
+        }
         </div>
       </div>
+
       <table class="prescription-table">
-        <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Time</th></tr></thead>
+        <thead>
+          <tr>
+            <th style="text-align: left;">Medicine Name & Description</th>
+            <th width="80">Dosage</th>
+            <th width="100">Frequency</th>
+            <th width="80">Duration</th>
+            <th width="80">Time</th>
+          </tr>
+        </thead>
         <tbody>${itemsHtml}</tbody>
       </table>
-      ${prescription.notes ? `<div class="notes-section"><h3>Notes & Instructions</h3><p>${prescription.notes}</p></div>` : ""}
+
+      ${prescription.notes ? `<div class="notes-section"><h3>Clinical Notes & Instructions</h3><p>${prescription.notes}</p></div>` : ""}
+
       <div class="signature-section">
-        <div class="signature-box"><p>Patient Signature</p></div>
-        <div class="signature-box"><p>Doctor Signature</p></div>
+        <div class="signature-box">
+          <div class="sign-line"></div>
+          <p class="sign-label">Patient/Guardian Signature</p>
+        </div>
+        <div class="signature-box">
+          <div class="sign-line"></div>
+          <p class="sign-label">Authorized Physician Signature</p>
+        </div>
       </div>
     </div>
-    <div class="footer">
-      <p>${layoutConfig?.footerText || "Thank you for choosing our healthcare services"}</p>
-    </div>
+
+    ${footerHtml}
   </div>
   <script>
-    window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 500); });
-    window.addEventListener('afterprint', function() { window.close(); });
-    window.addEventListener('beforeunload', function() { if (window.opener && !window.opener.closed) { window.opener.postMessage('printComplete', '*'); } });
+    window.onload = function() { 
+      setTimeout(function() { 
+        window.print(); 
+        window.onafterprint = function() { window.close(); };
+      }, 500); 
+    };
   </script>
 </body>
 </html>`;
@@ -503,9 +523,9 @@ export default function PrescriptionDetailPage() {
                       {prescription.appointmentTypeName ||
                         (prescription.appointmentInfo.appointmentType
                           ? prescription.appointmentInfo.appointmentType.replace(
-                              /-/g,
-                              " ",
-                            )
+                            /-/g,
+                            " ",
+                          )
                           : "Not specified")}
                     </p>
                   </div>

@@ -23,6 +23,7 @@ export interface PrintLayoutConfig {
   logoUrl?: string;
   logoPosition: "left" | "center" | "right";
   logoSize: "small" | "medium" | "large";
+  logoWidth: number;
 
   // Layout Settings
   headerHeight: "compact" | "standard" | "expanded";
@@ -43,6 +44,21 @@ export interface PrintLayoutConfig {
   // Colors (for colored prints)
   primaryColor?: string;
   secondaryColor?: string;
+
+  // Granular Positioning (px offsets from classic positions)
+  logoPos?: { x: number; y: number };
+  clinicNamePos?: { x: number; y: number };
+  taglinePos?: { x: number; y: number };
+  addressPos?: { x: number; y: number };
+  phonePos?: { x: number; y: number };
+  emailPos?: { x: number; y: number };
+  websitePos?: { x: number; y: number };
+
+  // Granular Field Styling (Individual Formatter overrides)
+  boldFields?: string[];
+  fieldColors?: Record<string, string>;
+  fieldSizes?: Record<string, number>;
+  fieldAlignments?: Record<string, "left" | "center" | "right">;
 
   // Metadata
   createdAt?: Date;
@@ -68,7 +84,8 @@ export const DEFAULT_PRINT_LAYOUT: Omit<
   email: "",
   logoPosition: "left",
   logoSize: "medium",
-  headerHeight: "standard",
+  logoWidth: 80,
+  headerHeight: "expanded",
   showFooter: true,
   paperSize: "A4",
   margins: "normal",
@@ -77,6 +94,17 @@ export const DEFAULT_PRINT_LAYOUT: Omit<
   secondaryColor: "#64748b",
   contentTopMarginWithoutLetterheadMm: 20,
   defaultPathologyPrintWithoutLetterhead: false,
+  logoPos: { x: 0, y: 0 },
+  clinicNamePos: { x: 0, y: 0 },
+  taglinePos: { x: 0, y: 0 },
+  addressPos: { x: 0, y: 0 },
+  phonePos: { x: 0, y: 0 },
+  emailPos: { x: 0, y: 0 },
+  websitePos: { x: 0, y: 0 },
+  boldFields: ["clinicName"],
+  fieldColors: {},
+  fieldSizes: {},
+  fieldAlignments: {},
 };
 
 /**

@@ -16,7 +16,8 @@ export interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
   };
 }
 
-export interface TabProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+export interface TabProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   title?: React.ReactNode;
 }
 

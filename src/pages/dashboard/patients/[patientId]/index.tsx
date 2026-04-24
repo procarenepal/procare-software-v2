@@ -29,6 +29,11 @@ import { MedicalRecordsService } from "@/services/medicalRecordsService";
 import { PatientNoteEntriesService } from "@/services/patientNoteEntriesService";
 import { MedicalReportResponseService } from "@/services/medicalReportResponseService";
 import { medicalReportFieldService } from "@/services/medicalReportFieldService";
+import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
 import { Patient } from "@/types/models";
 // ── Custom UI (zero HeroUI) ───────────────────────────────────────────────────
 import { Button } from "@/components/ui/button";
@@ -240,17 +245,17 @@ export default function PatientDetailPage() {
         }),
         isBillingEnabled
           ? appointmentBillingService
-              .getBillingByPatient(patientId, clinicId)
-              .catch((err) => {
-                console.warn("Failed to fetch billing records:", err);
+            .getBillingByPatient(patientId, clinicId)
+            .catch((err) => {
+              console.warn("Failed to fetch billing records:", err);
 
-                return [];
-              })
+              return [];
+            })
           : Promise.resolve([]),
       ]);
 
       // Extract data from results with proper fallbacks
-      const clinic =
+      const clinicData =
         results[0].status === "fulfilled" ? results[0].value : null;
       const layoutConfig =
         results[1].status === "fulfilled" ? results[1].value : null;
@@ -271,14 +276,10 @@ export default function PatientDetailPage() {
       const billingRecords =
         results[10].status === "fulfilled" ? results[10].value : [];
 
-      // Debug: Log prescriptions data
-      console.log("Prescriptions data for print:", prescriptions);
-      console.log("Prescriptions length:", prescriptions?.length || 0);
-
       // Generate and open print window
       const printContent = generateComprehensivePrintContent({
         patient,
-        clinic,
+        clinic: clinicData,
         layoutConfig,
         doctors,
         appointments,
@@ -298,24 +299,9 @@ export default function PatientDetailPage() {
         printWindow.document.write(printContent);
         printWindow.document.close();
 
-        // Check which data was successfully loaded
-        const loadedSections = [];
-
-        if (appointments.length > 0) loadedSections.push("appointments");
-        if (prescriptions.length > 0) loadedSections.push("prescriptions");
-        if (documents.length > 0) loadedSections.push("documents");
-        if (xrays.length > 0) loadedSections.push("X-rays");
-        if (noteEntries.length > 0) loadedSections.push("notes");
-        if (billingRecords.length > 0) loadedSections.push("billing");
-
-        const successMessage =
-          loadedSections.length > 0
-            ? `Comprehensive patient report generated with: ${loadedSections.join(", ")}`
-            : "Basic patient report generated successfully";
-
         addToast({
           title: "Report Generated",
-          description: successMessage,
+          description: "Comprehensive patient report generated successfully",
           color: "success",
         });
       } else {
@@ -339,11 +325,7 @@ export default function PatientDetailPage() {
       patient,
       clinic,
       layoutConfig,
-      doctors = [],
-      appointments = [],
       prescriptions = [],
-      documents = [],
-      xrays = [],
       noteEntries = [],
       medicalReportResponses = null,
       medicalReportFields = [],
@@ -351,433 +333,195 @@ export default function PatientDetailPage() {
       isBillingEnabled,
     } = data;
 
-    // Helper functions
-    const formatCurrency = (amount: number) => `NPR ${amount.toLocaleString()}`;
-    const formatDateTime = (date: Date) => {
-      return new Intl.DateTimeFormat("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }).format(date);
-    };
-
-    const formatTimeTo12Hour = (time24: string): string => {
-      if (!time24) return "Not specified";
-      const [hours, minutes] = time24.split(":");
-      const hour = parseInt(hours, 10);
-      const ampm = hour >= 12 ? "PM" : "AM";
-      const hour12 = hour % 12 || 12;
-
-      return `${hour12}:${minutes} ${ampm}`;
-    };
-
-    // Helper function to get doctor name from appointment
-    const getDoctorNameFromAppointment = (appointment: any): string => {
-      // First try to find doctor by ID
-      if (appointment.doctorId && doctors.length > 0) {
-        const doctor = doctors.find((d: any) => d.id === appointment.doctorId);
-
-        if (doctor) return doctor.name;
-      }
-
-      // Try multiple possible field names for doctor information
-      if (appointment.doctorName) return appointment.doctorName;
-      if (appointment.doctor) return appointment.doctor;
-
-      return "Unknown";
-    };
+    // Global Branding Utility
+    const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
+    const headerHtml = layoutConfig
+      ? getPrintHeaderHTML(layoutConfig, clinic)
+      : "";
+    const footerHtml = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
     return `<!DOCTYPE html>
 <html>
 <head>
   <title>Comprehensive Patient Report - ${patient.name}</title>
   <style>
-    :root {
-      --primary: ${layoutConfig?.primaryColor || "#2563eb"};
-      --bg: #ffffff;
-      --text: #334155;
-      --muted: #64748b;
-      --border: #e2e8f0;
-      --soft: #f8fafc;
-      --heading: #0f172a;
-      --radius: 6px;
-      --space-xs: 4px;
-      --space-sm: 8px;
-      --space-md: 12px;
-      --space-lg: 16px;
-      --font-sm: 10px;
-      --font-md: 12px;
-      --font-lg: 16px;
-    }
-
-    /* Base */
-    body { font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; margin:0; color:var(--text); background:var(--bg); font-size:11px; line-height:1.35; }
-    .print-container { padding: 10mm; box-sizing: border-box; }
-
-    /* Header */
-    .header { border-bottom: 2px solid var(--primary); padding-bottom: var(--space-md); margin-bottom: var(--space-lg); }
-    .header-content { display:flex; justify-content:space-between; align-items:flex-start; gap: var(--space-lg); }
-    .header-left { display:flex; align-items:center; gap: var(--space-lg); }
-    .logo { height:60px; width:auto; object-fit:contain; }
-    .clinic-info h1 { margin:0; color: var(--primary); font-size: var(--font-lg); font-weight:700; }
-    .clinic-info p, .header-right { margin:2px 0; font-size: var(--font-sm); color: var(--muted); }
-    .header-right { text-align:right; color: var(--text); }
-
-    /* Titles */
-    .document-title { text-align:center; margin: var(--space-lg) 0; }
-    .document-subtitle { font-size: var(--font-md); color: var(--muted); margin: var(--space-sm) 0; }
-
-    /* Patient overview */
-    .patient-overview { background: var(--soft); border-radius: var(--radius); padding: var(--space-md); margin-bottom: var(--space-lg); }
-    .patient-overview h3 { margin:0 0 var(--space-sm) 0; color: var(--primary); font-size: var(--font-md); border-bottom:1px solid var(--border); padding-bottom: var(--space-xs); }
-    .patient-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-sm); }
-    .patient-field { display:flex; gap: var(--space-xs); align-items:center; }
-    .patient-field .label { font-size: 9px; font-weight:600; color: var(--muted); text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
-    .patient-field .value { font-size: var(--font-sm); color: var(--text); font-weight:500; }
-
-    /* Sections */
-    .section { margin-bottom: var(--space-lg); }
-    .section-header {  color:var(--primary); padding: var(--space-sm) var(--space-md); margin:0 0 var(--space-sm) 0; font-weight:600; font-size: var(--font-sm); text-transform:uppercase; letter-spacing:.3px; }
-    .section-content { padding: 0 var(--space-xs); }
-
-    /* Table */
-    .data-table { width:100%; border-collapse:collapse; font-size: 9px; }
-    .data-table td { padding: 4px 6px; vertical-align:top; }
-    .data-table tr:nth-child(even) { background: var(--soft); }
-    /* 3-column layout table */
-    .layout-table { width:100%; table-layout: fixed; border-collapse: separate; border-spacing: var(--space-sm); }
-    .layout-table td { vertical-align: top; }
-    .layout-table td:first-child { width: 25%; } /* Medical Reports */
-    .layout-table td:nth-child(2) { width: 55%; } /* Prescriptions - wider when available */
-    .layout-table td:last-child { width: 20%; } /* Notes - narrower when prescriptions available */
-
-    /* Cards */
-    .card { padding: var(--space-sm); margin-bottom: var(--space-sm); background:#fff; }
-    .card-header { font-weight:600; color:#374151; margin-bottom: var(--space-xs); font-size: var(--font-sm); }
-    .card-content { font-size: var(--font-sm); color:#4b5563; line-height:1.4; }
-    .card-meta { font-size: 9px; color:#9ca3af; margin-top: var(--space-xs); padding-top: var(--space-xs); border-top:1px solid #f3f4f6; }
-
-    /* Badges */
-    .status { display:inline-block; padding: 1px 6px; border-radius: 10px; font-size: 8px; font-weight:600; text-transform:uppercase; }
-    .status.active{ background:#dcfce7; color:#166534; }
-    .status.completed{ background:#dbeafe; color:#1e40af; }
-    .status.cancelled{ background:#fee2e2; color:#991b1b; }
-    .status.scheduled{ background:#e0e7ff; color:#3730a3; }
-    .status.paid{ background:#dcfce7; color:#166534; }
-    .status.unpaid{ background:#fee2e2; color:#991b1b; }
-    .status.partial{ background:#fef3c7; color:#92400e; }
-
-    /* Utilities */
-    .empty-state { text-align:center; color:#9ca3af; font-style:italic; padding: var(--space-lg); }
-    .page-break { page-break-before: always; }
-    .no-break { page-break-inside: avoid; }
+    body { font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: white; color: #333; line-height: 1.5; font-size: 11px; }
+    .print-container { max-width: 100%; margin: 0; background: white; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; }
     
-    /* Footer */
-    .footer { border-top:1px solid var(--border); padding-top: var(--space-md); margin-top: 24px; text-align:center; font-size: var(--font-sm); color: var(--muted); }
+    ${brandingCSS}
 
-    /* Print tweaks */
-    @media print {
-      body { margin:0; font-size:10px; line-height:1.25; }
-      .print-container { padding: 8mm; }
-      .section, .patient-overview, .card { break-inside: avoid; }
-      .patient-grid { grid-template-columns: repeat(3, 1fr); }
-      .layout-table td:first-child { width: 25%; } /* Medical Reports */
-      .layout-table td:nth-child(2) { width: 55%; } /* Prescriptions - wider when available */
-      .layout-table td:last-child { width: 20%; } /* Notes - narrower when prescriptions available */
-    }
+    .content { flex: 1; padding: 15mm; min-height: 0; }
+    
+    .document-title { text-align: center; margin: 10px 0 25px 0; }
+    .document-title h2 { font-size: 20px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.1em; color: #475569; }
+    .document-subtitle { font-size: 13px; color: #64748b; margin: 5px 0; font-weight: 500; }
+    
+    .patient-overview { background: #f8fafc; border-radius: 8px; padding: 15px; margin-bottom: 25px; border: 1px solid #f1f5f9; }
+    .patient-overview h3 { margin: 0 0 10px 0; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+    .patient-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .patient-field { display: flex; gap: 5px; align-items: baseline; }
+    .patient-field .label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; white-space: nowrap; }
+    .patient-field .value { font-size: 11px; color: #1e293b; font-weight: 500; }
+
+    .section { margin-bottom: 30px; }
+    .section-header { color: #475569; padding: 5px 0; margin-bottom: 12px; font-weight: 800; font-size: 12px; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; letter-spacing: 0.05em; }
+    
+    .report-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    
+    .card { padding: 12px; margin-bottom: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .card-header { font-weight: 700; color: #1e293b; margin-bottom: 5px; font-size: 11px; text-transform: uppercase; }
+    .card-content { font-size: 11px; color: #334155; line-height: 1.5; }
+    .card-meta { font-size: 9px; color: #64748b; margin-top: 8px; padding-top: 5px; border-top: 1px solid #f1f5f9; font-weight: 500; }
+
+    .med-item { margin-bottom: 6px; padding: 6px; background: #f8fafc; border-radius: 4px; font-size: 10px; border-left: 3px solid #cbd5e1; }
+    .med-name { font-weight: 700; color: #1e293b; }
+    .med-details { color: #64748b; }
+
+    .empty-state { text-align: center; color: #94a3b8; font-style: italic; padding: 20px; font-size: 11px; }
+
+    @media print { body { padding: 0; margin: 0; } .print-container { height: 100vh; padding: 0; max-width: 100%; } .section, .patient-overview, .card { page-break-inside: avoid; } }
   </style>
 </head>
 <body>
   <div class="print-container">
-    <!-- Header -->
-    <div class="header">
-      <div class="header-content">
-        <div class="header-left">
-          ${layoutConfig?.logoUrl ? `<img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />` : ""}
-          <div class="clinic-info">
-            <h1>${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-            ${layoutConfig?.tagline ? `<p>${layoutConfig.tagline}</p>` : ""}
-            ${layoutConfig?.address || clinic?.address ? `<p>${layoutConfig?.address || clinic?.address}</p>` : ""}
-            ${layoutConfig?.city || clinic?.city || layoutConfig?.state || layoutConfig?.zipCode ? `<p>${layoutConfig?.city || clinic?.city || ""}${layoutConfig?.state ? `, ${layoutConfig.state}` : ""} ${layoutConfig?.zipCode || ""}</p>` : ""}
-            ${layoutConfig?.website ? `<p>Website: ${layoutConfig.website}</p>` : ""}
-          </div>
-        </div>
-        <div class="header-right">
-          ${layoutConfig?.phone || clinic?.phone ? `<p><strong>Phone:</strong> ${layoutConfig?.phone || clinic?.phone}</p>` : ""}
-          ${layoutConfig?.email || clinic?.email ? `<p><strong>Email:</strong> ${layoutConfig?.email || clinic?.email}</p>` : ""}
-          <p><strong>Generated:</strong> ${formatDateTime(new Date())}</p>
+    ${headerHtml}
+
+    <div class="content">
+      <div class="document-title">
+        <h2>Comprehensive Health Record</h2>
+        <p class="document-subtitle">Patient Medical Summary</p>
+      </div>
+      
+      <div class="patient-overview">
+        <h3>Patient Identification</h3>
+        <div class="patient-grid">
+          <div class="patient-field"><span class="label">Name:</span><span class="value">${patient.name}</span></div>
+          <div class="patient-field"><span class="label">Reg #:</span><span class="value">${patient.regNumber || "N/A"}</span></div>
+          <div class="patient-field"><span class="label">Age:</span><span class="value">${patient.dob ? calculateAge(patient.dob) : "N/A"} Years</span></div>
+          <div class="patient-field"><span class="label">Gender:</span><span class="value">${patient.gender || "N/A"}</span></div>
+          <div class="patient-field"><span class="label">Blood:</span><span class="value">${patient.bloodGroup || "N/A"}</span></div>
+          <div class="patient-field"><span class="label">Contact:</span><span class="value">${patient.mobile || "N/A"}</span></div>
         </div>
       </div>
-    </div>
-    
-    <!-- Patient Overview -->
-    <div class="patient-overview">
-      <h3>Patient Information</h3>
-      <div class="patient-grid">
-        ${
-          patient.name !== undefined && patient.name !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Full Name: </div>
-          <div class="value">${patient.name}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.regNumber !== undefined && patient.regNumber !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Registration Number: </div>
-          <div class="value">${patient.regNumber}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.dob !== undefined && patient.dob !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Age: </div>
-          <div class="value">${calculateAge(patient.dob)} years</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.gender !== undefined && patient.gender !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Gender: </div>
-          <div class="value">${patient.gender}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.bloodGroup !== undefined && patient.bloodGroup !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Blood Group: </div>
-          <div class="value">${patient.bloodGroup}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.dob !== undefined && patient.dob !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Date of Birth: </div>
-          <div class="value">${formatDate(patient.dob)}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.mobile !== undefined && patient.mobile !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Mobile: </div>
-          <div class="value">${patient.mobile}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.email !== undefined &&
-          patient.email !== null &&
-          patient.email !== ""
-            ? `
-        <div class="patient-field">
-          <div class="label">Email: </div>
-          <div class="value">${patient.email}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.address !== undefined && patient.address !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Address: </div>
-          <div class="value">${patient.address}</div>
-        </div>
-        `
-            : ""
-        }
-        ${
-          patient.createdAt !== undefined && patient.createdAt !== null
-            ? `
-        <div class="patient-field">
-          <div class="label">Registration Date: </div>
-          <div class="value">${formatDateTime(patient.createdAt)}</div>
-        </div>
-        `
-            : ""
-        }
-      </div>
-    </div>
-    <!-- Three-column table layout -->
-    <!-- Always show the 3-column table -->
-    <table class="layout-table">
-      <tr>
-        <td>
-          ${
-            medicalReportResponses &&
-            medicalReportFields.length > 0 &&
-            Object.keys(medicalReportResponses.fieldValues || {}).length > 0
-              ? `
+
+      <div class="report-grid">
+        <div class="report-col">
           <div class="section">
-            <div class="section-header">Medical Reports</div>
-            <div class="section-content">
-              ${medicalReportFields
-                .map((field) => {
-                  const response =
-                    medicalReportResponses.fieldValues?.[field.fieldKey];
+            <div class="section-header">Clinical History & Reports</div>
+            ${medicalReportResponses &&
+        medicalReportFields.length > 0 &&
+        Object.keys(medicalReportResponses.fieldValues || {}).length > 0
+        ? medicalReportFields
+          .map((field: any) => {
+            const response =
+              medicalReportResponses.fieldValues?.[field.fieldKey];
 
-                  if (
-                    !response ||
-                    response === undefined ||
-                    response === null ||
-                    response === ""
-                  )
-                    return "";
+            if (!response || response === "") return "";
 
-                  return `
+            return `
                   <div class="card">
-                    ${field.fieldLabel ? `<div class=\"card-header\">${field.fieldLabel}</div>` : ""}
+                    <div class="card-header">${field.fieldLabel}</div>
                     <div class="card-content">
                       ${Array.isArray(response) ? response.join(", ") : response}
                     </div>
                   </div>
                 `;
-                })
-                .filter((card) => card !== "")
-                .join("")}
-            </div>
+          })
+          .join("")
+        : '<div class="empty-state">No clinical report entries found.</div>'
+      }
+          </div>
+
+          <div class="section">
+            <div class="section-header">Clinical Progress Notes</div>
+            ${noteEntries.length > 0
+        ? noteEntries
+          .map(
+            (note: any) => `
+                <div class="card">
+                  <div class="card-header">${note.sectionLabel || "Note Entry"}</div>
+                  <div class="card-content">${note.content}</div>
+                </div>
+              `,
+          )
+          .join("")
+        : '<div class="empty-state">No progress notes recorded.</div>'
+      }
+          </div>
+        </div>
+
+        <div class="report-col">
+          <div class="section">
+            <div class="section-header">Medication Treatment Plans</div>
+            ${prescriptions && prescriptions.length > 0
+        ? prescriptions
+          .map(
+            (p: any) => `
+                <div class="card">
+                  <div class="card-header">PRESCRIPTION #${p.prescriptionNo}</div>
+                  <div class="card-content">
+                    ${p.items && p.items.length > 0
+                ? p.items
+                  .map(
+                    (item: any) => `
+                        <div class="med-item">
+                          <div class="med-name">${item.medicineName}</div>
+                          <div class="med-details">${item.dosage || ""} | ${item.frequency || ""} | ${item.duration || ""}</div>
+                        </div>
+                      `,
+                  )
+                  .join("")
+                : '<div class="empty-state">No items.</div>'
+              }
+                  </div>
+                  <div class="card-meta">Issued on: ${p.prescriptionDate ? new Date(p.prescriptionDate).toLocaleDateString() : "N/A"}</div>
+                </div>
+              `,
+          )
+          .join("")
+        : '<div class="empty-state">No active prescriptions.</div>'
+      }
+          </div>
+
+          ${isBillingEnabled
+        ? `
+          <div class="section">
+            <div class="section-header">Financial Summary</div>
+            ${billingRecords.length > 0
+          ? billingRecords
+            .map(
+              (b: any) => `
+                <div class="card">
+                  <div class="card-header">INVOICE #${b.billNumber}</div>
+                  <div style="display:flex; justify-content:space-between; font-weight:600; font-size:11px; margin-top:5px;">
+                    <span>Total Amount:</span>
+                    <span>NPR ${b.totalAmount?.toLocaleString() || "0"}</span>
+                  </div>
+                  <div class="card-meta">Status: ${b.status?.toUpperCase() || "PENDING"}</div>
+                </div>
+              `,
+            )
+            .join("")
+          : '<div class="empty-state">No billing records found.</div>'
+        }
           </div>
           `
-              : ""
-          }
-        </td>
-        <td>
-          <div class="section">
-            <div class="section-header">Prescriptions</div>
-            <div class="section-content">
-              ${
-                prescriptions && prescriptions.length > 0
-                  ? `
-                ${prescriptions
-                  .map((prescription) => {
-                    let prescriptionDate, createdDate;
-
-                    try {
-                      prescriptionDate = prescription.prescriptionDate
-                        ? formatDate(prescription.prescriptionDate)
-                        : "Unknown Date";
-                      createdDate = prescription.createdAt
-                        ? formatDateTime(prescription.createdAt)
-                        : "Unknown Date";
-                    } catch (error) {
-                      prescriptionDate = "Unknown Date";
-                      createdDate = "Unknown Date";
-                    }
-
-                    return `
-                  <div class="card">
-                   <div class="card-content">
-                      ${
-                        prescription.items && prescription.items.length > 0
-                          ? `
-                        <div style="margin-top: 8px;">
-                          <div style="margin-left: 8px; margin-top: 4px;">
-                            ${prescription.items
-                              .map(
-                                (item) => `
-                              <div style="margin-bottom: 6px; padding: 4px; background: #f8fafc; border-radius: 4px; font-size: 9px;">
-                                <span>${item.medicineName || "Unknown Medicine"}</span> - ${item.dosage ? `<span>${item.dosage}</span>` : ""} - ${item.frequency ? `<span>${item.frequency}</span>` : ""} - ${item.time ? `<span style="margin-left: 8px;">${item.time}</span>` : ""} for ${item.duration ? `<span> ${item.duration}</span>` : ""}
-                              </div>
-                            `,
-                              )
-                              .join("")}
-                          </div>
-                        </div>
-                      `
-                          : '<p style="color: #9ca3af; font-style: italic;">No medicines prescribed</p>'
-                      }
-                    </div>
-                  </div>
-                `;
-                  })
-                  .join("")}
-              `
-                  : `
-                <div class="empty-state">No prescriptions found for this patient.</div>
-              `
-              }
-            </div>
-          </div>
-        </td>
-        <td>
-${
-  noteEntries.length > 0
-    ? `
-    <div class="section">
-      <div class="section-header">Patient Notes</div>
-      <div class="section-content">
-        ${noteEntries
-          .map(
-            (note) => `
-          <div class="card">
-                  ${note.sectionLabel ? `<div class=\"card-header\">${note.sectionLabel}</div>` : ""}
-            ${
-              note.content
-                ? `
-            <div class="card-content">
-              ${note.content}
-            </div>
-            `
-                : ""
-            }
-          </div>
-        `,
-          )
-          .join("")}
+        : ""
+      }
+        </div>
       </div>
     </div>
-          `
-    : ""
-}
-        </td>
-      </tr>
-    </table>
 
-    <!-- Footer -->
-    <div class="footer">
-      <p>This comprehensive report was generated on ${formatDateTime(new Date())} for ${patient.name}</p>
-    </div>
+    ${footerHtml}
   </div>
   
   <script>
-    window.addEventListener('load', function() {
+    window.onload = function() {
       setTimeout(function() {
         window.print();
-      }, 800);
-    });
-    
-    window.addEventListener('afterprint', function() {
-      window.close();
-    });
-    
-    window.addEventListener('beforeunload', function() {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage('printComplete', '*');
-      }
-    });
+        window.onafterprint = function() { window.close(); };
+      }, 500);
+    };
   </script>
 </body>
 </html>`;
@@ -839,12 +583,12 @@ ${
     },
     ...(isBillingEnabled
       ? [
-          {
-            key: "billing",
-            icon: <IoWalletOutline className="w-4 h-4" />,
-            label: "Billing",
-          },
-        ]
+        {
+          key: "billing",
+          icon: <IoWalletOutline className="w-4 h-4" />,
+          label: "Billing",
+        },
+      ]
       : []),
   ];
 
@@ -923,14 +667,13 @@ ${
             <button
               key={tab.key}
               className={`
-                inline-flex items-center gap-1.5 px-4 py-3 text-[12.5px] font-medium whitespace-nowrap
-                border-b-2 transition-colors shrink-0
-                ${
-                  selectedTab === tab.key
-                    ? "border-teal-700 text-teal-700 bg-teal-50/40"
-                    : "border-transparent text-mountain-500 hover:text-mountain-800 hover:bg-mountain-50"
+                  inline-flex items-center gap-1.5 px-4 py-3 text-[12.5px] font-medium whitespace-nowrap
+                  border-b-2 transition-colors shrink-0
+                  ${selectedTab === tab.key
+                  ? "border-teal-700 text-teal-700 bg-teal-50/40"
+                  : "border-transparent text-mountain-500 hover:text-mountain-800 hover:bg-mountain-50"
                 }
-              `}
+                `}
               type="button"
               onClick={() => handleTabChange(tab.key)}
             >

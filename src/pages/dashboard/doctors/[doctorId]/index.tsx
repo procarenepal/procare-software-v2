@@ -882,9 +882,7 @@ export default function DoctorProfilePage() {
                         </div>
                         <p className="text-[13.5px] font-medium text-mountain-700">
                           {commission.patientName} -{" "}
-                          <span className="text-mountain-500">
-                            {commission.appointmentTypes.join(", ")}
-                          </span>
+                          {(commission.serviceNames || []).join(", ")}
                         </p>
                         <p className="text-[12px] text-mountain-500 mt-1">
                           Rate: {commission.commissionPercentage}% • Invoiced:{" "}

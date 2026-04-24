@@ -10,12 +10,12 @@ export interface CheckboxProps
   children?: React.ReactNode;
   size?: "sm" | "md" | "lg";
   color?:
-  | "default"
-  | "primary"
-  | "secondary"
-  | "success"
-  | "warning"
-  | "danger";
+    | "default"
+    | "primary"
+    | "secondary"
+    | "success"
+    | "warning"
+    | "danger";
 }
 
 export const Checkbox: React.FC<CheckboxProps> = ({

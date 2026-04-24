@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-
 import {
   IoBusinessOutline,
   IoArrowBackOutline,
@@ -15,6 +14,7 @@ import {
   IoShieldCheckmarkOutline,
   IoTrashOutline,
 } from "react-icons/io5";
+
 import { title, subtitle } from "@/components/primitives";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,10 @@ interface FormData {
   email: string;
   phone: string;
   city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  address: string;
   description: string;
 }
 
@@ -54,6 +58,10 @@ interface ValidationErrors {
   email?: string;
   phone?: string;
   city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
+  address?: string;
   description?: string;
 }
 
@@ -99,6 +107,26 @@ const VALIDATION_RULES: Record<keyof FormData, ValidationRule> = {
     maxLength: 50,
     pattern: /^[a-zA-Z\s\-.']+$/,
   },
+  state: {
+    required: true,
+    minLength: 2,
+    maxLength: 50,
+  },
+  zipCode: {
+    required: true,
+    minLength: 2,
+    maxLength: 20,
+  },
+  country: {
+    required: true,
+    minLength: 2,
+    maxLength: 50,
+  },
+  address: {
+    required: true,
+    minLength: 5,
+    maxLength: 200,
+  },
   description: {
     required: false,
     maxLength: 500,
@@ -127,6 +155,10 @@ export default function ClinicSettingsPage() {
     email: "",
     phone: "",
     city: "",
+    state: "Bagmati",
+    zipCode: "44600",
+    country: "Nepal",
+    address: "",
     description: "",
   });
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>(
@@ -140,6 +172,10 @@ export default function ClinicSettingsPage() {
     email: "",
     phone: "",
     city: "",
+    state: "Bagmati",
+    zipCode: "44600",
+    country: "Nepal",
+    address: "",
     description: "",
   });
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -302,6 +338,10 @@ export default function ClinicSettingsPage() {
           email: clinicData.email || "",
           phone: clinicData.phone || "",
           city: clinicData.city || "",
+          state: clinicData.state || "Bagmati",
+          zipCode: clinicData.zipCode || "44600",
+          country: clinicData.country || "Nepal",
+          address: clinicData.address || "",
           description: clinicData.description || "",
         };
 
@@ -320,6 +360,7 @@ export default function ClinicSettingsPage() {
                 APPWRITE_BUCKET_ID,
                 clinicData.logo,
               );
+
               setLogoPreview(url.toString());
             } catch (err) {
               console.error("Error getting logo preview:", err);
@@ -470,6 +511,10 @@ export default function ClinicSettingsPage() {
         email: formData.email.trim(),
         phone: formData.phone.trim(),
         city: formData.city.trim(),
+        state: formData.state.trim(),
+        zipCode: formData.zipCode.trim(),
+        country: formData.country.trim(),
+        address: formData.address.trim(),
         description: formData.description.trim(),
       };
 
@@ -648,6 +693,7 @@ export default function ClinicSettingsPage() {
     const isFormLoaded = Object.values(formData).some(
       (value) => value.trim() !== "",
     );
+
     if (!isFormLoaded) {
       return false;
     }
@@ -679,9 +725,9 @@ export default function ClinicSettingsPage() {
   if (loadingStates.data) {
     return (
       <div
+        aria-label="Clinic Settings"
         className="flex flex-col gap-6"
         role="main"
-        aria-label="Clinic Settings"
       >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -693,7 +739,7 @@ export default function ClinicSettingsPage() {
 
           <div className="flex gap-3">
             <Link aria-label="Back to Settings" to="/dashboard/settings">
-              <Button variant="light" startContent={<IoArrowBackOutline />}>
+              <Button startContent={<IoArrowBackOutline />} variant="light">
                 Back to Settings
               </Button>
             </Link>
@@ -720,9 +766,9 @@ export default function ClinicSettingsPage() {
   if (error && !clinic) {
     return (
       <div
+        aria-label="Clinic Settings"
         className="flex flex-col gap-6"
         role="main"
-        aria-label="Clinic Settings"
       >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -734,7 +780,7 @@ export default function ClinicSettingsPage() {
 
           <div className="flex gap-3">
             <Link aria-label="Back to Settings" to="/dashboard/settings">
-              <Button variant="light" startContent={<IoArrowBackOutline />}>
+              <Button startContent={<IoArrowBackOutline />} variant="light">
                 Back to Settings
               </Button>
             </Link>
@@ -766,9 +812,9 @@ export default function ClinicSettingsPage() {
   if (!clinic) {
     return (
       <div
+        aria-label="Clinic Settings"
         className="flex flex-col gap-6"
         role="main"
-        aria-label="Clinic Settings"
       >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
@@ -780,7 +826,7 @@ export default function ClinicSettingsPage() {
 
           <div className="flex gap-3">
             <Link aria-label="Back to Settings" to="/dashboard/settings">
-              <Button variant="light" startContent={<IoArrowBackOutline />}>
+              <Button startContent={<IoArrowBackOutline />} variant="light">
                 Back to Settings
               </Button>
             </Link>
@@ -801,9 +847,9 @@ export default function ClinicSettingsPage() {
   return (
     <>
       <div
+        aria-label="Clinic Settings"
         className="flex flex-col gap-6"
         role="main"
-        aria-label="Clinic Settings"
       >
         {/* Page header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -816,7 +862,7 @@ export default function ClinicSettingsPage() {
 
           <div className="flex gap-3">
             <Link aria-label="Back to Settings" to="/dashboard/settings">
-              <Button variant="light" startContent={<IoArrowBackOutline />}>
+              <Button startContent={<IoArrowBackOutline />} variant="light">
                 Back to Settings
               </Button>
             </Link>
@@ -855,9 +901,9 @@ export default function ClinicSettingsPage() {
                         <Spinner size="sm" />
                       ) : logoPreview ? (
                         <img
-                          src={logoPreview}
                           alt="Clinic Logo"
                           className="w-full h-full object-cover"
+                          src={logoPreview}
                         />
                       ) : (
                         <IoImageOutline className="w-8 h-8 text-mountain-300" />
@@ -886,11 +932,11 @@ export default function ClinicSettingsPage() {
                         )}
                       </div>
                       <input
-                        type="file"
-                        className="hidden"
                         accept="image/*"
-                        onChange={handleLogoUpload}
+                        className="hidden"
                         disabled={isUploadingLogo}
+                        type="file"
+                        onChange={handleLogoUpload}
                       />
                     </label>
                   </div>
@@ -982,11 +1028,14 @@ export default function ClinicSettingsPage() {
 
               <div>
                 <p className="text-sm font-medium text-mountain-600 mb-1">
-                  City/Location
+                  Location
                 </p>
                 <div className="flex items-center gap-2">
                   <IoLocationOutline className="w-4 h-4 text-mountain-400" />
-                  <p className="text-mountain-900">{clinic.city}</p>
+                  <p className="text-mountain-900">
+                    {clinic.address ? `${clinic.address}, ` : ""}
+                    {clinic.city}, {clinic.state} {clinic.zipCode}, {clinic.country}
+                  </p>
                 </div>
               </div>
             </CardBody>
@@ -1021,8 +1070,8 @@ export default function ClinicSettingsPage() {
                         ? "warning"
                         : "danger"
                   }
-                  variant="flat"
                   size="sm"
+                  variant="flat"
                 >
                   {clinic.subscriptionStatus.charAt(0).toUpperCase() +
                     clinic.subscriptionStatus.slice(1)}
@@ -1046,8 +1095,8 @@ export default function ClinicSettingsPage() {
                   color={
                     clinic.subscriptionType === "yearly" ? "primary" : "default"
                   }
-                  variant="flat"
                   size="sm"
+                  variant="flat"
                 >
                   {clinic.subscriptionType === "yearly" ? "Yearly" : "Monthly"}
                 </Chip>
@@ -1081,12 +1130,12 @@ export default function ClinicSettingsPage() {
 
       {/* Edit Information Modal */}
       <Modal
-        isOpen={isOpen}
-        onClose={handleModalClose}
-        size="2xl"
-        scrollBehavior="inside"
-        isDismissable={false}
         hideCloseButton={true}
+        isDismissable={false}
+        isOpen={isOpen}
+        scrollBehavior="inside"
+        size="2xl"
+        onClose={handleModalClose}
       >
         <ModalContent>
           <ModalHeader>
@@ -1102,25 +1151,25 @@ export default function ClinicSettingsPage() {
                   Clinic Name <span className="text-red-600">*</span>
                 </label>
                 <Input
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="Enter clinic name"
-                  startContent={
-                    <IoBusinessOutline className="text-mountain-400" />
-                  }
-                  variant="bordered"
                   isRequired
-                  isInvalid={
-                    touchedFields.has("name") && !!validationErrors.name
+                  aria-describedby={
+                    validationErrors.name ? "name-error" : undefined
                   }
                   errorMessage={
                     touchedFields.has("name") ? validationErrors.name : ""
                   }
-                  maxLength={VALIDATION_RULES.name.maxLength}
-                  aria-describedby={
-                    validationErrors.name ? "name-error" : undefined
+                  isInvalid={
+                    touchedFields.has("name") && !!validationErrors.name
                   }
+                  maxLength={VALIDATION_RULES.name.maxLength}
+                  name="name"
+                  placeholder="Enter clinic name"
+                  startContent={
+                    <IoBusinessOutline className="text-mountain-400" />
+                  }
+                  value={formData.name}
+                  variant="bordered"
+                  onChange={handleInputChange}
                 />
               </div>
 
@@ -1129,24 +1178,24 @@ export default function ClinicSettingsPage() {
                   Email Address <span className="text-red-600">*</span>
                 </label>
                 <Input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  placeholder="clinic@example.com"
-                  startContent={<IoMailOutline className="text-mountain-400" />}
-                  variant="bordered"
                   isRequired
-                  isInvalid={
-                    touchedFields.has("email") && !!validationErrors.email
+                  aria-describedby={
+                    validationErrors.email ? "email-error" : undefined
                   }
                   errorMessage={
                     touchedFields.has("email") ? validationErrors.email : ""
                   }
-                  maxLength={VALIDATION_RULES.email.maxLength}
-                  aria-describedby={
-                    validationErrors.email ? "email-error" : undefined
+                  isInvalid={
+                    touchedFields.has("email") && !!validationErrors.email
                   }
+                  maxLength={VALIDATION_RULES.email.maxLength}
+                  name="email"
+                  placeholder="clinic@example.com"
+                  startContent={<IoMailOutline className="text-mountain-400" />}
+                  type="email"
+                  value={formData.email}
+                  variant="bordered"
+                  onChange={handleInputChange}
                 />
               </div>
 
@@ -1155,23 +1204,23 @@ export default function ClinicSettingsPage() {
                   Phone Number <span className="text-red-600">*</span>
                 </label>
                 <Input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  placeholder="9XXXXXXXX or +9779XXXXXXXX"
-                  startContent={<IoCallOutline className="text-mountain-400" />}
-                  variant="bordered"
                   isRequired
-                  isInvalid={
-                    touchedFields.has("phone") && !!validationErrors.phone
+                  aria-describedby={
+                    validationErrors.phone ? "phone-error" : undefined
                   }
                   errorMessage={
                     touchedFields.has("phone") ? validationErrors.phone : ""
                   }
-                  aria-describedby={
-                    validationErrors.phone ? "phone-error" : undefined
+                  isInvalid={
+                    touchedFields.has("phone") && !!validationErrors.phone
                   }
+                  name="phone"
+                  placeholder="9XXXXXXXX or +9779XXXXXXXX"
+                  startContent={<IoCallOutline className="text-mountain-400" />}
+                  type="tel"
+                  value={formData.phone}
+                  variant="bordered"
+                  onChange={handleInputChange}
                 />
                 <p className="text-xs text-mountain-500 mt-1">
                   Enter Nepali phone number format (10 digits starting with 9)
@@ -1184,15 +1233,103 @@ export default function ClinicSettingsPage() {
                 </label>
                 <Input
                   isRequired
-                  aria-describedby={validationErrors.city ? 'city-error' : undefined}
-                  errorMessage={touchedFields.has('city') ? validationErrors.city : ''}
-                  isInvalid={touchedFields.has('city') && !!validationErrors.city}
+                  aria-describedby={
+                    validationErrors.city ? "city-error" : undefined
+                  }
+                  errorMessage={
+                    touchedFields.has("city") ? validationErrors.city : ""
+                  }
+                  isInvalid={
+                    touchedFields.has("city") && !!validationErrors.city
+                  }
                   maxLength={VALIDATION_RULES.city.maxLength}
                   name="city"
                   placeholder="Enter city name"
-                  startContent={<IoLocationOutline className="text-mountain-400" />}
+                  startContent={
+                    <IoLocationOutline className="text-mountain-400" />
+                  }
                   value={formData.city}
                   variant="bordered"
+                  onChange={handleInputChange}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-mountain-700 mb-1.5 block">
+                    State/Province <span className="text-red-600">*</span>
+                  </label>
+                  <Input
+                    isRequired
+                    errorMessage={
+                      touchedFields.has("state") ? validationErrors.state : ""
+                    }
+                    isInvalid={
+                      touchedFields.has("state") && !!validationErrors.state
+                    }
+                    name="state"
+                    placeholder="Enter state"
+                    value={formData.state}
+                    variant="bordered"
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-mountain-700 mb-1.5 block">
+                    ZIP/Postal Code <span className="text-red-600">*</span>
+                  </label>
+                  <Input
+                    isRequired
+                    errorMessage={
+                      touchedFields.has("zipCode") ? validationErrors.zipCode : ""
+                    }
+                    isInvalid={
+                      touchedFields.has("zipCode") && !!validationErrors.zipCode
+                    }
+                    name="zipCode"
+                    placeholder="Enter zip code"
+                    value={formData.zipCode}
+                    variant="bordered"
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-mountain-700 mb-1.5 block">
+                  Country <span className="text-red-600">*</span>
+                </label>
+                <Input
+                  isRequired
+                  errorMessage={
+                    touchedFields.has("country") ? validationErrors.country : ""
+                  }
+                  isInvalid={
+                    touchedFields.has("country") && !!validationErrors.country
+                  }
+                  name="country"
+                  placeholder="Enter country"
+                  value={formData.country}
+                  variant="bordered"
+                  onChange={handleInputChange}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-mountain-700 mb-1.5 block">
+                  Full Address <span className="text-red-600">*</span>
+                </label>
+                <Textarea
+                  isRequired
+                  errorMessage={
+                    touchedFields.has("address") ? validationErrors.address : ""
+                  }
+                  isInvalid={
+                    touchedFields.has("address") && !!validationErrors.address
+                  }
+                  name="address"
+                  placeholder="Enter full street address"
+                  value={formData.address}
                   onChange={handleInputChange}
                 />
               </div>
@@ -1202,26 +1339,26 @@ export default function ClinicSettingsPage() {
                   Description
                 </label>
                 <Textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  placeholder="Brief description of your clinic"
-                  rows={3}
-                  isInvalid={
-                    touchedFields.has("description") &&
-                    !!validationErrors.description
+                  aria-describedby={
+                    validationErrors.description
+                      ? "description-error"
+                      : undefined
                   }
                   errorMessage={
                     touchedFields.has("description")
                       ? validationErrors.description
                       : ""
                   }
-                  maxLength={VALIDATION_RULES.description.maxLength}
-                  aria-describedby={
-                    validationErrors.description
-                      ? "description-error"
-                      : undefined
+                  isInvalid={
+                    touchedFields.has("description") &&
+                    !!validationErrors.description
                   }
+                  maxLength={VALIDATION_RULES.description.maxLength}
+                  name="description"
+                  placeholder="Brief description of your clinic"
+                  rows={3}
+                  value={formData.description}
+                  onChange={handleInputChange}
                 />
                 <p className="text-xs text-mountain-500 mt-1">
                   {formData.description.length}/
@@ -1232,19 +1369,19 @@ export default function ClinicSettingsPage() {
           </ModalBody>
           <ModalFooter>
             <Button
+              aria-label="Cancel editing"
               variant="light"
               onClick={handleModalClose}
-              aria-label="Cancel editing"
             >
               Cancel
             </Button>
             <Button
-              color="primary"
-              onClick={handleSave}
-              isLoading={loadingStates.saving}
-              isDisabled={!formIsValid || loadingStates.saving}
-              startContent={!loadingStates.saving && <IoSaveOutline />}
               aria-label="Save clinic information"
+              color="primary"
+              isDisabled={!formIsValid || loadingStates.saving}
+              isLoading={loadingStates.saving}
+              startContent={!loadingStates.saving && <IoSaveOutline />}
+              onClick={handleSave}
             >
               {loadingStates.saving ? "Saving..." : "Save Changes"}
             </Button>

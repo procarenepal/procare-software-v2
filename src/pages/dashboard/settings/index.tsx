@@ -7,6 +7,7 @@ import {
   IoDocumentTextOutline,
   IoStarOutline,
   IoChevronForwardOutline,
+  IoLinkOutline,
 } from "react-icons/io5";
 
 interface SettingsSection {
@@ -84,6 +85,14 @@ const settingsSections: SettingsSection[] = [
     href: "/dashboard/settings/print-layout",
     category: "clinic",
   },
+  {
+    id: "referral-partners",
+    title: "Referral Partners",
+    description: "Manage external referral sources and commission rates",
+    icon: <IoLinkOutline className="w-6 h-6" />,
+    href: "/dashboard/settings/referral-partners",
+    category: "clinic",
+  },
 ];
 
 const categoryLabels: Record<string, string> = {
@@ -98,8 +107,8 @@ export default function SettingsPage() {
     selectedCategory === "all"
       ? settingsSections
       : settingsSections.filter(
-          (section) => section.category === selectedCategory,
-        );
+        (section) => section.category === selectedCategory,
+      );
 
   return (
     <div className="flex flex-col gap-4">

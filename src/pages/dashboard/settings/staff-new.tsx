@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-
 import { Card, CardBody } from "@heroui/card";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
@@ -42,12 +41,13 @@ import {
   IoKeyOutline,
 } from "react-icons/io5";
 import { Link } from "@heroui/link";
+import { addToast } from "@heroui/toast";
+
 import { User, Role } from "@/types/models";
 import { userService } from "@/services/userService";
 import { rbacService } from "@/services/rbacService";
 import { useAuthContext } from "@/context/AuthContext";
 import { useAuth } from "@/hooks/useAuth";
-import { addToast } from "@heroui/toast";
 import { title, subtitle } from "@/components/primitives";
 
 export default function StaffManagementPage() {
@@ -328,8 +328,8 @@ export default function StaffManagementPage() {
             <Button
               as={Link}
               href="/dashboard/settings"
-              variant="light"
               startContent={<IoArrowBackOutline />}
+              variant="light"
             >
               Back to Settings
             </Button>
@@ -419,8 +419,8 @@ export default function StaffManagementPage() {
                         <TableCell>
                           <Chip
                             color={getRoleColor(member.role)}
-                            variant="flat"
                             size="sm"
+                            variant="flat"
                           >
                             {getRoleDisplayName(member.role)}
                           </Chip>
@@ -444,7 +444,7 @@ export default function StaffManagementPage() {
                         <TableCell>
                           <Dropdown>
                             <DropdownTrigger>
-                              <Button variant="light" size="sm" isIconOnly>
+                              <Button isIconOnly size="sm" variant="light">
                                 <IoEllipsisVerticalOutline />
                               </Button>
                             </DropdownTrigger>
@@ -499,20 +499,21 @@ export default function StaffManagementPage() {
           <ModalBody>
             <div className="space-y-4">
               <Input
-                type="email"
+                isRequired
                 label="Email Address"
                 placeholder="staff@example.com"
+                type="email"
                 value={createForm.email}
                 onChange={(e) =>
                   setCreateForm((prev) => ({ ...prev, email: e.target.value }))
                 }
-                isRequired
               />
 
               <Input
-                type="text"
+                isRequired
                 label="Full Name"
                 placeholder="John Doe"
+                type="text"
                 value={createForm.displayName}
                 onChange={(e) =>
                   setCreateForm((prev) => ({
@@ -520,13 +521,14 @@ export default function StaffManagementPage() {
                     displayName: e.target.value,
                   }))
                 }
-                isRequired
               />
 
               <Input
-                type="password"
+                isRequired
                 label="Password"
                 placeholder="Enter password (min 6 characters)"
+                startContent={<IoKeyOutline className="text-default-400" />}
+                type="password"
                 value={createForm.password}
                 onChange={(e) =>
                   setCreateForm((prev) => ({
@@ -534,11 +536,10 @@ export default function StaffManagementPage() {
                     password: e.target.value,
                   }))
                 }
-                startContent={<IoKeyOutline className="text-default-400" />}
-                isRequired
               />
 
               <Select
+                isRequired
                 label="Role"
                 placeholder="Select a role"
                 selectedKeys={createForm.role ? [createForm.role] : []}
@@ -547,7 +548,6 @@ export default function StaffManagementPage() {
 
                   setCreateForm((prev) => ({ ...prev, role }));
                 }}
-                isRequired
               >
                 {availableRoles.map((role) => (
                   <SelectItem key={role.key}>{role.label}</SelectItem>
@@ -568,9 +568,9 @@ export default function StaffManagementPage() {
             </Button>
             <Button
               color="primary"
-              onPress={handleCreateStaff}
               isLoading={isCreating}
               startContent={!isCreating && <IoAddOutline />}
+              onPress={handleCreateStaff}
             >
               Create Staff Member
             </Button>
@@ -590,6 +590,7 @@ export default function StaffManagementPage() {
           <ModalBody>
             <div className="space-y-4">
               <Select
+                isRequired
                 label="New Role"
                 placeholder="Select a new role"
                 selectedKeys={
@@ -600,7 +601,6 @@ export default function StaffManagementPage() {
 
                   setRoleUpdateForm((prev) => ({ ...prev, newRole: role }));
                 }}
-                isRequired
               >
                 {availableRoles.map((role) => (
                   <SelectItem key={role.key}>{role.label}</SelectItem>
@@ -621,8 +621,8 @@ export default function StaffManagementPage() {
             </Button>
             <Button
               color="primary"
-              onPress={handleUpdateRole}
               startContent={<IoCheckmarkCircleOutline />}
+              onPress={handleUpdateRole}
             >
               Update Role
             </Button>
@@ -662,8 +662,8 @@ export default function StaffManagementPage() {
             </Button>
             <Button
               color="danger"
-              onPress={handleDeactivateUser}
               startContent={<IoTrashOutline />}
+              onPress={handleDeactivateUser}
             >
               Deactivate User
             </Button>

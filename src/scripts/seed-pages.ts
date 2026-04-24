@@ -131,13 +131,25 @@ async function seedPages() {
       updatedAt: Timestamp.now(),
     },
     {
+      name: "Referral Partners",
+      path: "/dashboard/settings/referral-partners",
+      description: "Manage referral sources and commissions",
+      icon: "IoLinkOutline",
+      isActive: true,
+      order: 11,
+      autoAssign: false,
+      showInSidebar: false,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    },
+    {
       name: "Appointment Settings",
       path: "/dashboard/settings/appointments",
       description:
         "Configure appointment types, working hours, and booking settings",
       icon: "IoTimeOutline",
       isActive: true,
-      order: 11,
+      order: 12,
       autoAssign: false, // Optional setting page - not all clinics may need detailed appointment configuration
       showInSidebar: false, // This is a sub-page, accessed from main settings
       parentId: null, // Will be set programmatically to reference the Settings page

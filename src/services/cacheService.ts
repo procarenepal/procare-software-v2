@@ -640,6 +640,57 @@ class CacheService {
     }
   }
 
+  // Referral Partners by clinic
+  setClinicReferralPartners(
+    clinicId: string,
+    partners: any[],
+    ttl: number = this.LIST_TTL,
+  ) {
+    const key = this.makeClinicKey("referral_partners", clinicId);
+    const etag = this.generateETag(partners);
+    const entry: CacheEntry<any[]> = {
+      data: partners,
+      etag,
+      timestamp: Date.now(),
+      ttl,
+    };
+
+    this.cache.set(key, entry);
+    this.storageSet(key, entry);
+
+    return etag;
+  }
+
+  getClinicReferralPartners(clinicId: string): any[] | null {
+    const key = this.makeClinicKey("referral_partners", clinicId);
+    const mem = this.cache.get(key);
+
+    if (mem) {
+      if (this.isValidCacheEntry(mem)) return mem.data;
+      this.cache.delete(key);
+    }
+    const stored = this.storageGet<CacheEntry<any[]>>(key);
+
+    if (!stored) return null;
+    if (!this.isValidCacheEntry(stored)) return null;
+    this.cache.set(key, stored);
+
+    return stored.data;
+  }
+
+  invalidateClinicReferralPartners(clinicId: string): void {
+    const key = this.makeClinicKey("referral_partners", clinicId);
+
+    this.cache.delete(key);
+    if (this.isStorageAvailable()) {
+      try {
+        window.localStorage.removeItem(`${this.STORAGE_PREFIX}${key}`);
+      } catch {
+        // Ignore storage cleanup errors
+      }
+    }
+  }
+
   // Appointment types by clinic
   setClinicAppointmentTypes(
     clinicId: string,

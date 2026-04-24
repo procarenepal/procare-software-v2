@@ -115,6 +115,10 @@ export default function ClinicEditPage() {
       newErrors.city = "City is required";
     }
 
+    if (!formData.address || formData.address.trim() === "") {
+      newErrors.address = "Address is required";
+    }
+
     setErrors(newErrors);
 
     return Object.keys(newErrors).length === 0;
@@ -352,6 +356,82 @@ export default function ClinicEditPage() {
                     name="city"
                     placeholder="Enter city name"
                     value={formData.city || ""}
+                    onChange={handleInputChange}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium text-default-700"
+                    htmlFor="state"
+                  >
+                    State/Province*
+                  </label>
+                  <Input
+                    fullWidth
+                    errorMessage={errors.state}
+                    id="state"
+                    isInvalid={!!errors.state}
+                    name="state"
+                    placeholder="Enter state"
+                    value={formData.state || ""}
+                    onChange={handleInputChange}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium text-default-700"
+                    htmlFor="zipCode"
+                  >
+                    ZIP/Postal Code*
+                  </label>
+                  <Input
+                    fullWidth
+                    errorMessage={errors.zipCode}
+                    id="zipCode"
+                    isInvalid={!!errors.zipCode}
+                    name="zipCode"
+                    placeholder="Enter zip code"
+                    value={formData.zipCode || ""}
+                    onChange={handleInputChange}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium text-default-700"
+                    htmlFor="country"
+                  >
+                    Country*
+                  </label>
+                  <Input
+                    fullWidth
+                    errorMessage={errors.country}
+                    id="country"
+                    isInvalid={!!errors.country}
+                    name="country"
+                    placeholder="Enter country"
+                    value={formData.country || ""}
+                    onChange={handleInputChange}
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label
+                    className="text-sm font-medium text-default-700"
+                    htmlFor="address"
+                  >
+                    Full Address*
+                  </label>
+                  <Textarea
+                    fullWidth
+                    errorMessage={errors.address}
+                    id="address"
+                    isInvalid={!!errors.address}
+                    name="address"
+                    placeholder="Enter full street address"
+                    value={formData.address || ""}
                     onChange={handleInputChange}
                   />
                 </div>

@@ -268,15 +268,15 @@ const SendSMSTab: React.FC = () => {
       status: "pending" as const,
       ...(selectedRecipientType === "patient"
         ? {
-          patientId: selectedRecipient,
-          patientName: recipientName,
-          patientPhone: phoneNumber,
-        }
+            patientId: selectedRecipient,
+            patientName: recipientName,
+            patientPhone: phoneNumber,
+          }
         : {
-          doctorId: selectedRecipient,
-          doctorName: recipientName,
-          doctorPhone: phoneNumber,
-        }),
+            doctorId: selectedRecipient,
+            doctorName: recipientName,
+            doctorPhone: phoneNumber,
+          }),
     };
 
     try {
@@ -354,17 +354,17 @@ const SendSMSTab: React.FC = () => {
   const recipientSearchItems =
     selectedRecipientType === "patient"
       ? availablePatients.map((p) => ({
-        id: p.id,
-        primary: p.name,
-        secondary: p.mobile || p.phone || "No phone",
-      }))
+          id: p.id,
+          primary: p.name,
+          secondary: p.mobile || p.phone || "No phone",
+        }))
       : availableDoctors.map((d) => ({
-        id: d.id,
-        primary: d.name,
-        secondary:
-          `${d.phone || ""}${d.speciality ? ` • ${d.speciality}` : ""}`.trim() ||
-          undefined,
-      }));
+          id: d.id,
+          primary: d.name,
+          secondary:
+            `${d.phone || ""}${d.speciality ? ` • ${d.speciality}` : ""}`.trim() ||
+            undefined,
+        }));
 
   return (
     <div className="space-y-4">
@@ -373,12 +373,13 @@ const SendSMSTab: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
-              className={`w-3 h-3 rounded-full ${functionStatus === "online"
+              className={`w-3 h-3 rounded-full ${
+                functionStatus === "online"
                   ? "bg-health-500"
                   : functionStatus === "offline"
                     ? "bg-rose-500"
                     : "bg-saffron-500"
-                }`}
+              }`}
             />
             <div className="flex items-center gap-2">
               {functionStatus === "online" ? (

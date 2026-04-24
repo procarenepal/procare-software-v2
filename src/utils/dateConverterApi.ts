@@ -53,9 +53,13 @@ export function formatDateWithoutTimezone(date: Date): string {
 /**
  * Enhanced date conversion with local algorithm primary and API as validation/fallback
  */
-async function tryApiCall(url: string, timeout: number = 3000): Promise<any> {
+async function tryApiCall(url: string, timeout: number = 5000): Promise<any> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const timeoutId = setTimeout(() => {
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+  }, timeout);
 
   try {
     const response = await fetch(url, {
@@ -70,7 +74,7 @@ async function tryApiCall(url: string, timeout: number = 3000): Promise<any> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      return null;
     }
 
     const data = await response.json();
@@ -78,10 +82,11 @@ async function tryApiCall(url: string, timeout: number = 3000): Promise<any> {
     return data;
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === "AbortError") {
-      throw new Error("Request timeout");
-    }
-    throw error;
+
+    // Return null instead of throwing to prevent any potential uncaught rejections.
+    // The calling code (adToBSApi / bsToADApi) will treat null as a validation failure
+    // and gracefully fall back to the local conversion algorithm.
+    return null;
   }
 }
 
@@ -133,6 +138,9 @@ export async function adToBSApi(
     // Try to validate with API if available
     let apiValidated = false;
 
+    /* 
+    // API validation is temporarily disabled due to consistent CORS issues with the third-party provider.
+    // The system will rely on the robust local algorithm below.
     try {
       onProgress?.({
         isConverting: true,
@@ -157,8 +165,9 @@ export async function adToBSApi(
         });
       }
     } catch (apiError) {
-      console.warn("API validation failed, using local result:", apiError);
+      // Silently catch any API errors
     }
+    */
 
     const result: DateConversionResult = {
       ...localResult,
@@ -258,6 +267,8 @@ export async function bsToADApi(
     // Try to validate with API if available
     let apiValidated = false;
 
+    /*
+    // API validation is temporarily disabled due to consistent CORS issues with the third-party provider.
     try {
       onProgress?.({
         isConverting: true,
@@ -278,8 +289,9 @@ export async function bsToADApi(
         });
       }
     } catch (apiError) {
-      console.warn("API validation failed, using local result:", apiError);
+      // Silently catch any API errors
     }
+    */
 
     // Cache the result for future use
     dateCache.set(cacheKey, {

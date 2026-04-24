@@ -33,13 +33,22 @@ import { doctorService } from "@/services/doctorService";
 import { appointmentTypeService } from "@/services/appointmentTypeService";
 import { appointmentService } from "@/services/appointmentService";
 import { branchService } from "@/services/branchService";
+import { referralPartnerService } from "@/services/referralPartnerService";
 import {
   scheduleAppointmentReminder,
   scheduleDoctorAppointmentReminder,
 } from "@/services/sendMessageService";
+import { expertService } from "@/services/expertService";
 
 // Types
-import { Doctor, AppointmentType, Appointment, Patient } from "@/types/models";
+import {
+  Doctor,
+  AppointmentType,
+  Appointment,
+  Patient,
+  ReferralPartner,
+  Expert,
+} from "@/types/models";
 
 // Custom UI
 import { Button } from "@/components/ui/button";
@@ -156,6 +165,8 @@ function DoctorSelect({
   loading,
   locked,
   hint,
+  title,
+  placeholder,
 }: {
   doctors: Doctor[];
   value: string;
@@ -163,6 +174,8 @@ function DoctorSelect({
   loading?: boolean;
   locked?: boolean;
   hint?: string;
+  title?: string;
+  placeholder?: string;
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -225,7 +238,7 @@ function DoctorSelect({
           <div className="flex items-center gap-2 px-2.5">
             <Spinner size="xs" />
             <span className="text-[12px] text-mountain-400">
-              Loading doctors…
+              Loading {title ? title.toLowerCase() : "doctors"}…
             </span>
           </div>
         ) : locked && selected ? (
@@ -238,7 +251,7 @@ function DoctorSelect({
             <IoSearchOutline className="w-3.5 h-3.5 text-mountain-400 shrink-0" />
             <input
               className="flex-1 text-[12.5px] bg-transparent focus:outline-none text-mountain-800 placeholder:text-mountain-300"
-              placeholder="Search doctor…"
+              placeholder={placeholder || "Search doctor…"}
               type="text"
               value={selected && !open ? `${selected.name}` : q}
               onChange={(e) => {
@@ -284,7 +297,7 @@ function DoctorSelect({
             >
               {filtered.length === 0 ? (
                 <p className="px-3 py-2 text-[12px] text-mountain-400">
-                  No doctors found
+                  No {title ? title.toLowerCase() : "doctors"} found
                 </p>
               ) : (
                 filtered.map((d) => (
@@ -466,6 +479,143 @@ function AppointmentTypeSelect({
   );
 }
 
+/** Referral Source selection (Partners & Doctors) */
+function ReferralSourceSelect({
+  sources,
+  value,
+  onChange,
+  loading,
+}: {
+  sources: {
+    id: string;
+    name: string;
+    type: string;
+    rawType: "doctor" | "partner";
+  }[];
+  value: string;
+  onChange: (id: string, name: string, type: "doctor" | "partner" | "") => void;
+  loading?: boolean;
+}) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const filtered = q
+    ? sources.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()))
+    : sources;
+  const selected = sources.find((s) => s.id === value);
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const gap = 4;
+    const listMaxHeight = 192;
+    const spaceBelow = window.innerHeight - rect.bottom - gap;
+    const showAbove = spaceBelow < Math.min(listMaxHeight, 200);
+    const top = showAbove ? rect.top - listMaxHeight - gap : rect.bottom + gap;
+
+    setCoords({ top, left: rect.left, width: rect.width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) {
+      updatePosition();
+    } else {
+      setCoords(null);
+    }
+  }, [open, updatePosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleScrollOrResize = () => updatePosition();
+
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [open, updatePosition]);
+
+  return (
+    <div ref={triggerRef} className="relative w-full">
+      <div
+        className="flex items-center w-full h-9 px-2.5 text-[12.5px] border border-mountain-200 rounded bg-white text-mountain-800 cursor-text"
+        onClick={() => setOpen(true)}
+      >
+        <IoSearchOutline className="mr-2 text-mountain-400 w-3.5 h-3.5" />
+        <input
+          autoComplete="off"
+          className="flex-1 bg-transparent outline-none placeholder:text-mountain-300"
+          placeholder={loading ? "Loading..." : "Search source..."}
+          type="text"
+          value={selected && !open ? selected.name : q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {value && (
+          <button
+            className="text-mountain-400 hover:text-mountain-700"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange("", "", "");
+              setQ("");
+            }}
+          >
+            <IoCloseOutline className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <>
+          <div
+            aria-hidden
+            className="fixed inset-0 z-[100]"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute left-0 right-0 top-full mt-1 z-[101] bg-white border border-mountain-200 rounded shadow-lg max-h-48 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[12px] text-mountain-400">
+                {q ? "No partners found" : "No referral partners registered"}
+              </p>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  className={`w-full text-left px-3 py-2 hover:bg-teal-50 transition-colors ${p.id === value ? "bg-teal-50" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    onChange(p.id!, p.name, p.rawType);
+                    setQ("");
+                    setOpen(false);
+                  }}
+                >
+                  <p className="text-[12.5px] text-mountain-800 font-medium">
+                    {p.name}
+                  </p>
+                  <p className="text-[11px] text-mountain-400 capitalize">
+                    {p.type}
+                  </p>
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Date conversion progress indicator */
 function ConversionIndicator({
   converting,
@@ -548,14 +698,19 @@ const NewPatientPage: React.FC = () => {
   // ── Loading states
   const [loading, setLoading] = useState(false);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [expertsLoading, setExpertsLoading] = useState(true);
   const [apptTypesLoading, setApptTypesLoading] = useState(true);
   const [generatingReg, setGeneratingReg] = useState(false);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
 
   // ── Reference data
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [experts, setExperts] = useState<Expert[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>(
+    [],
+  );
+  const [referralPartners, setReferralPartners] = useState<ReferralPartner[]>(
     [],
   );
   const [existingAppointments, setExistingAppointments] = useState<
@@ -592,15 +747,37 @@ const NewPatientPage: React.FC = () => {
     bsDate: "",
     bloodGroup: "",
     age: "",
+    referralPartnerId: "",
     referredBy: "",
+    referralType: "" as "doctor" | "partner" | "",
     phone: "",
     occupation: "",
     careOf: "",
     relation: "",
     picture: null as File | null,
     doctor: "",
+    expert: "",
     medicalConditions: [] as string[],
   });
+
+  const referralSources = React.useMemo(() => {
+    return [
+      ...referralPartners.map((p) => ({
+        id: p.id!,
+        name: p.name,
+        type: p.partnerType || "Partner",
+        rawType: "partner" as const,
+      })),
+      ...doctors
+        .filter((d) => !d.isDeleted)
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          type: d.doctorType || "Doctor",
+          rawType: "doctor" as const,
+        })),
+    ];
+  }, [referralPartners, doctors]);
 
   // ── Appointment form
   const [appt, setAppt] = useState({
@@ -762,6 +939,17 @@ const NewPatientPage: React.FC = () => {
       .catch(console.error)
       .finally(() => setDoctorsLoading(false));
 
+    // Load experts
+    expertService
+      .getExpertsByClinic(clinicId)
+      .then((data) => {
+        const active = data.filter((e) => e.isActive);
+
+        setExperts(active);
+      })
+      .catch(console.error)
+      .finally(() => setExpertsLoading(false));
+
     // Load patients for existing appointment lookup
     patientService
       .getPatientsByClinic(clinicId)
@@ -774,6 +962,12 @@ const NewPatientPage: React.FC = () => {
       .then(setAppointmentTypes)
       .catch(console.error)
       .finally(() => setApptTypesLoading(false));
+
+    // Load referral partners
+    referralPartnerService
+      .getReferralPartnersByClinic(clinicId)
+      .then(setReferralPartners)
+      .catch(console.error);
   }, [clinicId, authLoading, userData]);
 
   useEffect(() => {
@@ -944,12 +1138,11 @@ const NewPatientPage: React.FC = () => {
         !profile.regNumber ||
         !profile.name ||
         !profile.address ||
-        !profile.mobile ||
-        !profile.doctor
+        !profile.mobile
       ) {
         addToast({
           title: "Required fields missing",
-          description: "Fill in: Reg#, Name, Address, Mobile, Doctor",
+          description: "Fill in: Reg#, Name, Address, Mobile",
           color: "warning",
         });
 
@@ -982,12 +1175,20 @@ const NewPatientPage: React.FC = () => {
       referredBy: profile.referredBy || "",
       phone: profile.phone || "",
       picture: "",
-      doctorId: profile.doctor,
+      doctorId: profile.doctor || "",
+      assignedExpertId: profile.expert || "",
       medicalConditions: profile.medicalConditions,
       clinicId,
       branchId: defaultBranchId || clinicId,
       createdBy: currentUser?.uid || "",
     };
+
+    if (profile.referralPartnerId && profile.referralType === "partner") {
+      patientData.referralPartnerId = profile.referralPartnerId;
+    } else if (profile.referralPartnerId && profile.referralType === "doctor") {
+      // If needed, we can store referringDoctorId, but we'll adapt models
+      patientData.referredBy = profile.referredBy;
+    }
 
     if (profile.occupation) patientData.occupation = profile.occupation;
     if (profile.careOf) patientData.careOf = profile.careOf;
@@ -1258,16 +1459,6 @@ const NewPatientPage: React.FC = () => {
                   />
                 </Field>
 
-                {/* Email */}
-                <Field label="Email">
-                  <FlatInput
-                    placeholder="email@example.com"
-                    type="email"
-                    value={profile.email}
-                    onChange={(v) => setProfile((p) => ({ ...p, email: v }))}
-                  />
-                </Field>
-
                 {/* Gender */}
                 <Field label="Gender">
                   <FlatSelect
@@ -1279,6 +1470,16 @@ const NewPatientPage: React.FC = () => {
                     <option value="female">Female</option>
                     <option value="other">Other</option>
                   </FlatSelect>
+                </Field>
+
+                {/* Email - Moved here for better flow */}
+                <Field label="Email">
+                  <FlatInput
+                    placeholder="email@example.com"
+                    type="email"
+                    value={profile.email}
+                    onChange={(v) => setProfile((p) => ({ ...p, email: v }))}
+                  />
                 </Field>
 
                 {/* DOB (AD) */}
@@ -1375,12 +1576,17 @@ const NewPatientPage: React.FC = () => {
 
                 {/* Referred By */}
                 <Field label="Referred By">
-                  <FlatInput
-                    placeholder="Referrer name"
-                    value={profile.referredBy}
-                    onChange={(v) =>
-                      setProfile((p) => ({ ...p, referredBy: v }))
-                    }
+                  <ReferralSourceSelect
+                    sources={referralSources}
+                    value={profile.referralPartnerId}
+                    onChange={(id, name, type) => {
+                      setProfile((p) => ({
+                        ...p,
+                        referralPartnerId: id,
+                        referredBy: name,
+                        referralType: type,
+                      }));
+                    }}
                   />
                 </Field>
 
@@ -1421,7 +1627,6 @@ const NewPatientPage: React.FC = () => {
 
                 {/* Doctor */}
                 <Field
-                  required
                   hint={
                     currentDoctorId
                       ? "Auto-selected from your account"
@@ -1433,10 +1638,28 @@ const NewPatientPage: React.FC = () => {
                     doctors={doctors}
                     loading={doctorsLoading}
                     locked={!!currentDoctorId}
+                    placeholder="Search doctor..."
+                    title="Doctors"
                     value={profile.doctor}
                     onChange={(v) => {
                       setProfile((p) => ({ ...p, doctor: v }));
-                      setAppt((p) => ({ ...p, doctor: v }));
+                    }}
+                  />
+                </Field>
+
+                {/* Assigned Expert */}
+                <Field
+                  hint="Expert responsible for this patient"
+                  label="Assigned Expert"
+                >
+                  <DoctorSelect
+                    doctors={experts as any}
+                    loading={expertsLoading}
+                    placeholder="Search expert..."
+                    title="Experts"
+                    value={profile.expert}
+                    onChange={(v) => {
+                      setProfile((p) => ({ ...p, expert: v }));
                     }}
                   />
                 </Field>

@@ -111,7 +111,7 @@ export const PublicNavbar = () => {
                 className={clsx(
                   "font-medium text-mountain-700 hover:text-nepal-600 transition-colors py-2",
                   index === siteConfig.navMenuItems.length - 1 &&
-                  "text-nepal-600",
+                    "text-nepal-600",
                 )}
                 href={item.href}
               >

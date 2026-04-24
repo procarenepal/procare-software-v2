@@ -422,12 +422,8 @@ export default function LabTechnicianManagement({
                   }));
                 }}
               >
-                <SelectItem key="active">
-                  Active
-                </SelectItem>
-                <SelectItem key="inactive">
-                  Inactive
-                </SelectItem>
+                <SelectItem key="active">Active</SelectItem>
+                <SelectItem key="inactive">Inactive</SelectItem>
               </Select>
             </div>
           </ModalBody>

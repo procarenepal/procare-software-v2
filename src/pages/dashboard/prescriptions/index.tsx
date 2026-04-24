@@ -4,6 +4,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
+import { clinicService } from "@/services/clinicService";
+import { PrintLayoutConfig } from "@/types/printLayout";
+import {
   IoAddOutline,
   IoEyeOutline,
   IoCloseOutline,
@@ -159,6 +166,8 @@ export default function PrescriptionsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchMap, setBranchMap] = useState<Record<string, string>>({});
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [layoutConfig, setLayoutConfig] = useState<PrintLayoutConfig | null>(null);
+  const [clinic, setClinic] = useState<any>(null);
 
   const effectiveBranchId = branchId ?? selectedBranchId ?? undefined;
 
@@ -180,19 +189,26 @@ export default function PrescriptionsPage() {
 
     (async () => {
       try {
-        const data = await branchService.getClinicBranches(clinicId, true);
+        const [branchesData, clinicData, layoutData] = await Promise.all([
+          branchService.getClinicBranches(clinicId, true),
+          clinicService.getClinicById(clinicId),
+          clinicService.getPrintLayoutConfig(clinicId),
+        ]);
 
         if (cancelled) return;
-        setBranches(data);
+        setBranches(branchesData);
+        if (clinicData) setClinic(clinicData);
+        if (layoutData) setLayoutConfig(layoutData);
+
         const map: Record<string, string> = {};
 
-        data.forEach((b) => {
+        branchesData.forEach((b) => {
           map[b.id] = b.name;
         });
         setBranchMap(map);
-        if (data.length > 0) {
+        if (branchesData.length > 0) {
           const mainOrFirst =
-            data.find((b) => b.isMainBranch)?.id ?? data[0].id;
+            branchesData.find((b) => b.isMainBranch)?.id ?? branchesData[0].id;
 
           setSelectedBranchId((prev) => prev ?? mainOrFirst);
         } else {
@@ -211,6 +227,24 @@ export default function PrescriptionsPage() {
     return () => {
       cancelled = true;
     };
+  }, [clinicId, isClinicAdmin, branchId]);
+
+  // Load layout for non-admin or if admin but skipped above
+  useEffect(() => {
+    if (!clinicId || (isClinicAdmin && !branchId)) return;
+    (async () => {
+      try {
+        const [clinicData, layoutData] = await Promise.all([
+          clinicService.getClinicById(clinicId),
+          clinicService.getPrintLayoutConfig(clinicId),
+        ]);
+
+        if (clinicData) setClinic(clinicData);
+        if (layoutData) setLayoutConfig(layoutData);
+      } catch (err) {
+        console.error("Error loading print layout:", err);
+      }
+    })();
   }, [clinicId, isClinicAdmin, branchId]);
 
   useEffect(() => {
@@ -425,23 +459,37 @@ export default function PrescriptionsPage() {
       const printWindow = window.open("", "_blank");
 
       if (!printWindow) throw new Error();
+
+      const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
+      const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic) : "";
+      const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+
       const printContent = `
         <!DOCTYPE html><html><head><title>Prescriptions Report</title>
         <style>
-          body { font-family: Arial; margin: 20px; font-size: 13px; }
-          h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: 20px; }
+          body { font-family: Arial; margin: 0; padding: 0; background: white; color: #333; }
+          .print-container { width: 100%; display: flex; flex-direction: column; }
+          .content { flex: 1; padding: 15mm; }
+          h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; font-size: 20px; text-align: center; margin-top: 20px; }
           table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
           th { background-color: #f2f2f2; font-weight: bold; }
-          .meta { color: #666; margin-bottom: 20px; }
-          @media print { body { margin: 0; padding: 10px; } }
+          .meta { color: #666; margin-bottom: 20px; font-size: 12px; }
+          ${brandingCSS}
+          @media print { body { padding: 0; } .print-container { min-height: auto; } }
         </style></head><body>
-          <h1>Prescriptions Report</h1>
-          <div class="meta"><p>Generated on: ${new Date().toLocaleString()}</p><p>Total Prescriptions: ${filteredPrescriptions.length}</p></div>
-          <table>
-            <thead><tr><th>No.</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Status</th><th>Items</th></tr></thead>
-            <tbody>${filteredPrescriptions.map((p) => `<tr><td>${p.prescriptionNo}</td><td>${p.patientName}</td><td>${p.doctorName}</td><td>${formatDate(p.prescriptionDate)}</td><td>${p.status}</td><td>${p.itemsCount}</td></tr>`).join("")}</tbody>
-          </table>
+          <div class="print-container">
+            ${headerHTML}
+            <div class="content">
+              <h1>Prescriptions Report</h1>
+              <div class="meta"><p>Generated on: ${new Date().toLocaleString()}</p><p>Total Prescriptions: ${filteredPrescriptions.length}</p></div>
+              <table>
+                <thead><tr><th>No.</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Status</th><th>Items</th></tr></thead>
+                <tbody>${filteredPrescriptions.map((p) => `<tr><td>${p.prescriptionNo}</td><td>${p.patientName}</td><td>${p.doctorName}</td><td>${formatDate(p.prescriptionDate)}</td><td>${p.status}</td><td>${p.itemsCount}</td></tr>`).join("")}</tbody>
+              </table>
+            </div>
+            ${footerHTML}
+          </div>
         </body></html>
       `;
 
@@ -818,7 +866,9 @@ export default function PrescriptionsPage() {
                           <DropdownItem
                             startContent={<IoEyeOutline />}
                             onClick={() =>
-                              navigate(`/dashboard/prescriptions/${prescription.id}`)
+                              navigate(
+                                `/dashboard/prescriptions/${prescription.id}`,
+                              )
                             }
                           >
                             View Details
@@ -826,7 +876,9 @@ export default function PrescriptionsPage() {
                           <DropdownItem
                             startContent={<IoCreateOutline />}
                             onClick={() =>
-                              navigate(`/dashboard/prescriptions/${prescription.id}/edit`)
+                              navigate(
+                                `/dashboard/prescriptions/${prescription.id}/edit`,
+                              )
                             }
                           >
                             Edit

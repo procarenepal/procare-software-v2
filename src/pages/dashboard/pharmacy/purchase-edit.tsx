@@ -567,37 +567,37 @@ export default function PurchaseEditPage() {
                         >
                           {item.type === "medicine"
                             ? medicines.map((medicine) => (
-                              <AutocompleteItem
-                                key={medicine.id}
-                                textValue={medicine.name}
-                              >
-                                <div className="flex flex-col">
-                                  <span className="text-small">
-                                    {medicine.name}
-                                  </span>
-                                  <span className="text-tiny text-default-400">
-                                    {medicine.genericName} • NPR{" "}
-                                    {medicine.price}
-                                  </span>
-                                </div>
-                              </AutocompleteItem>
-                            ))
+                                <AutocompleteItem
+                                  key={medicine.id}
+                                  textValue={medicine.name}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="text-small">
+                                      {medicine.name}
+                                    </span>
+                                    <span className="text-tiny text-default-400">
+                                      {medicine.genericName} • NPR{" "}
+                                      {medicine.price}
+                                    </span>
+                                  </div>
+                                </AutocompleteItem>
+                              ))
                             : items.map((itemData) => (
-                              <AutocompleteItem
-                                key={itemData.id}
-                                textValue={itemData.name}
-                              >
-                                <div className="flex flex-col">
-                                  <span className="text-small">
-                                    {itemData.name}
-                                  </span>
-                                  <span className="text-tiny text-default-400">
-                                    {itemData.category} • NPR{" "}
-                                    {itemData.salePrice}
-                                  </span>
-                                </div>
-                              </AutocompleteItem>
-                            ))}
+                                <AutocompleteItem
+                                  key={itemData.id}
+                                  textValue={itemData.name}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="text-small">
+                                      {itemData.name}
+                                    </span>
+                                    <span className="text-tiny text-default-400">
+                                      {itemData.category} • NPR{" "}
+                                      {itemData.salePrice}
+                                    </span>
+                                  </div>
+                                </AutocompleteItem>
+                              ))}
                         </Autocomplete>
                       </div>
 

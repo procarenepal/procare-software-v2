@@ -69,6 +69,20 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = React.memo(
             return;
           }
 
+          // FORCE ALLOW referral partners or experts for Clinic Admins (bypass DB check)
+          if (
+            isClinicAdmin() &&
+            (pagePath?.includes("/referral-partners") ||
+              pagePath?.includes("/experts"))
+          ) {
+            if (isMounted) {
+              setHasAccess(true);
+              setChecking(false);
+            }
+
+            return;
+          }
+
           // Check for super admin requirement
           if (requireSuperAdmin) {
             if (isMounted) {

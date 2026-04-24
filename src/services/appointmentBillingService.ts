@@ -685,27 +685,42 @@ export const appointmentBillingService = {
     taxPercentage: number,
   ): {
     subtotal: number;
-    discountAmount: number;
+    itemDiscountAmount: number;
+    mainDiscountAmount: number;
+    totalDiscount: number;
     taxAmount: number;
     totalAmount: number;
   } {
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+    // Subtotal is the sum of (price * quantity) of all items BEFORE discounts
+    const subtotal = items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+    );
 
-    let discountAmount = 0;
+    // Item-level discounts sum
+    const itemDiscounts = items.reduce(
+      (sum, item) => sum + (item.discountAmount || 0),
+      0,
+    );
+
+    let mainDiscountAmount = 0;
 
     if (discountType === "flat") {
-      discountAmount = Math.min(discountValue, subtotal);
+      mainDiscountAmount = Math.min(discountValue, subtotal - itemDiscounts);
     } else {
-      discountAmount = (subtotal * discountValue) / 100;
+      mainDiscountAmount = ((subtotal - itemDiscounts) * discountValue) / 100;
     }
 
-    const afterDiscount = subtotal - discountAmount;
+    const totalDiscount = itemDiscounts + mainDiscountAmount;
+    const afterDiscount = subtotal - totalDiscount;
     const taxAmount = (afterDiscount * taxPercentage) / 100;
     const totalAmount = afterDiscount + taxAmount;
 
     return {
       subtotal,
-      discountAmount,
+      itemDiscountAmount: itemDiscounts,
+      mainDiscountAmount,
+      totalDiscount,
       taxAmount,
       totalAmount,
     };

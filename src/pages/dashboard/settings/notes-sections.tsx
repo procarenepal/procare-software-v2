@@ -141,15 +141,15 @@ export default function NotesSectionsPage() {
     setIsLoading(true);
     try {
       const sectionData: Omit<NotesSection, "id" | "createdAt" | "updatedAt"> =
-      {
-        clinicId: clinicId!,
-        branchId: branchId || "",
-        sectionLabel: formData.label.trim(),
-        sectionKey: formData.key.trim(),
-        isActive: formData.isActive,
-        displayOrder: formData.displayOrder,
-        createdBy: currentUser?.uid || "",
-      };
+        {
+          clinicId: clinicId!,
+          branchId: branchId || "",
+          sectionLabel: formData.label.trim(),
+          sectionKey: formData.key.trim(),
+          isActive: formData.isActive,
+          displayOrder: formData.displayOrder,
+          createdBy: currentUser?.uid || "",
+        };
 
       // Only add description if it has value
       if (formData.description.trim()) {

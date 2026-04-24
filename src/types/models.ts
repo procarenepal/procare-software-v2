@@ -8,6 +8,10 @@ export interface Clinic {
   clinicType: string;
   phone: string;
   email: string;
+  address?: string; // Added address
+  zipCode?: string; // Added zipCode
+  state?: string;   // Added state
+  country?: string; // Added country
   logo?: string;
   description?: string;
   subscriptionStatus: "active" | "suspended" | "cancelled";
@@ -192,6 +196,7 @@ export interface Patient {
   phone?: string;
   picture?: string; // URL to the patient's picture
   doctorId: string; // ID of the assigned doctor
+  assignedExpertId?: string; // ID of the assigned expert (optional)
   medicalConditions: string[]; // Array of medical conditions
   clinicId: string; // Associated clinic
   branchId: string; // Associated branch
@@ -199,9 +204,23 @@ export interface Patient {
   isCritical: boolean; // Critical patient indicator
   criticalReason?: string; // Optional reason for critical status
   criticalDate?: Date; // Date when marked as critical
+  referralPartnerId?: string; // Linked referral partner
   createdAt: Date;
   updatedAt: Date;
   createdBy: string; // User ID who created the patient record
+}
+
+// Treatment Category model for categorizing services/appointment types
+export interface TreatmentCategory {
+  id: string;
+  name: string;
+  description?: string;
+  clinicId: string;
+  branchId?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
 }
 
 // Appointment Type model for configurable appointment types with pricing in Nepali Rupees
@@ -212,6 +231,7 @@ export interface AppointmentType {
   clinicId: string; // Associated clinic
   branchId?: string; // Associated branch (optional for individual clinics)
   isActive: boolean;
+  categoryId?: string; // Reference to TreatmentCategory
   color?: string; // Color identifier for theme-dynamic blinking rows
   createdAt: Date;
   updatedAt: Date;
@@ -270,6 +290,49 @@ export interface Doctor {
   branchId: string; // Associated branch
   isActive: boolean;
   isDeleted?: boolean; // Soft delete flag - deleted doctors won't show in list
+  totalCommissionBalance?: number; // Current pending balance to be paid
+  totalCommissionEarned?: number; // Lifetime total commission earned
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+// Expert model for storing expert information (similar to Doctor)
+export interface Expert {
+  id: string;
+  name: string;
+  expertType: "regular" | "visiting";
+  defaultCommission: number;
+  speciality: string;
+  phone: string;
+  email?: string;
+  licenseNumber: string; // Expert License/Registration Number
+  clinicId: string;
+  branchId: string; // Associated branch
+  isActive: boolean;
+  isDeleted?: boolean; // Soft delete flag
+  totalCommissionBalance?: number; // Current pending balance to be paid
+  totalCommissionEarned?: number; // Lifetime total commission earned
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+// Referral Partner model for managing external referral sources with commissions
+export interface ReferralPartner {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  partnerType: "individual" | "lab" | "clinic" | "other";
+  defaultCommission: number; // Commission percentage (e.g., 10 for 10%)
+  clinicId: string;
+  branchId: string; // Associated branch
+  isActive: boolean;
+  isDeleted?: boolean; // Soft delete flag
+  totalCommissionBalance?: number; // Current pending balance to be paid
+  totalCommissionEarned?: number; // Lifetime total commission earned
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -973,6 +1036,7 @@ export interface AppointmentReminder {
   appointmentId: string;
   patientId: string;
   doctorId: string;
+  assignedExpertId?: string;
   clinicId: string;
   branchId: string;
   appointmentDate: Date;
@@ -1078,7 +1142,13 @@ export interface AppointmentBillingItem {
   price: number; // Price per appointment (auto-fetched from appointment type)
   quantity: number; // Number of appointments (default 1)
   commission: number; // Commission percentage for this item
-  amount: number; // price * quantity
+  doctorId?: string; // Specific doctor for this item (multi-doctor support)
+  doctorName?: string; // Denormalized for display
+  categoryId?: string; // Treatment category for this item
+  discountType?: "flat" | "percent";
+  discountValue?: number;
+  discountAmount?: number;
+  amount: number; // (price * quantity) - discountAmount
 }
 
 // Main appointment billing/invoice record
@@ -1094,16 +1164,20 @@ export interface AppointmentBilling {
   doctorId: string;
   doctorName: string; // Denormalized for easy display
   doctorType: "regular" | "visitor"; // Default: regular
+  referralPartnerId?: string; // Optional link to referral partner
+  referralCommissionAmount?: number; // Calculated commission for the referrer
 
   // Invoice Details
   invoiceDate: Date; // Default: today's date
   items: AppointmentBillingItem[]; // One or more appointment billing items
 
   // Totals and Calculations
-  subtotal: number; // Sum of all item amounts
+  subtotal: number; // Sum of all item amounts (before any discounts)
+  itemDiscountAmount: number; // Total amount from individual item discounts
+  mainDiscountAmount: number; // Amount from the final invoice-level discount
   discountType: "flat" | "percent";
   discountValue: number; // Discount amount or percentage
-  discountAmount: number; // Calculated discount amount in NPR
+  discountAmount: number; // Total calculated discount amount (item + main)
   taxPercentage: number; // Tax percentage applied
   taxAmount: number; // Calculated tax amount in NPR
   totalAmount: number; // Final amount after discount and tax
@@ -1188,7 +1262,8 @@ export interface DoctorCommission {
   appointmentDate: Date;
   patientId: string;
   patientName: string;
-  appointmentTypes: string[]; // Array of appointment type names
+  serviceNames: string[]; // Array of service names (tests or appointment types)
+  billingType: "appointment" | "pathology"; // Type of billing
   totalInvoiceAmount: number; // Total invoice amount
   commissionPercentage: number; // Commission percentage at the time
   commissionAmount: number; // Calculated commission
@@ -1198,6 +1273,33 @@ export interface DoctorCommission {
   paymentMethod?: string;
   paymentReference?: string;
   paymentNotes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  paidBy?: string;
+}
+
+// Expert Commission model for tracking commissions earned by experts
+export interface ExpertCommission {
+  id: string;
+  expertId: string;
+  expertName: string;
+  clinicId: string;
+  branchId: string;
+  billingId: string;
+  billingType: "appointment" | "pathology" | "other"; // Type of billing this commission is from
+  invoiceNumber: string;
+  date: Date;
+  patientId: string;
+  patientName: string;
+  serviceNames: string[];
+  totalInvoiceAmount: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  paidAmount?: number;
+  paymentMethod?: string;
+  paidDate?: Date;
+  status: "pending" | "paid" | "cancelled";
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -1434,6 +1536,8 @@ export interface PathologyBilling {
   paymentDate?: Date; // Date of payment
   paymentNotes?: string; // Payment related notes
 
+  referringDoctors?: ReferringDoctor[]; // Multiple referring doctors with commissions
+
   // Metadata
   notes?: string; // General notes about the invoice
   createdAt: Date;
@@ -1441,4 +1545,42 @@ export interface PathologyBilling {
   createdBy: string; // User ID who created the invoice
   finalizedBy?: string; // User ID who finalized the invoice
   finalizedAt?: Date; // When the invoice was finalized
+}
+
+// Interface for multiple referring doctors in pathology
+export interface ReferringDoctor {
+  doctorId: string;
+  doctorName: string;
+  commissionType: "percent" | "flat";
+  commissionValue: number;
+  calculatedAmount: number;
+  type?: "doctor" | "partner";
+}
+
+// Referral Commission model for tracking commissions earned by referral partners
+export interface ReferralCommission {
+  id?: string;
+  partnerId: string;
+  partnerName: string;
+  clinicId: string;
+  branchId: string;
+  billingId: string;
+  invoiceNumber: string;
+  invoiceDate: Date;
+  patientId: string;
+  patientName: string;
+  serviceNames?: string[];
+  totalInvoiceAmount: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  status: "pending" | "paid" | "cancelled";
+  paidAmount: number;
+  paymentMethod?: string;
+  paymentReference?: string;
+  paidDate?: Date;
+  paidBy?: string;
+  paymentNotes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
 }

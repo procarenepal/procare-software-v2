@@ -29,6 +29,8 @@ import { doctorService } from "@/services/doctorService";
 import { appointmentTypeService } from "@/services/appointmentTypeService";
 import { doctorCommissionService } from "@/services/doctorCommissionService";
 import { patientService } from "@/services/patientService";
+import { referralPartnerService } from "@/services/referralPartnerService";
+import { referralCommissionService } from "@/services/referralCommissionService";
 import {
   AppointmentBilling,
   AppointmentBillingSettings,
@@ -36,6 +38,7 @@ import {
   Doctor,
   AppointmentType,
   Patient,
+  ReferralPartner,
 } from "@/types/models";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -100,6 +103,7 @@ function SearchSelect({
   disabled,
   required,
   hint,
+  placeholder,
 }: {
   label: string;
   items: { id: string; primary: string; secondary?: string }[];
@@ -108,6 +112,7 @@ function SearchSelect({
   disabled?: boolean;
   required?: boolean;
   hint?: string;
+  placeholder?: string;
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -130,7 +135,7 @@ function SearchSelect({
         <input
           className="flex-1 text-[12.5px] px-2 bg-transparent focus:outline-none text-mountain-800 placeholder:text-mountain-300"
           disabled={disabled}
-          placeholder={`Search ${label.toLowerCase()}…`}
+          placeholder={placeholder || `Search ${label.toLowerCase()}…`}
           value={selected && !open ? selected.primary : q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -349,6 +354,8 @@ export default function PatientBillingTab({
     [],
   );
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [referralPartner, setReferralPartner] =
+    useState<ReferralPartner | null>(null);
 
   // UI
   const [loading, setLoading] = useState(true);
@@ -384,7 +391,9 @@ export default function PatientBillingTab({
   const [formData, setFormData] = useState<InvoiceFormData>(emptyForm);
   const [calculations, setCalculations] = useState({
     subtotal: 0,
-    discountAmount: 0,
+    itemDiscountAmount: 0,
+    mainDiscountAmount: 0,
+    totalDiscount: 0,
     taxAmount: 0,
     totalAmount: 0,
   });
@@ -416,6 +425,14 @@ export default function PatientBillingTab({
       setDoctors(doctorsData);
       setAppointmentTypes(typesData);
       setPatient(patientData);
+
+      if (patientData?.referralPartnerId) {
+        referralPartnerService
+          .getReferralPartnerById(patientData.referralPartnerId)
+          .then(setReferralPartner)
+          .catch(console.error);
+      }
+
       setFormData((p) => ({
         ...p,
         patientId: patientData?.id || "",
@@ -477,36 +494,48 @@ export default function PatientBillingTab({
 
   const updateItem = (
     index: number,
-    field: keyof AppointmentBillingItem,
-    value: any,
+    updates: Partial<AppointmentBillingItem>,
   ) => {
-    const items = [...formData.items];
+    setFormData((p) => {
+      const items = [...p.items];
+      const item = { ...items[index], ...updates };
 
-    if (field === "appointmentTypeId") {
-      const at = appointmentTypes.find((t) => t.id === value);
+      if ("appointmentTypeId" in updates) {
+        const at = appointmentTypes.find(
+          (t) => t.id === updates.appointmentTypeId,
+        );
 
-      if (at) {
-        const doc = doctors.find((d) => d.id === formData.doctorId);
+        if (at) {
+          item.appointmentTypeName = at.name;
+          item.price = at.price;
+          item.categoryId = at.categoryId;
 
-        items[index] = {
-          ...items[index],
-          appointmentTypeId: value,
-          appointmentTypeName: at.name,
-          price: at.price,
-          commission: doc?.defaultCommission || 0,
-          amount: at.price * items[index].quantity,
-        };
+          const doc = doctors.find(
+            (d) => d.id === (item.doctorId || p.doctorId),
+          );
+
+          item.commission = doc?.defaultCommission || 0;
+        }
       }
-    } else if (field === "quantity") {
-      items[index] = {
-        ...items[index],
-        quantity: value,
-        amount: items[index].price * value,
-      };
-    } else {
-      items[index] = { ...items[index], [field]: value };
-    }
-    setFormData((p) => ({ ...p, items }));
+
+      item.amount = item.price * item.quantity;
+
+      // Note: Recalculate based on individual item discount if it exists in data
+      if (item.discountType === "percent") {
+        item.discountAmount =
+          (item.price * item.quantity * (item.discountValue || 0)) / 100;
+      } else if (item.discountType === "flat") {
+        item.discountAmount = item.discountValue || 0;
+      }
+
+      if (item.discountAmount) {
+        item.amount = item.price * item.quantity - item.discountAmount;
+      }
+
+      items[index] = item;
+
+      return { ...p, items };
+    });
   };
 
   const removeItem = (index: number) =>
@@ -531,17 +560,18 @@ export default function PatientBillingTab({
   // ── Invoice submit ──────────────────────────────────────────────────────────
   const handleInvoiceSubmit = async () => {
     if (!clinicId || !currentUser || !billingSettings) return;
-    if (!formData.patientId || !formData.doctorId || !formData.items.length) {
+    if (!formData.patientId || !formData.items.length) {
       addToast({ title: "Fill all required fields", color: "warning" });
 
       return;
     }
     if (
       !formData.items.every(
-        (i) => i.appointmentTypeId && i.quantity > 0 && i.price > 0,
+        (i) =>
+          i.appointmentTypeId && i.quantity > 0 && i.price > 0 && i.doctorId,
       )
     ) {
-      addToast({ title: "Complete all invoice items", color: "warning" });
+      addToast({ title: "Select doctor for all items", color: "warning" });
 
       return;
     }
@@ -549,21 +579,33 @@ export default function PatientBillingTab({
     try {
       const invoiceNumber =
         await appointmentBillingService.generateInvoiceNumber(clinicId);
+
+      // Derive root doctor fields from the first item
+      const firstItem = formData.items[0];
+      const rootDoctorId = firstItem.doctorId || "";
+      const rootDoctorName = firstItem.doctorName || "";
+      const rootDoctor = doctors.find((d) => d.id === rootDoctorId);
+      const rootDoctorType = (
+        rootDoctor?.doctorType === "visiting" ? "visitor" : "regular"
+      ) as "regular" | "visitor";
+
       const billingData = {
         invoiceNumber,
         clinicId,
         branchId: userData?.branchId || "",
         patientId: formData.patientId,
         patientName: formData.patientName,
-        doctorId: formData.doctorId,
-        doctorName: formData.doctorName,
-        doctorType: formData.doctorType,
+        doctorId: rootDoctorId,
+        doctorName: rootDoctorName,
+        doctorType: rootDoctorType,
         invoiceDate: new Date(formData.invoiceDate),
         items: formData.items,
         subtotal: calculations.subtotal,
         discountType: formData.discountType,
         discountValue: formData.discountValue,
-        discountAmount: calculations.discountAmount,
+        discountAmount: calculations.totalDiscount,
+        itemDiscountAmount: calculations.itemDiscountAmount,
+        mainDiscountAmount: calculations.mainDiscountAmount,
         taxPercentage: billingSettings.enableTax
           ? billingSettings.defaultTaxPercentage
           : 0,
@@ -575,13 +617,17 @@ export default function PatientBillingTab({
         balanceAmount: calculations.totalAmount,
         notes: formData.notes,
         createdBy: currentUser.uid,
+        referralPartnerId: referralPartner?.id || "",
+        referralCommissionAmount: referralPartner
+          ? (calculations.totalAmount *
+            (referralPartner.defaultCommission || 0)) /
+          100
+          : 0,
       };
       const billingId =
         await appointmentBillingService.createBilling(billingData);
 
       try {
-        const doc = doctors.find((d) => d.id === formData.doctorId);
-
         if (billingData.items.some((i) => (i.commission || 0) > 0)) {
           await doctorCommissionService.createCommission(
             {
@@ -590,14 +636,30 @@ export default function PatientBillingTab({
               createdAt: new Date(),
               updatedAt: new Date(),
             },
-            doc?.defaultCommission || 0,
+            rootDoctor?.defaultCommission || 0,
             currentUser.uid,
           );
         }
-      } catch {
+
+        // Create referral commission record
+        if (referralPartner && billingData.referralCommissionAmount > 0) {
+          await referralCommissionService.createReferralCommission(
+            {
+              id: billingId,
+              ...billingData,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            referralPartner,
+            billingData.referralCommissionAmount,
+            currentUser.uid,
+          );
+        }
+      } catch (err) {
+        console.error("Commission processing error:", err);
         addToast({
           title: "Warning",
-          description: "Invoice created, commission record failed.",
+          description: "Invoice created, but some commission records failed.",
           color: "warning",
         });
       }
@@ -704,6 +766,7 @@ export default function PatientBillingTab({
 
   const stats = {
     total: billings.length,
+    totalAmount: billings.reduce((s, b) => s + b.totalAmount, 0),
     paid: billings.reduce((s, b) => s + b.paidAmount, 0),
     pending: billings.reduce((s, b) => s + b.balanceAmount, 0),
     unpaid: billings.filter((b) => b.paymentStatus === "unpaid").length,
@@ -758,8 +821,9 @@ export default function PatientBillingTab({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Total Invoices" value={stats.total} />
+        <StatCard label="Total Amount" value={fmtCur(stats.totalAmount)} />
         <StatCard label="Paid" value={fmtCur(stats.paid)} />
         <StatCard label="Pending" value={fmtCur(stats.pending)} />
         <StatCard label="Unpaid Invoices" value={stats.unpaid} />
@@ -953,42 +1017,7 @@ export default function PatientBillingTab({
         >
           <div className="space-y-4">
             {/* Basic info */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <SearchSelect
-                required
-                items={doctors.map((d) => ({
-                  id: d.id,
-                  primary: d.name,
-                  secondary: `${d.speciality} · ${d.doctorType}`,
-                }))}
-                label="Doctor"
-                value={formData.doctorId}
-                onChange={handleDoctorChange}
-              />
-              <div className="flex flex-col gap-1">
-                <label className="text-[12px] font-medium text-mountain-700">
-                  Doctor Type
-                </label>
-                <select
-                  className="h-9 px-2.5 text-[12.5px] border border-mountain-200 rounded focus:outline-none focus:border-teal-500 bg-white disabled:bg-mountain-50 disabled:text-mountain-400"
-                  disabled={!!formData.doctorId}
-                  value={formData.doctorType}
-                  onChange={(e) =>
-                    setFormData((p) => ({
-                      ...p,
-                      doctorType: e.target.value as "regular" | "visitor",
-                    }))
-                  }
-                >
-                  <option value="regular">Regular</option>
-                  <option value="visitor">Visitor</option>
-                </select>
-                {formData.doctorId && (
-                  <p className="text-[10.5px] text-mountain-400">
-                    Auto-selected from doctor profile
-                  </p>
-                )}
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
               <FlatInput
                 label="Invoice Date *"
                 type="date"
@@ -1048,7 +1077,7 @@ export default function PatientBillingTab({
                             label="Appointment Type"
                             value={item.appointmentTypeId}
                             onChange={(id) =>
-                              updateItem(idx, "appointmentTypeId", id)
+                              updateItem(idx, { appointmentTypeId: id })
                             }
                           />
                         </div>
@@ -1058,12 +1087,36 @@ export default function PatientBillingTab({
                           prefixText="NPR"
                           value={item.price.toString()}
                         />
+                        <div className="col-span-2">
+                          <SearchSelect
+                            items={doctors.map((d) => ({
+                              id: d.id,
+                              primary: d.name,
+                              secondary: d.speciality || d.doctorType,
+                            }))}
+                            label="Doctor"
+                            placeholder="Select Doctor"
+                            value={item.doctorId || ""}
+                            onChange={(id) => {
+                              const d = doctors.find((doc) => doc.id === id);
+
+                              updateItem(idx, {
+                                doctorId: id,
+                                doctorName: d?.name || "",
+                                commission:
+                                  d?.defaultCommission ??
+                                  billingSettings?.defaultCommission ??
+                                  0,
+                              });
+                            }}
+                          />
+                        </div>
                         <FlatInput
                           label="Quantity"
                           type="number"
                           value={item.quantity.toString()}
                           onChange={(v) =>
-                            updateItem(idx, "quantity", parseInt(v) || 1)
+                            updateItem(idx, { quantity: parseInt(v) || 1 })
                           }
                         />
                         <FlatInput
@@ -1072,7 +1125,7 @@ export default function PatientBillingTab({
                           type="number"
                           value={item.commission.toString()}
                           onChange={(v) =>
-                            updateItem(idx, "commission", parseFloat(v) || 0)
+                            updateItem(idx, { commission: parseFloat(v) || 0 })
                           }
                         />
                         <div className="flex items-end gap-1.5">
@@ -1155,17 +1208,29 @@ export default function PatientBillingTab({
                     <div className="bg-mountain-50 border border-mountain-100 rounded p-3 space-y-1.5 text-[12.5px]">
                       {[
                         ["Subtotal", fmtCur(calculations.subtotal)],
-                        [
-                          "Discount",
-                          `– ${fmtCur(calculations.discountAmount)}`,
-                        ],
+                        ...(calculations.itemDiscountAmount > 0
+                          ? [
+                            [
+                              "Service Discounts",
+                              `– ${fmtCur(calculations.itemDiscountAmount)}`,
+                            ],
+                          ]
+                          : []),
+                        ...(calculations.mainDiscountAmount > 0
+                          ? [
+                            [
+                              "Main Discount",
+                              `– ${fmtCur(calculations.mainDiscountAmount)}`,
+                            ],
+                          ]
+                          : []),
                         ...(billingSettings?.enableTax
                           ? [
-                              [
-                                `${billingSettings.taxLabel} (${billingSettings.defaultTaxPercentage}%)`,
-                                fmtCur(calculations.taxAmount),
-                              ],
-                            ]
+                            [
+                              `${billingSettings.taxLabel} (${billingSettings.defaultTaxPercentage}%)`,
+                              fmtCur(calculations.taxAmount),
+                            ],
+                          ]
                           : []),
                       ].map(([l, v]) => (
                         <div
@@ -1274,16 +1339,16 @@ export default function PatientBillingTab({
             {/* Conditional reference */}
             {availableMethods.find((m) => m.key === paymentForm.method)
               ?.requiresReference && (
-              <FlatInput
-                hint="Required for this payment method"
-                label="Transaction Reference *"
-                placeholder="Transaction ID / cheque number"
-                value={paymentForm.reference}
-                onChange={(v) =>
-                  setPaymentForm((p) => ({ ...p, reference: v }))
-                }
-              />
-            )}
+                <FlatInput
+                  hint="Required for this payment method"
+                  label="Transaction Reference *"
+                  placeholder="Transaction ID / cheque number"
+                  value={paymentForm.reference}
+                  onChange={(v) =>
+                    setPaymentForm((p) => ({ ...p, reference: v }))
+                  }
+                />
+              )}
 
             <FlatInput
               label="Notes"

@@ -105,12 +105,12 @@ interface MedicinesTabProps {
   clinicSettings: ClinicSettings | null;
   onStatsChange: () => void;
   filterType?:
-  | "lowStock"
-  | "expiring"
-  | "medicines"
-  | "brands"
-  | "categories"
-  | null;
+    | "lowStock"
+    | "expiring"
+    | "medicines"
+    | "brands"
+    | "categories"
+    | null;
   /**
    * Effective branch scope for this view.
    * For branch users this matches their fixed branchId.
@@ -189,7 +189,9 @@ export default function MedicinesTab({
   });
 
   const useServerPagination =
-    filterType !== "lowStock" && filterType !== "expiring" && !searchQuery.trim();
+    filterType !== "lowStock" &&
+    filterType !== "expiring" &&
+    !searchQuery.trim();
 
   const branchScopeId = effectiveBranchId ?? userData?.branchId ?? null;
 
@@ -1051,27 +1053,27 @@ export default function MedicinesTab({
   const filteredMedicines = useServerPagination
     ? medicines
     : medicines.filter((medicine) => {
-      const supplierOrManufacturer = getSupplierOrManufacturer(medicine);
-      const matchesSearch =
-        medicine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        medicine.genericName
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        supplierOrManufacturer
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase());
+        const supplierOrManufacturer = getSupplierOrManufacturer(medicine);
+        const matchesSearch =
+          medicine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          medicine.genericName
+            ?.toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          supplierOrManufacturer
+            ?.toLowerCase()
+            .includes(searchQuery.toLowerCase());
 
-      if (!matchesSearch) return false;
-      if (!filterType) return true;
-      switch (filterType) {
-        case "lowStock":
-          return isLowStock(medicine);
-        case "expiring":
-          return isExpiring(medicine);
-        default:
-          return true;
-      }
-    });
+        if (!matchesSearch) return false;
+        if (!filterType) return true;
+        switch (filterType) {
+          case "lowStock":
+            return isLowStock(medicine);
+          case "expiring":
+            return isExpiring(medicine);
+          default:
+            return true;
+        }
+      });
 
   const totalPages = useServerPagination
     ? Math.ceil((totalCount ?? 0) / rowsPerPage)
@@ -1163,12 +1165,13 @@ export default function MedicinesTab({
       {filterType && (
         <div className="flex items-center gap-2">
           <span
-            className={`clarity-badge inline-flex items-center px-2 py-0.5 text-[11px] rounded ${filterType === "lowStock"
-              ? "bg-amber-50 text-amber-700 border border-amber-200"
-              : filterType === "expiring"
-                ? "bg-red-50 text-red-700 border border-red-200"
-                : "bg-teal-50 text-teal-700 border border-teal-200"
-              }`}
+            className={`clarity-badge inline-flex items-center px-2 py-0.5 text-[11px] rounded ${
+              filterType === "lowStock"
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : filterType === "expiring"
+                  ? "bg-red-50 text-red-700 border border-red-200"
+                  : "bg-teal-50 text-teal-700 border border-teal-200"
+            }`}
           >
             {filterType === "lowStock"
               ? "Low Stock Medicines"
@@ -1198,12 +1201,13 @@ export default function MedicinesTab({
               : ""}
             {filterType && (
               <span
-                className={`ml-2 inline-flex px-2 py-0.5 rounded text-[11.5px] font-medium ${filterType === "lowStock"
-                  ? "bg-amber-50 text-amber-700 border border-amber-200"
-                  : filterType === "expiring"
-                    ? "bg-red-50 text-red-700 border border-red-200"
-                    : "bg-teal-50 text-teal-700 border border-teal-200"
-                  }`}
+                className={`ml-2 inline-flex px-2 py-0.5 rounded text-[11.5px] font-medium ${
+                  filterType === "lowStock"
+                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                    : filterType === "expiring"
+                      ? "bg-red-50 text-red-700 border border-red-200"
+                      : "bg-teal-50 text-teal-700 border border-teal-200"
+                }`}
               >
                 {filterType === "lowStock"
                   ? "Low Stock"
@@ -1416,10 +1420,11 @@ export default function MedicinesTab({
                       {/* Status */}
                       <td className="px-5 py-3">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11.5px] font-medium ${medicine.isActive
-                            ? "bg-teal-50 text-teal-700 border border-teal-200"
-                            : "bg-red-50 text-red-700 border border-red-200"
-                            }`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11.5px] font-medium ${
+                            medicine.isActive
+                              ? "bg-teal-50 text-teal-700 border border-teal-200"
+                              : "bg-red-50 text-red-700 border border-red-200"
+                          }`}
                         >
                           {medicine.isActive ? (
                             <IoCheckmarkCircleOutline className="w-3 h-3" />
@@ -1465,10 +1470,11 @@ export default function MedicinesTab({
                             <IoCreateOutline className="w-4 h-4" />
                           </button>
                           <button
-                            className={`inline-flex items-center justify-center w-7 h-7 rounded border transition-colors ${medicine.isActive
-                              ? "border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600"
-                              : "border-teal-200 text-teal-400 hover:bg-teal-50 hover:text-teal-600"
-                              }`}
+                            className={`inline-flex items-center justify-center w-7 h-7 rounded border transition-colors ${
+                              medicine.isActive
+                                ? "border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                : "border-teal-200 text-teal-400 hover:bg-teal-50 hover:text-teal-600"
+                            }`}
                             title={
                               medicine.isActive ? "Deactivate" : "Activate"
                             }

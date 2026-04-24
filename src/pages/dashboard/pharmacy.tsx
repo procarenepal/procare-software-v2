@@ -118,11 +118,10 @@ function CustomInput({
         </label>
       )}
       <div
-        className={`flex items-center border rounded min-h-[38px] bg-white transition-colors ${
-          isInvalid
-            ? "border-red-300 focus-within:ring-red-100"
-            : "border-mountain-200 focus-within:border-teal-500 focus-within:ring-teal-100"
-        } focus-within:ring-1 ${disabled || readOnly ? "bg-mountain-50" : ""} ${classNames?.inputWrapper || ""}`}
+        className={`flex items-center border rounded min-h-[38px] bg-white transition-colors ${isInvalid
+          ? "border-red-300 focus-within:ring-red-100"
+          : "border-mountain-200 focus-within:border-teal-500 focus-within:ring-teal-100"
+          } focus-within:ring-1 ${disabled || readOnly ? "bg-mountain-50" : ""} ${classNames?.inputWrapper || ""}`}
       >
         {startContent && (
           <div className="pl-3 pr-1 text-mountain-500 flex items-center justify-center shrink-0">
@@ -272,8 +271,14 @@ import { medicineService } from "@/services/medicineService";
 import { pharmacyService } from "@/services/pharmacyService";
 import { itemService } from "@/services/itemService";
 import { patientService } from "@/services/patientService";
-import { clinicService } from "@/services/clinicService";
+import {
+  getPrintBrandingCSS,
+  getPrintHeaderHTML,
+  getPrintFooterHTML,
+} from "@/utils/printBranding";
+import { PrintLayoutConfig } from "@/types/printLayout";
 import { branchService } from "@/services/branchService";
+import { clinicService } from "@/services/clinicService";
 import { addToast } from "@/components/ui/toast";
 import {
   Supplier,
@@ -546,6 +551,9 @@ export default function PharmacyPage() {
 
   // Clinic data
   const [clinic, setClinic] = useState<Clinic | null>(null);
+  const [layoutConfig, setLayoutConfig] = useState<PrintLayoutConfig | null>(
+    null,
+  );
 
   // Patients data
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -714,6 +722,7 @@ export default function PharmacyPage() {
           supplierPurchaseRecordsData,
           supplierPaymentsData,
           clinicData,
+          layoutConfigData,
         ] = await Promise.all([
           medicineService.getMedicinesByClinic(
             clinicId,
@@ -734,6 +743,7 @@ export default function PharmacyPage() {
           ),
           medicineService.getSupplierPayments(clinicId, effectiveBranchId),
           clinicService.getClinicById(clinicId),
+          clinicService.getPrintLayoutConfig(clinicId),
         ]);
 
         setMedicines(medicinesData as Medicine[]);
@@ -746,6 +756,7 @@ export default function PharmacyPage() {
         );
         setSupplierPayments((supplierPaymentsData as SupplierPayment[]) || []);
         setClinic(clinicData);
+        setLayoutConfig(layoutConfigData);
         await loadSupplierLedgerBalances(effectiveBranchId);
 
         if (settingsData) {
@@ -1539,7 +1550,7 @@ export default function PharmacyPage() {
                               return dateB - dateA;
                             })[0];
 
-                          // Update prices based on transactions
+                          // Update prices and expiry date based on transactions
                           setPurchaseItems((prev) =>
                             prev.map((item) => {
                               if (item.id === id) {
@@ -1550,6 +1561,40 @@ export default function PharmacyPage() {
                                   latestSchemeTransaction?.schemePrice ||
                                   latestSchemeTransaction?.salePrice ||
                                   defaultPrice;
+
+                                // Get expiry date based on stock type
+                                let expiryDate = item.expiryDate;
+                                const currentStockType =
+                                  item.stockType || "regular";
+
+                                if (
+                                  currentStockType === "regular" &&
+                                  latestRegularTransaction?.expiryDate
+                                ) {
+                                  expiryDate =
+                                    latestRegularTransaction.expiryDate
+                                      .toISOString()
+                                      .split("T")[0];
+                                } else if (
+                                  currentStockType === "scheme" &&
+                                  latestSchemeTransaction?.expiryDate
+                                ) {
+                                  expiryDate =
+                                    latestSchemeTransaction.expiryDate
+                                      .toISOString()
+                                      .split("T")[0];
+                                } else if (!expiryDate) {
+                                  // Fallback to whichever is available if current style has no expiry
+                                  const anyExpiry =
+                                    latestRegularTransaction?.expiryDate ||
+                                    latestSchemeTransaction?.expiryDate;
+
+                                  if (anyExpiry) {
+                                    expiryDate = anyExpiry
+                                      .toISOString()
+                                      .split("T")[0];
+                                  }
+                                }
 
                                 // Recalculate amount based on stock type and new prices
                                 let newAmount = item.amount;
@@ -1575,6 +1620,7 @@ export default function PharmacyPage() {
                                   regularSalePrice: regularPrice,
                                   schemeSalePrice: schemePrice,
                                   salePrice: defaultPrice, // Keep for backward compatibility
+                                  expiryDate: expiryDate,
                                   amount: newAmount,
                                 };
                               }
@@ -2821,178 +2867,94 @@ export default function PharmacyPage() {
       )
       .join("");
 
+    // Global Branding Utility
+    const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
+    const headerHtml = layoutConfig
+      ? getPrintHeaderHTML(layoutConfig, clinic)
+      : "";
+    const footerHtml = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+
     const printContent = `<!DOCTYPE html>
 <html>
 <head>
   <title>Supplier Ledger - ${selectedSupplierForTransactions.name}</title>
   <style>
-    @media print {
-      @page {
-        size: A4;
-        margin: 15mm;
-      }
-      body {
-        margin: 0;
-        padding: 0;
-      }
-    }
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: white;
-      color: #333;
-    }
-    .print-container {
-      max-width: 100%;
-      margin: 0 auto;
-    }
-    .header {
-      border-bottom: 2px solid #333;
-      padding-bottom: 15px;
-      margin-bottom: 20px;
-    }
-    .header h1 {
-      margin: 0 0 10px 0;
-      font-size: 24px;
-      color: #333;
-    }
-    .supplier-info {
-      margin: 10px 0;
-      font-size: 14px;
-    }
-    .supplier-info p {
-      margin: 5px 0;
-    }
-    .summary-section {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 5px;
-      margin-bottom: 20px;
-    }
-    .summary-section h3 {
-      margin: 0 0 10px 0;
-      font-size: 16px;
-    }
-    .summary-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-    .summary-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #ddd;
-    }
-    .summary-item:last-child {
-      border-bottom: none;
-      font-weight: bold;
-      font-size: 18px;
-      color: ${currentBalance > 0 ? "#e53e3e" : currentBalance < 0 ? "#38a169" : "#666"};
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th {
-      background: #f8f9fa;
-      padding: 12px 8px;
-      text-align: left;
-      font-weight: bold;
-      border-bottom: 2px solid #333;
-      font-size: 12px;
-      text-transform: uppercase;
-    }
-    td {
-      padding: 8px;
-      border-bottom: 1px solid #ddd;
-      font-size: 13px;
-    }
-    .footer {
-      margin-top: 30px;
-      padding-top: 15px;
-      border-top: 1px solid #ddd;
-      text-align: center;
-      font-size: 12px;
-      color: #666;
-    }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; color: #333; line-height: 1.5; }
+    .print-container { max-width: 100%; margin: 0; background: white; display: flex; flex-direction: column; padding: 0; box-sizing: border-box; }
+    
+    ${brandingCSS}
+
+    .content { flex: 1; padding: 15mm; min-height: 0; }
+    
+    .document-title { text-align: center; margin: 10px 0 25px 0; }
+    .document-title h2 { font-size: 20px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.1em; color: #475569; }
+    .document-subtitle { font-size: 13px; color: #64748b; margin: 5px 0; font-weight: 500; }
+    
+    .supplier-info { margin-bottom: 25px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #f1f5f9; }
+    .supplier-info h3 { margin: 0 0 5px 0; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .supplier-info p { margin: 0; font-size: 14px; font-weight: 600; color: #1e293b; }
+
+    .summary-section { background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #475569; }
+    .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+    .summary-item { display: flex; flex-direction: column; gap: 4px; padding: 5px 0; font-size: 13px; }
+    .summary-item span:first-child { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .summary-item span:last-child { font-weight: 800; font-size: 16px; color: #1e293b; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { background: #f8fafc; padding: 12px 10px; text-align: left; font-weight: 700; border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 11px; text-transform: uppercase; }
+    td { padding: 10px; border-bottom: 1px solid #f1f5f9; font-size: 12.5px; }
+
+    @media print { body { padding: 0; margin: 0; } .print-container { height: 100vh; padding: 0; max-width: 100%; } }
   </style>
 </head>
 <body>
   <div class="print-container">
-    <div class="header">
-      <h1>Supplier Ledger Report</h1>
+    ${headerHtml}
+
+    <div class="content">
+      <div class="document-title">
+        <h2>Supplier Transaction Ledger</h2>
+        <p class="document-subtitle">Account Statement</p>
+      </div>
+
       <div class="supplier-info">
-        <p><strong>Supplier:</strong> ${selectedSupplierForTransactions.name}</p>
-        ${selectedSupplierForTransactions.contactPerson ? `<p><strong>Contact Person:</strong> ${selectedSupplierForTransactions.contactPerson}</p>` : ""}
-        ${selectedSupplierForTransactions.phone ? `<p><strong>Phone:</strong> ${selectedSupplierForTransactions.phone}</p>` : ""}
-        ${selectedSupplierForTransactions.email ? `<p><strong>Email:</strong> ${selectedSupplierForTransactions.email}</p>` : ""}
-        <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+        <h3>Supplier Details</h3>
+        <p>${selectedSupplierForTransactions.name}</p>
+        <p style="font-size: 12px; font-weight: 400; color: #64748b; margin-top: 4px;">${selectedSupplierForTransactions.email || ""} | ${selectedSupplierForTransactions.phone || ""}</p>
       </div>
-    </div>
 
-    <div class="summary-section">
-      <h3>Summary</h3>
-      <div class="summary-grid">
-        <div class="summary-item">
-          <span>Total Debits:</span>
-          <span style="color: #e53e3e; font-weight: bold;">NPR ${totalDebits.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-        </div>
-        <div class="summary-item">
-          <span>Total Credits:</span>
-          <span style="color: #38a169; font-weight: bold;">NPR ${totalCredits.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-        </div>
-        <div class="summary-item">
-          <span>Number of Transactions:</span>
-          <span>${supplierLedgerEntries.length}</span>
-        </div>
-        <div class="summary-item">
-          <span>Current Balance:</span>
-          <span style="color: ${currentBalance > 0 ? "#e53e3e" : currentBalance < 0 ? "#38a169" : "#666"}; font-weight: bold;">NPR ${currentBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+      <div class="summary-section">
+        <div class="summary-grid">
+          <div class="summary-item"><span>Total Debits</span><span>NPR ${totalDebits.toLocaleString()}</span></div>
+          <div class="summary-item"><span>Total Credits</span><span>NPR ${totalCredits.toLocaleString()}</span></div>
+          <div class="summary-item"><span>Current Balance</span><span style="color: ${currentBalance > 0 ? "#e53e3e" : "#38a169"}">NPR ${currentBalance.toLocaleString()}</span></div>
         </div>
       </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Bill/Ref No.</th>
+            <th>Date</th>
+            <th style="text-align: right;">Debit (Dr)</th>
+            <th style="text-align: right;">Credit (Cr)</th>
+            <th style="text-align: right;">Balance</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody>${transactionsHtml}</tbody>
+      </table>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Bill Number</th>
-          <th>Date</th>
-          <th>Debit Amount</th>
-          <th>Credit Amount</th>
-          <th>Balance</th>
-          <th>Type</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${transactionsHtml}
-      </tbody>
-    </table>
-
-    <div class="footer">
-      <p>Generated by Procare Software</p>
-      <p>${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>
-    </div>
+    ${footerHtml}
   </div>
-
   <script>
-    window.addEventListener('load', function() {
+    window.onload = function() {
       setTimeout(function() {
         window.print();
+        window.onafterprint = function() { window.close(); };
       }, 500);
-    });
-    
-    window.addEventListener('afterprint', function() {
-      window.close();
-    });
-    
-    window.addEventListener('beforeunload', function() {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage('printComplete', '*');
-      }
-    });
+    };
   </script>
 </body>
 </html>`;
@@ -3143,7 +3105,7 @@ export default function PharmacyPage() {
       (pm) =>
         pm.id !== editingPaymentMethod.id &&
         pm.name.trim().toLowerCase() ===
-          paymentMethodForm.name.trim().toLowerCase(),
+        paymentMethodForm.name.trim().toLowerCase(),
     );
 
     if (duplicateEdit) {
@@ -3346,11 +3308,10 @@ export default function PharmacyPage() {
         {/* Daily Sales Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div
-            className={`bg-health-50 border transition-all rounded p-4 cursor-pointer flex flex-col items-center ${
-              activeFilter === "daily"
-                ? "border-health-400 shadow-sm ring-1 ring-health-200"
-                : "border-health-200 hover:border-health-300"
-            }`}
+            className={`bg-health-50 border transition-all rounded p-4 cursor-pointer flex flex-col items-center ${activeFilter === "daily"
+              ? "border-health-400 shadow-sm ring-1 ring-health-200"
+              : "border-health-200 hover:border-health-300"
+              }`}
             onClick={() => handleStatCardClick("daily")}
           >
             <IoStorefrontOutline className="text-health-600 w-6 h-6 mb-2" />
@@ -3361,11 +3322,10 @@ export default function PharmacyPage() {
           </div>
 
           <div
-            className={`bg-health-50 border transition-all rounded p-4 cursor-pointer flex flex-col items-center ${
-              activeFilter === "paid"
-                ? "border-health-400 shadow-sm ring-1 ring-health-200"
-                : "border-health-200 hover:border-health-300"
-            }`}
+            className={`bg-health-50 border transition-all rounded p-4 cursor-pointer flex flex-col items-center ${activeFilter === "paid"
+              ? "border-health-400 shadow-sm ring-1 ring-health-200"
+              : "border-health-200 hover:border-health-300"
+              }`}
             onClick={() => handleStatCardClick("paid")}
           >
             <IoCheckmarkCircleOutline className="text-health-600 w-6 h-6 mb-2" />
@@ -3378,11 +3338,10 @@ export default function PharmacyPage() {
           </div>
 
           <div
-            className={`bg-red-50 border transition-all rounded p-4 cursor-pointer flex flex-col items-center ${
-              activeFilter === "unpaid"
-                ? "border-red-400 shadow-sm ring-1 ring-red-200"
-                : "border-red-200 hover:border-red-300"
-            }`}
+            className={`bg-red-50 border transition-all rounded p-4 cursor-pointer flex flex-col items-center ${activeFilter === "unpaid"
+              ? "border-red-400 shadow-sm ring-1 ring-red-200"
+              : "border-red-200 hover:border-red-300"
+              }`}
             onClick={() => handleStatCardClick("unpaid")}
           >
             <IoCloseCircleOutline className="text-red-500 w-6 h-6 mb-2" />
@@ -3616,10 +3575,10 @@ export default function PharmacyPage() {
                                 "number" && purchase.totalReturnedAmount > 0
                                 ? purchase.totalReturnedAmount
                                 : (purchase.returns ?? []).reduce(
-                                    (sum, r) =>
-                                      sum + Math.abs(r.totalAmount || 0),
-                                    0,
-                                  );
+                                  (sum, r) =>
+                                    sum + Math.abs(r.totalAmount || 0),
+                                  0,
+                                );
                             const netAfterReturns = Math.max(
                               0,
                               (purchase.netAmount || 0) - totalReturnedAmount,
@@ -4113,17 +4072,16 @@ export default function PharmacyPage() {
                               Current Balance
                             </p>
                             <p
-                              className={`text-2xl font-semibold mt-1 ${
-                                supplierLedgerEntries[
+                              className={`text-2xl font-semibold mt-1 ${supplierLedgerEntries[
+                                supplierLedgerEntries.length - 1
+                              ].balanceAmount > 0
+                                ? "text-danger"
+                                : supplierLedgerEntries[
                                   supplierLedgerEntries.length - 1
-                                ].balanceAmount > 0
-                                  ? "text-danger"
-                                  : supplierLedgerEntries[
-                                        supplierLedgerEntries.length - 1
-                                      ].balanceAmount < 0
-                                    ? "text-success"
-                                    : "text-default-600"
-                              }`}
+                                ].balanceAmount < 0
+                                  ? "text-success"
+                                  : "text-default-600"
+                                }`}
                             >
                               NPR{" "}
                               {supplierLedgerEntries[
@@ -4224,13 +4182,12 @@ export default function PharmacyPage() {
                                     </td>
                                     <td className="px-3 py-2.5 text-[12.5px]">
                                       <span
-                                        className={`font-semibold ${
-                                          entry.balanceAmount > 0
-                                            ? "text-red-600"
-                                            : entry.balanceAmount < 0
-                                              ? "text-health-600"
-                                              : "text-mountain-600"
-                                        }`}
+                                        className={`font-semibold ${entry.balanceAmount > 0
+                                          ? "text-red-600"
+                                          : entry.balanceAmount < 0
+                                            ? "text-health-600"
+                                            : "text-mountain-600"
+                                          }`}
                                       >
                                         NPR{" "}
                                         {entry.balanceAmount.toLocaleString(
@@ -4514,47 +4471,47 @@ export default function PharmacyPage() {
 
                       {(!settingsForm.enabledPaymentMethods ||
                         settingsForm.enabledPaymentMethods.length === 0) && (
-                        <div className="text-center py-8">
-                          <div className="text-default-400 mb-4">
-                            <svg
-                              className="mx-auto opacity-50"
-                              fill="none"
-                              height="48"
-                              stroke="currentColor"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth="2"
-                              viewBox="0 0 24 24"
-                              width="48"
-                              xmlns="http://www.w3.org/2000/svg"
+                          <div className="text-center py-8">
+                            <div className="text-default-400 mb-4">
+                              <svg
+                                className="mx-auto opacity-50"
+                                fill="none"
+                                height="48"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                viewBox="0 0 24 24"
+                                width="48"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <rect
+                                  height="16"
+                                  rx="2"
+                                  ry="2"
+                                  width="22"
+                                  x="1"
+                                  y="4"
+                                />
+                                <line x1="1" x2="23" y1="10" y2="10" />
+                              </svg>
+                            </div>
+                            <h3 className="text-lg font-medium text-default-700 mb-2">
+                              No payment methods configured
+                            </h3>
+                            <p className="text-default-500 mb-4">
+                              Add payment methods to enable different payment
+                              options for purchases.
+                            </p>
+                            <Button
+                              color="primary"
+                              startContent={<IoAddOutline />}
+                              onPress={addPaymentMethodModalState.open}
                             >
-                              <rect
-                                height="16"
-                                rx="2"
-                                ry="2"
-                                width="22"
-                                x="1"
-                                y="4"
-                              />
-                              <line x1="1" x2="23" y1="10" y2="10" />
-                            </svg>
+                              Add Your First Payment Method
+                            </Button>
                           </div>
-                          <h3 className="text-lg font-medium text-default-700 mb-2">
-                            No payment methods configured
-                          </h3>
-                          <p className="text-default-500 mb-4">
-                            Add payment methods to enable different payment
-                            options for purchases.
-                          </p>
-                          <Button
-                            color="primary"
-                            startContent={<IoAddOutline />}
-                            onPress={addPaymentMethodModalState.open}
-                          >
-                            Add Your First Payment Method
-                          </Button>
-                        </div>
-                      )}
+                        )}
                     </CardBody>
                   </Card>
 
@@ -4839,13 +4796,12 @@ export default function PharmacyPage() {
                                   Net Quantity
                                 </p>
                                 <p
-                                  className={`text-2xl font-semibold mt-1 ${
-                                    netQuantity > 0
-                                      ? "text-success"
-                                      : netQuantity < 0
-                                        ? "text-danger"
-                                        : "text-default-600"
-                                  }`}
+                                  className={`text-2xl font-semibold mt-1 ${netQuantity > 0
+                                    ? "text-success"
+                                    : netQuantity < 0
+                                      ? "text-danger"
+                                      : "text-default-600"
+                                    }`}
                                 >
                                   {netQuantity}
                                 </p>
@@ -4894,16 +4850,16 @@ export default function PharmacyPage() {
                                   <TableCell>
                                     <div className="text-sm">
                                       {transaction.date instanceof Date &&
-                                      !isNaN(transaction.date.getTime())
+                                        !isNaN(transaction.date.getTime())
                                         ? format(
-                                            transaction.date,
-                                            "MMM dd, yyyy",
-                                          )
+                                          transaction.date,
+                                          "MMM dd, yyyy",
+                                        )
                                         : "N/A"}
                                     </div>
                                     <div className="text-xs text-default-500">
                                       {transaction.date instanceof Date &&
-                                      !isNaN(transaction.date.getTime())
+                                        !isNaN(transaction.date.getTime())
                                         ? format(transaction.date, "hh:mm a")
                                         : "N/A"}
                                     </div>
@@ -4934,11 +4890,10 @@ export default function PharmacyPage() {
                                   <TableCell>{transaction.party}</TableCell>
                                   <TableCell>
                                     <span
-                                      className={`font-medium ${
-                                        transaction.quantity < 0
-                                          ? "text-danger"
-                                          : "text-success"
-                                      }`}
+                                      className={`font-medium ${transaction.quantity < 0
+                                        ? "text-danger"
+                                        : "text-success"
+                                        }`}
                                     >
                                       {transaction.quantity > 0 ? "+" : ""}
                                       {transaction.quantity}
@@ -4975,15 +4930,15 @@ export default function PharmacyPage() {
                                         )}
                                         {transaction.expiryDate <
                                           new Date() && (
-                                          <Chip
-                                            className="ml-1"
-                                            color="danger"
-                                            size="sm"
-                                            variant="flat"
-                                          >
-                                            Expired
-                                          </Chip>
-                                        )}
+                                            <Chip
+                                              className="ml-1"
+                                              color="danger"
+                                              size="sm"
+                                              variant="flat"
+                                            >
+                                              Expired
+                                            </Chip>
+                                          )}
                                       </div>
                                     ) : (
                                       <span className="text-default-400">
@@ -5381,12 +5336,12 @@ export default function PharmacyPage() {
                                             purchase.paymentStatus === "paid"
                                               ? "success"
                                               : purchase.paymentStatus ===
-                                                    "unpaid" ||
-                                                  purchase.paymentStatus ===
-                                                    "pending"
+                                                "unpaid" ||
+                                                purchase.paymentStatus ===
+                                                "pending"
                                                 ? "danger"
                                                 : purchase.paymentStatus ===
-                                                    "partial"
+                                                  "partial"
                                                   ? "warning"
                                                   : "default"
                                           }
@@ -5609,7 +5564,7 @@ export default function PharmacyPage() {
 
                       {/* Daily Purchases Report Table */}
                       {refillTransactions.length === 0 &&
-                      !isLoadingRefillTransactions ? (
+                        !isLoadingRefillTransactions ? (
                         <Card>
                           <CardBody>
                             <div className="text-center py-12">
@@ -5981,13 +5936,13 @@ export default function PharmacyPage() {
                               items={
                                 item.type === "medicine"
                                   ? medicines.map((m) => ({
-                                      id: m.id,
-                                      primary: `${m.name} • NPR ${(m.price || 0).toLocaleString()}`,
-                                    }))
+                                    id: m.id,
+                                    primary: `${m.name} • NPR ${(m.price || 0).toLocaleString()}`,
+                                  }))
                                   : items.map((i) => ({
-                                      id: i.id,
-                                      primary: i.name,
-                                    }))
+                                    id: i.id,
+                                    primary: i.name,
+                                  }))
                               }
                               label={`${item.type === "medicine" ? "Medicine" : "Item"}`}
                               placeholder={`Search ${item.type}…`}
@@ -6565,13 +6520,12 @@ export default function PharmacyPage() {
                             </TableCell>
                             <TableCell>
                               <span
-                                className={`font-semibold ${
-                                  entry.balanceAmount > 0
-                                    ? "text-danger"
-                                    : entry.balanceAmount < 0
-                                      ? "text-success"
-                                      : "text-default-600"
-                                }`}
+                                className={`font-semibold ${entry.balanceAmount > 0
+                                  ? "text-danger"
+                                  : entry.balanceAmount < 0
+                                    ? "text-success"
+                                    : "text-default-600"
+                                  }`}
                               >
                                 NPR{" "}
                                 {entry.balanceAmount.toLocaleString(undefined, {

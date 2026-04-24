@@ -12,7 +12,7 @@ import {
   IoHeadsetOutline,
 } from "react-icons/io5";
 
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/context/AuthContext";
 import { useNavigation } from "@/hooks/useNavigation";
 import { useTheme } from "@/context/ThemeContext";
 import { DashboardHeader } from "@/components/dashboard-header";
@@ -31,7 +31,7 @@ export interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const { currentUser, userData } = useAuth();
+  const { currentUser, userData } = useAuthContext();
   const { isDark } = useTheme();
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(new Set());
 

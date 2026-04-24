@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -23,7 +23,9 @@ interface ExtendedUser extends FirebaseUser {
   userData?: User;
 }
 
-export function useAuth() {
+export function useAuth(options: { dataOnly?: boolean } = {}) {
+  const { dataOnly = false } = options;
+
   const [currentUser, setCurrentUser] = useState<ExtendedUser | null>(null);
   const [userClaims, setUserClaims] = useState<any>(null);
   const [userData, setUserData] = useState<User | null>(null);
@@ -312,6 +314,8 @@ export function useAuth() {
 
   // Listen for authentication state changes
   useEffect(() => {
+    if (dataOnly) return;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       const isImpersonating =
         localStorage.getItem("isImpersonating") === "true";
@@ -445,57 +449,6 @@ export function useAuth() {
                   setPermissionsReady(false);
                 }
               }, 100); // Small delay to let auth state settle
-
-              // Set up periodic subscription check (every 5 minutes) - keeping as backup
-              const subscriptionCheckInterval = setInterval(
-                async () => {
-                  try {
-                    const { clinicService } = await import(
-                      "../services/clinicService"
-                    );
-                    const clinic = await clinicService.getClinicById(
-                      userDataFromFirestore.clinicId,
-                    );
-
-                    if (clinic) {
-                      const isSubscriptionSuspended =
-                        clinic.subscriptionStatus === "suspended";
-                      const isSubscriptionCancelled =
-                        clinic.subscriptionStatus === "cancelled";
-                      const isSubscriptionExpired =
-                        clinic.subscriptionEndDate &&
-                        new Date(clinic.subscriptionEndDate) < new Date();
-
-                      if (
-                        isSubscriptionSuspended ||
-                        isSubscriptionCancelled ||
-                        isSubscriptionExpired
-                      ) {
-                        // Sign out user if subscription is suspended, cancelled or expired
-                        clearInterval(subscriptionCheckInterval);
-                        await signOut(auth);
-                        setSubscriptionValid(false);
-                        setSubscriptionLastChecked(Date.now());
-                      } else {
-                        setSubscriptionValid(true);
-                        setSubscriptionLastChecked(Date.now());
-                      }
-                    }
-                  } catch (error) {
-                    console.error(
-                      "Error in periodic subscription check:",
-                      error,
-                    );
-                  }
-                },
-                5 * 60 * 1000,
-              ); // Check every 5 minutes
-
-              // Clean up interval on user logout
-              const originalSignOut = signOut;
-
-              (window as any).__subscriptionCheckInterval =
-                subscriptionCheckInterval;
             }
           } else {
             // User exists in Firebase Auth but not in Firestore
@@ -517,13 +470,7 @@ export function useAuth() {
           setCurrentUser(firebaseUser as ExtendedUser);
         }
       } else {
-        // No user is logged in - clear any subscription check intervals and stop monitoring
-        if ((window as any).__subscriptionCheckInterval) {
-          clearInterval((window as any).__subscriptionCheckInterval);
-          delete (window as any).__subscriptionCheckInterval;
-        }
-
-        // Stop subscription monitoring
+        // No user is logged in - ensure subscription monitoring is stopped
         subscriptionMonitorService.stopMonitoring();
 
         setCurrentUser(null);
@@ -537,10 +484,11 @@ export function useAuth() {
     });
 
     return unsubscribe;
-  }, []);
+  }, [dataOnly]);
 
   // Focus / visibility-based subscription revalidation (throttled)
   useEffect(() => {
+    if (dataOnly) return;
     const MIN_INTERVAL = 3 * 60 * 1000; // 3 minutes
 
     function maybeRevalidate() {
@@ -568,6 +516,7 @@ export function useAuth() {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [
+    dataOnly,
     currentUser,
     userData?.role,
     subscriptionLastChecked,
@@ -576,7 +525,7 @@ export function useAuth() {
 
   // Listen for cross-tab permission invalidations
   useEffect(() => {
-    if (!currentUser || !clinicId) return;
+    if (dataOnly || !currentUser || !clinicId) return;
     const off = onInvalidation((msg) => {
       if (msg.type === "permissions-invalidated" && msg.clinicId === clinicId) {
         if (msg.userIds && !msg.userIds.includes(currentUser.uid)) return;
@@ -601,29 +550,50 @@ export function useAuth() {
     return () => {
       off();
     };
-  }, [currentUser, clinicId]);
+  }, [dataOnly, currentUser, clinicId]);
 
-  return {
-    currentUser,
-    userData,
-    userClaims,
-    isLoading: loading,
-    clinicId,
-    subscriptionValid,
-    subscriptionLastChecked,
-    permissionsReady,
-    register,
-    login,
-    logout,
-    getUserData,
-    isClinicAdmin,
-    isSuperAdmin,
-    hasPagePermission,
-    hasPagePermissionSync,
-    hasPagePermissionByPath,
-    preloadPermissions,
-    getAccessiblePages,
-    checkClinicSubscription,
-    updateProfileInfo,
-  };
+  // Memoize the return value to prevent unnecessary re-renders in consumers
+  return useMemo(
+    () => ({
+      currentUser,
+      userData,
+      userClaims,
+      isLoading: loading,
+      clinicId,
+      subscriptionValid,
+      subscriptionLastChecked,
+      permissionsReady,
+      register,
+      login,
+      logout,
+      getUserData,
+      isClinicAdmin,
+      isSuperAdmin,
+      hasPagePermission,
+      hasPagePermissionSync,
+      hasPagePermissionByPath,
+      preloadPermissions,
+      getAccessiblePages,
+      checkClinicSubscription,
+      updateProfileInfo,
+    }),
+    [
+      currentUser,
+      userData,
+      userClaims,
+      loading,
+      clinicId,
+      subscriptionValid,
+      subscriptionLastChecked,
+      permissionsReady,
+      isClinicAdmin,
+      isSuperAdmin,
+      hasPagePermission,
+      hasPagePermissionSync,
+      hasPagePermissionByPath,
+      preloadPermissions,
+      getAccessiblePages,
+      checkClinicSubscription,
+    ],
+  );
 }

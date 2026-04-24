@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 import { navigationService, NavItem } from "@/services/navigationService";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthContext } from "@/context/AuthContext";
 
 export interface NavigationState {
   navItems: NavItem[];
@@ -14,7 +14,7 @@ export interface NavigationState {
 }
 
 export const useNavigation = () => {
-  const { currentUser, userData, clinicId } = useAuth();
+  const { currentUser, userData, clinicId } = useAuthContext();
   const [state, setState] = useState<NavigationState>({
     navItems: [],
     loading: true,

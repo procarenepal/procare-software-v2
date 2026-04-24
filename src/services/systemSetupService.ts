@@ -13,8 +13,6 @@ import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { db, auth } from "../config/firebase";
 import { User } from "../types/models";
 
-import { rbacService } from "./rbacService";
-
 const USERS_COLLECTION = "users";
 const SYSTEM_CONFIG_COLLECTION = "system_config";
 
