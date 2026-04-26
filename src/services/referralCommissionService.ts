@@ -99,6 +99,68 @@ class ReferralCommissionService {
   }
 
   /**
+   * Create a commission record for a referral partner during registration
+   * This is used when no full billing record (invoice) exists yet
+   */
+  async createRegistrationCommission(
+    partner: ReferralPartner,
+    clinicId: string,
+    branchId: string,
+    patientId: string,
+    patientName: string,
+    appointmentTypeName: string,
+    totalAmount: number,
+    commissionAmount: number,
+    createdBy: string,
+  ): Promise<string | null> {
+    try {
+      if (commissionAmount <= 0) return null;
+
+      const commissionData: Omit<ReferralCommission, "id"> = {
+        partnerId: partner.id!,
+        partnerName: partner.name,
+        clinicId,
+        branchId,
+        billingId: `reg_${Date.now()}`, // Synthetic ID for registration-based commission
+        invoiceNumber: "REG-COMM", // Placeholder for registration commission
+        invoiceDate: new Date(),
+        patientId,
+        patientName,
+        serviceNames: [appointmentTypeName],
+        totalInvoiceAmount: totalAmount,
+        commissionPercentage: partner.defaultCommission || 0,
+        commissionAmount: commissionAmount,
+        status: "pending",
+        paidAmount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy,
+      };
+
+      const docRef = await addDoc(collection(db, this.collectionName), {
+        ...commissionData,
+        createdAt: Timestamp.fromDate(commissionData.createdAt),
+        updatedAt: Timestamp.fromDate(commissionData.updatedAt),
+        invoiceDate: Timestamp.fromDate(commissionData.invoiceDate),
+      });
+
+      // Update partner's balance and lifetime earnings
+      const partnerRef = doc(db, "referralPartners", partner.id!);
+
+      await updateDoc(partnerRef, {
+        totalCommissionEarned: increment(commissionAmount),
+        totalCommissionBalance: increment(commissionAmount),
+        updatedAt: Timestamp.now(),
+      });
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating registration referral commission:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all commissions for a partner
    */
   async getCommissionsByPartner(

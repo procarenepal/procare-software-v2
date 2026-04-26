@@ -20,7 +20,15 @@ import {
   IoPencilOutline,
   IoPrintOutline,
   IoCloseOutline,
+  IoChevronDown,
 } from "react-icons/io5";
+
+import {
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@/components/ui/dropdown";
 
 import DashboardNotFoundPage from "./not-found";
 
@@ -1589,18 +1597,69 @@ export default function AppointmentBillingPage() {
                               >
                                 <IoEyeOutline />
                               </button>
-                              <button
-                                className="p-1.5 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded"
-                                title="Print"
-                                onClick={() =>
-                                  window.open(
-                                    `/dashboard/appointments-billing/${b.id}?print=true`,
-                                    "_blank",
-                                  )
-                                }
-                              >
-                                <IoPrintOutline />
-                              </button>
+                              <Dropdown>
+                                <DropdownTrigger>
+                                  <button
+                                    className="p-1.5 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded flex items-center gap-0.5"
+                                    title="Print"
+                                  >
+                                    <IoPrintOutline />
+                                    <IoChevronDown className="w-2.5 h-2.5 opacity-50" />
+                                  </button>
+                                </DropdownTrigger>
+                                <DropdownMenu aria-label="Print Formats">
+                                  <DropdownItem
+                                    onClick={() =>
+                                      window.open(
+                                        `/dashboard/appointments-billing/${b.id}?print=true&format=A4`,
+                                        "_blank",
+                                      )
+                                    }
+                                  >
+                                    A4 Full Page
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    onClick={() =>
+                                      window.open(
+                                        `/dashboard/appointments-billing/${b.id}?print=true&format=A4_HALF`,
+                                        "_blank",
+                                      )
+                                    }
+                                  >
+                                    A4 Half Page
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    onClick={() =>
+                                      window.open(
+                                        `/dashboard/appointments-billing/${b.id}?print=true&format=THERMAL_80MM`,
+                                        "_blank",
+                                      )
+                                    }
+                                  >
+                                    Thermal (80mm)
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    onClick={() =>
+                                      window.open(
+                                        `/dashboard/appointments-billing/${b.id}?print=true&format=THERMAL_58MM`,
+                                        "_blank",
+                                      )
+                                    }
+                                  >
+                                    Thermal (58mm)
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    onClick={() =>
+                                      window.open(
+                                        `/dashboard/appointments-billing/${b.id}?print=true&format=THERMAL_4INCH`,
+                                        "_blank",
+                                      )
+                                    }
+                                  >
+                                    Label (4-inch)
+                                  </DropdownItem>
+                                </DropdownMenu>
+                              </Dropdown>
                               <button
                                 className="p-1.5 text-mountain-500 hover:text-teal-600 hover:bg-teal-50 rounded"
                                 title="Edit"

@@ -218,6 +218,9 @@ export default function PathologyBillingTab({
       setBillingSettings(settingsData);
       setClinic(clinicData);
       setLayoutConfig(layoutConfigData);
+      if (layoutConfigData?.defaultPrintFormat) {
+        setSelectedPrintFormat(layoutConfigData.defaultPrintFormat as PrintFormat);
+      }
       setDoctors(doctorsList);
       setPartners(partnersList);
 
@@ -1682,6 +1685,7 @@ export default function PathologyBillingTab({
                 <SelectItem key="A4_HALF">A4 Half (A5)</SelectItem>
                 <SelectItem key="THERMAL_80MM">Thermal 80mm</SelectItem>
                 <SelectItem key="THERMAL_58MM">Thermal 58mm</SelectItem>
+                <SelectItem key="THERMAL_4INCH">Label (4-inch)</SelectItem>
               </Select>
             </div>
             <div className="flex gap-2">

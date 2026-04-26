@@ -997,7 +997,7 @@ export default function PatientBillingTab({
               </Button>
               <Button
                 color="primary"
-                disabled={!formData.doctorId || !formData.items.length}
+                disabled={formData.items.length === 0 || !formData.items[0].doctorId}
                 isLoading={submitting}
                 size="sm"
                 onClick={handleInvoiceSubmit}

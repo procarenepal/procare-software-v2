@@ -304,6 +304,48 @@ export const appointmentBillingService = {
     };
   },
 
+  /**
+   * Deeply cleans an object by removing any properties with undefined values.
+   * This is necessary for Firestore which doesn't support undefined values.
+   */
+  deepClean<T>(obj: T): T {
+    if (obj === null || typeof obj !== "object") {
+      return obj;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.deepClean(item)) as unknown as T;
+    }
+
+    const cleaned: any = {};
+
+    Object.keys(obj).forEach((key) => {
+      const value = (obj as any)[key];
+
+      if (value !== undefined) {
+        if (value !== null && typeof value === "object") {
+          // Keep Date and Timestamp objects as is (don't treat as regular objects)
+          if (value instanceof Date || value instanceof Timestamp) {
+            cleaned[key] = value;
+          } else {
+            cleaned[key] = this.deepClean(value);
+          }
+        } else {
+          cleaned[key] = value;
+        }
+      }
+    });
+
+    return cleaned as T;
+  },
+
+  /**
+   * Generates a unique ID for items
+   */
+  generateId(): string {
+    return crypto.randomUUID();
+  },
+
   // =================== INVOICE OPERATIONS ===================
 
   /**
@@ -348,15 +390,7 @@ export const appointmentBillingService = {
       const billingRef = collection(db, APPOINTMENT_BILLING_COLLECTION);
 
       // Filter out undefined values to prevent Firestore errors
-      const cleanedData: any = {};
-
-      Object.keys(billingData).forEach((key) => {
-        const value = (billingData as any)[key];
-
-        if (value !== undefined) {
-          cleanedData[key] = value;
-        }
-      });
+      const cleanedData = this.deepClean(billingData);
 
       const now = Timestamp.now();
       const data = {
@@ -394,15 +428,7 @@ export const appointmentBillingService = {
       const billingRef = doc(db, APPOINTMENT_BILLING_COLLECTION, id);
 
       // Filter out undefined values to prevent Firestore errors
-      const cleanedData: any = {};
-
-      Object.keys(billingData).forEach((key) => {
-        const value = (billingData as any)[key];
-
-        if (value !== undefined) {
-          cleanedData[key] = value;
-        }
-      });
+      const cleanedData = this.deepClean(billingData);
 
       const data: any = {
         ...cleanedData,

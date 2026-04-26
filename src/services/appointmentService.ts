@@ -405,17 +405,16 @@ export const appointmentService = {
   ): Promise<Appointment[]> {
     try {
       const appointmentsCollection = collection(db, "appointments");
-      const constraints: any[] = [
-        where("clinicId", "==", clinicId),
-        where("appointmentDate", ">=", Timestamp.fromDate(startDate)),
-        where("appointmentDate", "<=", Timestamp.fromDate(endDate)),
-      ];
 
+      // OPTION 2: Client-side filtering to avoid composite index requirements
+      // We only query by clinicId (and branchId) which are equality filters
+      const constraints: any[] = [where("clinicId", "==", clinicId)];
       if (branchId) {
         constraints.push(where("branchId", "==", branchId));
       }
-      constraints.push(orderBy("appointmentDate", "asc"));
 
+      // We remove the date range where() and orderBy() from the Firestore query
+      // and handle them in memory to solve the index error immediately.
       const q = query(appointmentsCollection, ...constraints);
 
       const querySnapshot = await getDocs(q);
@@ -425,7 +424,14 @@ export const appointmentService = {
         appointments.push(mapAppointmentDoc(doc));
       });
 
-      return appointments;
+      // Filter by date range in memory
+      const filtered = appointments.filter(app => {
+        const date = app.appointmentDate;
+        return date >= startDate && date <= endDate;
+      });
+
+      // Sort by date in memory
+      return filtered.sort((a, b) => a.appointmentDate.getTime() - b.appointmentDate.getTime());
     } catch (error) {
       console.error("Error fetching appointments by date range:", error);
       throw new Error("Failed to fetch appointments by date range");
@@ -552,13 +558,24 @@ export const appointmentService = {
     if (branchId) {
       constraints.push(where("branchId", "==", branchId));
     }
-    constraints.push(orderBy("appointmentDate", "desc"));
-
+    // Removed orderBy to avoid composite index requirement
     const q = query(appointmentsCollection, ...constraints);
 
     return onSnapshot(
       q,
-      (snapshot) => handleAppointmentSnapshot(snapshot, onData),
+      (snapshot) => {
+        const nextAppointments: Appointment[] = [];
+        snapshot.forEach((docSnap) => {
+          nextAppointments.push(mapAppointmentDoc(docSnap));
+        });
+        // Sort by date descending in memory
+        onData(
+          nextAppointments.sort(
+            (a, b) =>
+              b.appointmentDate.getTime() - a.appointmentDate.getTime(),
+          ),
+        );
+      },
       (error) => {
         console.error("Appointments subscription error:", error);
         onError?.(error as Error);
@@ -581,13 +598,24 @@ export const appointmentService = {
     if (branchId) {
       constraints.push(where("branchId", "==", branchId));
     }
-    constraints.push(orderBy("appointmentDate", "desc"));
-
+    // Removed orderBy to avoid composite index requirement
     const q = query(appointmentsCollection, ...constraints);
 
     return onSnapshot(
       q,
-      (snapshot) => handleAppointmentSnapshot(snapshot, onData),
+      (snapshot) => {
+        const nextAppointments: Appointment[] = [];
+        snapshot.forEach((docSnap) => {
+          nextAppointments.push(mapAppointmentDoc(docSnap));
+        });
+        // Sort by date descending in memory
+        onData(
+          nextAppointments.sort(
+            (a, b) =>
+              b.appointmentDate.getTime() - a.appointmentDate.getTime(),
+          ),
+        );
+      },
       (error) => {
         console.error("Doctor appointments subscription error:", error);
         onError?.(error as Error);

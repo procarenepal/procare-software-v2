@@ -119,11 +119,7 @@ export const doctorService = {
       // When a branchId is provided, run a branch-scoped query without using the clinic-wide cache.
       if (branchId) {
         const doctorsRef = collection(db, DOCTORS_COLLECTION);
-        const q = query(
-          doctorsRef,
-          where("clinicId", "==", clinicId),
-          where("branchId", "==", branchId),
-        );
+        const q = query(doctorsRef, where("clinicId", "==", clinicId));
         const querySnapshot = await getDocs(q);
 
         const doctors = querySnapshot.docs.map((doc) => {
@@ -143,8 +139,16 @@ export const doctorService = {
           } as Doctor;
         });
 
-        // Exclude soft-deleted doctors from branch-scoped results
-        return doctors.filter((doctor) => !doctor.isDeleted);
+        // Filter by branchId OR global (clinicId or empty)
+        return doctors.filter(
+          (doctor) =>
+            !doctor.isDeleted &&
+            (doctor.branchId === branchId ||
+              doctor.branchId === clinicId ||
+              !doctor.branchId ||
+              (typeof doctor.branchId === "string" &&
+                doctor.branchId.trim() === "")),
+        );
       }
 
       // For clinic-wide queries, use the cache + inflight dedup to avoid redundant Firestore reads.

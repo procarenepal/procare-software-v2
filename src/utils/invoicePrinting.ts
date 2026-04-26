@@ -1,11 +1,12 @@
 import { PathologyBilling, AppointmentBilling } from "@/types/models";
+import { PrintLayoutConfig } from "@/types/printLayout";
 import {
   getPrintBrandingCSS,
   getPrintHeaderHTML,
   getPrintFooterHTML,
 } from "./printBranding";
 
-export type PrintFormat = "A4" | "A4_HALF" | "THERMAL_80MM" | "THERMAL_58MM";
+export type PrintFormat = "A4" | "A4_HALF" | "THERMAL_80MM" | "THERMAL_58MM" | "THERMAL_4INCH";
 
 /**
  * Generates HTML content for printing an invoice
@@ -16,12 +17,20 @@ export const generateInvoiceHTML = (
   clinic: any,
   layoutConfig: any,
 ): string => {
-  const isThermal = format === "THERMAL_80MM" || format === "THERMAL_58MM";
-  const thermalWidth = format === "THERMAL_80MM" ? "80mm" : "58mm";
+  const isThermal = format === "THERMAL_80MM" || format === "THERMAL_58MM" || format === "THERMAL_4INCH";
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
-  const headerHTML = layoutConfig && !isThermal ? getPrintHeaderHTML(layoutConfig, clinic) : "";
-  const footerHTML = layoutConfig && !isThermal ? getPrintFooterHTML(layoutConfig) : "";
+  // Use config-defined width if available and format is thermal
+  let thermalWidth = "80mm";
+  if (format === "THERMAL_80MM") thermalWidth = "80mm";
+  else if (format === "THERMAL_58MM") thermalWidth = "58mm";
+  else if (format === "THERMAL_4INCH") thermalWidth = "104mm";
+  else if (isThermal && layoutConfig?.thermalPaperWidthMm) {
+    thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
+  }
+
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
+  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
   const itemsHtml = billing.items
     .map(
@@ -45,10 +54,15 @@ export const generateInvoiceHTML = (
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
       padding: 0;
       background: white;
+      -webkit-print-color-adjust: exact;
+      width: 100%;
+    }
+    body {
+      font-family: Arial, sans-serif;
       color: #333;
       font-size: ${isThermal ? "10px" : format === "A4_HALF" ? "11px" : "12px"};
     }
@@ -56,12 +70,12 @@ export const generateInvoiceHTML = (
     ${!isThermal ? brandingCSS : ""}
 
     .print-container {
-      width: 100%;
+      width: ${isThermal ? thermalWidth : "100%"};
       margin: 0 auto;
       padding: ${isThermal ? "2mm" : "20mm"};
-      ${isThermal ? `max-width: ${thermalWidth};` : ""}
       display: flex;
       flex-direction: column;
+      box-sizing: border-box;
     }
     .content {
       flex: 1;
@@ -164,20 +178,7 @@ export const generateInvoiceHTML = (
 </head>
 <body>
   <div class="print-container">
-    ${!isThermal && headerHTML ? headerHTML : `
-    <div class="header">
-      <div class="header-content">
-        <div>
-          ${layoutConfig?.logoUrl ? `<img src="${layoutConfig.logoUrl}" alt="Logo" class="logo" />` : ""}
-          <h1 class="clinic-name">${clinic?.name || layoutConfig?.clinicName || "Clinic Name"}</h1>
-          <div class="clinic-details">
-            <p>${layoutConfig?.address || clinic?.address || ""}, ${layoutConfig?.city || clinic?.city || ""}</p>
-            <p>Phone: ${layoutConfig?.phone || clinic?.phone || ""}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    `}
+    ${headerHTML}
     
     <div class="content">
       <div class="document-title">
@@ -233,10 +234,10 @@ export const generateInvoiceHTML = (
       </div>
     </div>
     
-    ${!isThermal && footerHTML ? footerHTML : `
+    ${footerHTML || `
     <div class="footer">
       <p>Thank you for choosing us</p>
-      ${isThermal ? `<p>${new Date().toLocaleString()}</p>` : ""}
+      <p>${new Date().toLocaleString()}</p>
     </div>
     `}
   </div>
@@ -256,11 +257,23 @@ export const generateInvoiceHTML = (
 export const generateAppointmentInvoiceHTML = (
   invoice: AppointmentBilling,
   clinic: any,
-  layoutConfig: any,
-  patient?: any,
+  layoutConfig: PrintLayoutConfig | null,
+  patient: any,
+  format: PrintFormat = "A4",
 ): string => {
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
-  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic) : "";
+  const isThermal = format === "THERMAL_80MM" || format === "THERMAL_58MM" || format === "THERMAL_4INCH";
+
+  // Use config-defined width if available and format is thermal
+  let thermalWidth = "80mm";
+  if (format === "THERMAL_80MM") thermalWidth = "80mm";
+  else if (format === "THERMAL_58MM") thermalWidth = "58mm";
+  else if (format === "THERMAL_4INCH") thermalWidth = "104mm";
+  else if (isThermal && layoutConfig?.thermalPaperWidthMm) {
+    thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
+  }
+
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
+  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
   const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
   // Helper to format currency
@@ -306,23 +319,29 @@ export const generateAppointmentInvoiceHTML = (
 <head>
   <title>Invoice - ${invoice.invoiceNumber}</title>
   <style>
-    @page { margin: 0; size: A4; }
+    @page {
+      ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
+    }
     * { box-sizing: border-box; }
-    body {
-      font-family: Arial, sans-serif;
+    html, body {
       margin: 0;
       padding: 0;
       background: white;
+      -webkit-print-color-adjust: exact;
+      width: 100%;
+    }
+    body {
+      font-family: Arial, sans-serif;
       color: #333;
     }
     .print-container {
-      width: 100%;
-      margin: 0;
+      width: ${isThermal ? thermalWidth : "100%"};
+      margin: 0 auto;
       background: white;
       display: flex;
       flex-direction: column;
       min-height: auto;
-      padding: 20mm;
+      padding: ${isThermal ? "2mm" : "20mm"};
       box-sizing: border-box;
     }
     
@@ -330,7 +349,7 @@ export const generateAppointmentInvoiceHTML = (
 
     .content {
       flex: 1;
-      padding: 15mm;
+      padding: ${isThermal ? "2mm 0" : "15mm"};
       min-height: 0;
     }
     .document-title {
@@ -347,9 +366,10 @@ export const generateAppointmentInvoiceHTML = (
     }
     .bill-to-section {
       display: flex;
+      flex-direction: ${isThermal ? "column" : "row"};
       justify-content: space-between;
-      margin-bottom: 25px;
-      padding: 15px;
+      margin-bottom: ${isThermal ? "10px" : "25px"};
+      padding: ${isThermal ? "8px" : "15px"};
       background-color: #f8fafc;
       border-radius: 8px;
       border: 1px solid #f1f5f9;
@@ -370,13 +390,13 @@ export const generateAppointmentInvoiceHTML = (
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 30px;
+      margin-bottom: ${isThermal ? "10px" : "30px"};
     }
     .items-table th,
     .items-table td {
       border: 1px solid #e2e8f0;
-      padding: 12px 10px;
-      font-size: 12px;
+      padding: ${isThermal ? "6px 4px" : "12px 10px"};
+      font-size: ${isThermal ? "11px" : "12px"};
       color: #475569;
     }
     .items-table th {
@@ -395,8 +415,9 @@ export const generateAppointmentInvoiceHTML = (
     }
     .summary-table { width: 250px; border-collapse: collapse; }
     .summary-table td {
-      padding: 8px 10px;
+      padding: ${isThermal ? "4px 6px" : "8px 10px"};
       border-bottom: 1px solid #eee;
+      font-size: ${isThermal ? "11px" : "13px"};
     }
     .text-right { text-align: right !important; }
     .text-center { text-align: center !important; }
@@ -427,7 +448,7 @@ export const generateAppointmentInvoiceHTML = (
           ${patient?.mobile ? `<p>Phone: ${patient.mobile}</p>` : ""}
           ${patient?.address ? `<p>Address: ${patient.address}</p>` : ""}
         </div>
-        ${cliniciansHtml}
+        ${!isThermal ? cliniciansHtml : ""}
       </div>
       
       <table class="items-table">
@@ -436,7 +457,7 @@ export const generateAppointmentInvoiceHTML = (
             <th style="width: 40px; text-align: center;">S.N.</th>
             <th style="text-align: center;">Service</th>
             <th style="width: 50px; text-align: center;">Qty</th>
-            <th style="width: 100px; text-align: center;">Price</th>
+            ${!isThermal ? `<th style="width: 100px; text-align: center;">Price</th>` : ""}
             <th style="width: 100px; text-align: center;">Amount</th>
           </tr>
         </thead>
@@ -466,9 +487,205 @@ export const generateAppointmentInvoiceHTML = (
           </tr>
         </table>
       </div>
+      ${isThermal ? cliniciansHtml : ""}
     </div>
     
-    ${footerHTML}
+    ${!isThermal && footerHTML ? footerHTML : `
+    <div style="margin-top: 15px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #eee; padding-top: 5px;">
+      <p>Thank you for choosing us</p>
+      ${isThermal ? `<p>${new Date().toLocaleString()}</p>` : ""}
+    </div>
+    `}
+  </div>
+  
+  <script>
+    window.onload = () => {
+      setTimeout(() => { window.print(); window.close(); }, 500);
+    }
+  </script>
+</body>
+</html>`;
+};
+
+/**
+ * Generates HTML content for printing a patient slip
+ */
+export const generatePatientSlipHTML = (
+  patient: any,
+  clinic: any,
+  format: PrintFormat,
+  layoutConfig: PrintLayoutConfig | null,
+): string => {
+  const isThermal = format === "THERMAL_80MM" || format === "THERMAL_58MM" || format === "THERMAL_4INCH";
+
+  // Use config-defined width if available and format is thermal
+  let thermalWidth = "80mm";
+  if (format === "THERMAL_80MM") thermalWidth = "80mm";
+  else if (format === "THERMAL_58MM") thermalWidth = "58mm";
+  else if (format === "THERMAL_4INCH") thermalWidth = "104mm";
+  else if (isThermal && layoutConfig?.thermalPaperWidthMm) {
+    thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
+  }
+
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
+
+  // Helper for date formatting
+  const formatDate = (date: Date | string) => {
+    const d = typeof date === "string" ? new Date(date) : date;
+    return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  };
+
+  const calculateAge = (dob: Date | string): number => {
+    const today = new Date();
+    const b = typeof dob === "string" ? new Date(dob) : dob;
+    let a = today.getFullYear() - b.getFullYear();
+    if (
+      today.getMonth() < b.getMonth() ||
+      (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())
+    )
+      a--;
+    return a;
+  };
+
+  const ageGender = [
+    patient.dob ? calculateAge(patient.dob) + " yrs" : (patient.age ? patient.age + " yrs" : ""),
+    patient.gender || "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+
+  const slipDate = new Date().toISOString().split("T")[0].replace(/-/g, "/");
+
+  // Layout for A4/A5
+  const standardLayout = `
+    <table class="slip-table">
+      <tbody>
+        <tr>
+          <td class="label">Reg#:</td><td class="value">${patient.regNumber || ""}</td>
+          <td class="label">Name:</td><td class="value">${patient.name}</td>
+        </tr>
+        <tr>
+          <td class="label">Age/Gender:</td><td class="value">${ageGender}</td>
+          <td class="label">Date:</td><td class="value">${slipDate}</td>
+        </tr>
+        <tr>
+          <td class="label">Contact:</td><td class="value">${patient.mobile || ""}</td>
+          <td class="label">Address:</td><td class="value">${patient.address || ""}</td>
+        </tr>
+        <tr>
+          <td class="label">Ref By:</td><td class="value" colspan="3">${patient.referredBy || ""}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+
+  // Layout for Thermal
+  const thermalLayout = `
+    <table class="slip-table-thermal">
+      <tbody>
+        <tr><td class="label">Reg#:</td><td class="value">${patient.regNumber || ""}</td></tr>
+        <tr><td class="label">Name:</td><td class="value">${patient.name}</td></tr>
+        <tr><td class="label">Age/Gen:</td><td class="value">${ageGender}</td></tr>
+        <tr><td class="label">Date:</td><td class="value">${slipDate}</td></tr>
+        <tr><td class="label">Contact:</td><td class="value">${patient.mobile || ""}</td></tr>
+        <tr><td class="label">Address:</td><td class="value">${patient.address || ""}</td></tr>
+        <tr><td class="label">Ref By:</td><td class="value">${patient.referredBy || ""}</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Patient Slip - ${patient.name}</title>
+  <style>
+    @page {
+      ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: white;
+      -webkit-print-color-adjust: exact;
+      width: 100%;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: white;
+      color: #333;
+      font-family: Arial, sans-serif;
+      font-size: ${isThermal ? "11px" : "13px"};
+    }
+    
+    ${!isThermal ? brandingCSS : ""}
+
+    .print-container {
+      width: ${isThermal ? thermalWidth : "100%"};
+      margin: 0 auto;
+      padding: ${isThermal ? "2mm" : "20mm"};
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    
+    .document-title {
+      text-align: center;
+      margin: ${isThermal ? "5px 0" : "15px 0"};
+      border-bottom: 1px solid #333;
+      padding-bottom: 5px;
+    }
+    .document-title h2 {
+      font-size: ${isThermal ? "14px" : "18px"};
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    /* Standard Table Styles */
+    .slip-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .slip-table td { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+    .slip-table td.label { background: #f5f5f5; font-weight: bold; width: 15%; }
+    .slip-table td.value { width: 35%; }
+
+    /* Thermal Table Styles */
+    .slip-table-thermal { width: 100%; border-collapse: collapse; margin-top: 5px; }
+    .slip-table-thermal td { border: 1px solid #333; padding: 4px 6px; vertical-align: top; }
+    .slip-table-thermal td.label { font-weight: bold; width: 35%; background: #f9f9f9; }
+    .slip-table-thermal td.value { width: 65%; }
+
+    .header-thermal {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .clinic-name-thermal { font-weight: bold; font-size: 14px; margin: 0; }
+    .clinic-info-thermal { font-size: 10px; margin: 2px 0; }
+
+    .footer {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 10px;
+      color: #666;
+      border-top: 1px solid #eee;
+      padding-top: 5px;
+    }
+    @media print {
+      body { -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-container">
+    <div style="text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #eee; padding-bottom: 5px;">
+      <h1 style="font-weight: bold; font-size: 14px; margin: 0;">PATIENT SLIP</h1>
+    </div>
+    
+    ${isThermal ? thermalLayout : standardLayout}
+    
+    <div class="footer">
+      <p>Thank you</p>
+      <p>${new Date().toLocaleString()}</p>
+    </div>
   </div>
   
   <script>

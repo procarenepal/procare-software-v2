@@ -988,6 +988,73 @@ export default function PrintLayoutPage() {
                   </div>
                 </CardBody>
               </Card>
+
+              {/* Printer & Paper Settings */}
+              <Card>
+                <CardHeader className="bg-default-50 border-b border-default-200">
+                  <div className="flex items-center gap-2">
+                    <IoPrintOutline className="w-5 h-5 text-primary" />
+                    <h3 className="text-lg font-semibold">Printer & Paper Settings</h3>
+                  </div>
+                </CardHeader>
+                <CardBody className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <Select
+                      label="Default Format"
+                      selectedKeys={[layoutConfig.defaultPrintFormat || "A4"]}
+                      onSelectionChange={(keys) => {
+                        const format = Array.from(keys)[0] as string;
+                        setLayoutConfig((prev) => ({
+                          ...prev,
+                          defaultPrintFormat: format,
+                        }));
+                      }}
+                    >
+                      <SelectItem key="A4">A4 Full Page</SelectItem>
+                      <SelectItem key="A4_HALF">A4 Half (A5)</SelectItem>
+                      <SelectItem key="THERMAL_80MM">Thermal 80mm</SelectItem>
+                      <SelectItem key="THERMAL_58MM">Thermal 58mm</SelectItem>
+                      <SelectItem key="THERMAL_4INCH">Label (4-inch)</SelectItem>
+                    </Select>
+
+                    <Select
+                      label="Standard Paper Size"
+                      selectedKeys={[layoutConfig.paperSize]}
+                      onSelectionChange={(keys) => {
+                        const size = Array.from(keys)[0] as "A4" | "Letter" | "A5";
+                        setLayoutConfig((prev) => ({
+                          ...prev,
+                          paperSize: size,
+                        }));
+                      }}
+                    >
+                      <SelectItem key="A4">A4 (210 x 297 mm)</SelectItem>
+                      <SelectItem key="A5">A5 (148 x 210 mm)</SelectItem>
+                      <SelectItem key="Letter">US Letter</SelectItem>
+                    </Select>
+                  </div>
+
+                  <div className="bg-default-50 p-3 rounded-lg border border-default-200">
+                    <p className="text-sm font-medium mb-2">Thermal Printer Configuration</p>
+                    <div className="grid grid-cols-1 gap-4">
+                      <Input
+                        description="Specify your thermal printer's paper width in millimeters. Standard is 80 or 58."
+                        label="Thermal Paper Width (mm)"
+                        placeholder="80"
+                        type="number"
+                        value={layoutConfig.thermalPaperWidthMm?.toString() || "80"}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setLayoutConfig((prev) => ({
+                            ...prev,
+                            thermalPaperWidthMm: isNaN(val) ? 80 : val,
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
             </div>
           )}
 

@@ -4,12 +4,15 @@ import { PrintLayoutConfig } from "@/types/printLayout";
  * Generates the CSS styles for the centralized clinical branding.
  * Uses the Slate-600 palette and centered-stack layout model.
  */
-export const getPrintBrandingCSS = (config: PrintLayoutConfig) => {
+export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolean = false) => {
   const primaryColor = config.primaryColor || "#0ea5e9";
   const fontSize = config.fontSize || "medium";
-  const headerHeight =
+  const headerHeight = isThermal ? "auto" : (
     config.headerHeight === "compact" ? 80 :
-      config.headerHeight === "expanded" ? 180 : 130;
+      config.headerHeight === "expanded" ? 180 : 130
+  );
+
+  const effectiveLogoPosition = isThermal ? "center" : (config.logoPosition || "center");
 
   return `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
@@ -32,19 +35,19 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig) => {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: ${config.logoPosition === "center" ? "flex-start" : "center"};
-      height: ${config.logoPosition === "center" ? "auto" : "100%"};
-      padding: ${config.logoPosition === "center" ? "5px 60px 10px" : "0 60px"};
+      justify-content: ${effectiveLogoPosition === "center" ? "flex-start" : "center"};
+      height: ${effectiveLogoPosition === "center" ? "auto" : "100%"};
+      padding: ${isThermal ? "5px 10px" : (effectiveLogoPosition === "center" ? "5px 60px 10px" : "0 60px")};
       font-family: 'Inter', -apple-system, sans-serif;
     }
 
     .logo-container {
-      position: ${config.logoPosition === "center" ? "relative" : "absolute"};
-      top: ${config.logoPosition === "center" ? "10px" : "20px"};
+      position: ${effectiveLogoPosition === "center" ? "relative" : "absolute"};
+      top: ${effectiveLogoPosition === "center" ? (isThermal ? "5px" : "10px") : "20px"};
       z-index: 100;
       display: flex;
       justify-content: center;
-      margin-bottom: ${config.logoPosition === "center" ? "5px" : "0"};
+      margin-bottom: ${effectiveLogoPosition === "center" ? "5px" : "0"};
     }
 
     .logo {
@@ -55,7 +58,7 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig) => {
     }
 
     .clinic-name {
-      font-size: ${fontSize === "small" ? "18px" : fontSize === "large" ? "22px" : "18px"};
+      font-size: ${isThermal ? "16px" : (fontSize === "small" ? "18px" : fontSize === "large" ? "22px" : "18px")};
       font-weight: 400;
       color: #475569;
       margin: 0;
@@ -132,13 +135,13 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig) => {
       font-weight: 700;
       color: #475569;
       text-decoration: none;
-      margin-top: 6px;
+      margin-top: ${isThermal ? "2px" : "6px"};
       text-align: center;
     }
 
     .footer-section {
       border-top: 1px solid #f1f5f9;
-      padding: 10px 40px;
+      padding: ${isThermal ? "10px 5px" : "10px 40px"};
       text-align: center;
       background: #fff;
       margin-top: 20px;
@@ -156,32 +159,32 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig) => {
     /* Coordinate Overrides */
     .pos-rel { position: relative; }
     .pos-logo { 
-      transform: translate(${config.logoPos?.x || 0}px, ${config.logoPos?.y || 0}px);
-      left: ${config.logoPosition === "left" ? "40px" : (config.logoPosition === "right" ? "auto" : "50%")};
-      right: ${config.logoPosition === "right" ? "40px" : "auto"};
-      margin-left: ${config.logoPosition === "center" ? `-${(config.logoWidth || 80) / 2}px` : "0px"};
+      transform: ${isThermal ? "none" : `translate(${config.logoPos?.x || 0}px, ${config.logoPos?.y || 0}px)`};
+      left: ${effectiveLogoPosition === "left" ? "40px" : (effectiveLogoPosition === "right" ? "auto" : "50%")};
+      right: ${effectiveLogoPosition === "right" ? "40px" : "auto"};
+      margin-left: ${effectiveLogoPosition === "center" ? `-${(config.logoWidth || 80) / 2}px` : "0px"};
     }
-    .pos-clinicName { transform: translate(${(config as any).clinic_name_pos?.x || 0}px, ${(config as any).clinic_name_pos?.y || 0}px); }
-    .pos-tagline { transform: translate(${(config as any).tagline_pos?.x || 0}px, ${(config as any).tagline_pos?.y || 0}px); }
-    .pos-address { transform: translate(${(config as any).address_pos?.x || 0}px, ${(config as any).address_pos?.y || 0}px); }
-    .pos-contacts { transform: translate(${(config as any).contacts_pos?.x || 0}px, ${(config as any).contacts_pos?.y || 0}px); width: 100%; display: flex; justify-content: center; }
-    .pos-website { transform: translate(${(config as any).website_pos?.x || 0}px, ${(config as any).website_pos?.y || 0}px); }
+    .pos-clinicName { transform: ${isThermal ? "none" : `translate(${config.clinicNamePos?.x || 0}px, ${config.clinicNamePos?.y || 0}px)`}; }
+    .pos-tagline { transform: ${isThermal ? "none" : `translate(${config.taglinePos?.x || 0}px, ${config.taglinePos?.y || 0}px)`}; }
+    .pos-address { transform: ${isThermal ? "none" : `translate(${config.addressPos?.x || 0}px, ${config.addressPos?.y || 0}px)`}; }
+    .pos-contacts { transform: ${isThermal ? "none" : `translate(${config.phonePos?.x || 0}px, ${config.phonePos?.y || 0}px)`}; width: 100%; display: flex; justify-content: center; }
+    .pos-website { transform: ${isThermal ? "none" : `translate(${config.websitePos?.x || 0}px, ${config.websitePos?.y || 0}px)`}; }
   `;
 };
 
 /**
  * Generates the HTML for the clinical branding header.
  */
-export const getPrintHeaderHTML = (config: PrintLayoutConfig, clinic: any) => {
+export const getPrintHeaderHTML = (config: PrintLayoutConfig, clinic: any, isThermal: boolean = false) => {
   const logoWidth = config.logoWidth || 80;
-  const logoPosition = config.logoPosition || "center";
+  const effectiveLogoPosition = isThermal ? "center" : (config.logoPosition || "center");
 
   // Center layout is special: logo on top of text
-  if (logoPosition === "center") {
+  if (effectiveLogoPosition === "center") {
     return `
-      <div class="header" style="flex-direction: column; align-items: center; justify-content: center; padding: 10px 0;">
+      <div class="header" style="flex-direction: column; align-items: center; justify-content: center; padding: ${isThermal ? "5px 0" : "10px 0"}; border-bottom-style: ${isThermal ? "dashed" : "solid"};">
         ${config.logoUrl ? `
-          <div class="logo-container" style="width: ${logoWidth}px; margin-bottom: 10px;">
+          <div class="logo-container" style="width: ${isThermal ? Math.min(logoWidth, 150) : logoWidth}px; margin-bottom: 5px;">
             <img src="${config.logoUrl}" class="logo" />
           </div>
         ` : ""}
@@ -196,7 +199,7 @@ export const getPrintHeaderHTML = (config: PrintLayoutConfig, clinic: any) => {
               ${clinic?.city || config.city}${config.state ? `, ${config.state}` : ""} ${config.zipCode} • ${config.country}
             </div>
           </div>
-          <div class="contact-row">
+          <div class="contact-row" style="${isThermal ? "flex-direction: column; gap: 4px; margin-top: 5px; padding-top: 5px;" : ""}">
             ${config.phone ? `<div class="contact-item"><span class="contact-label">Phone:</span><span class="contact-value">${config.phone}</span></div>` : ""}
             ${config.email ? `<div class="contact-item"><span class="contact-label">Email:</span><span class="contact-value">${config.email}</span></div>` : ""}
           </div>
@@ -211,7 +214,7 @@ export const getPrintHeaderHTML = (config: PrintLayoutConfig, clinic: any) => {
     <div class="header" style="flex-direction: row; align-items: center; padding: 0 40px;">
       <!-- Left Slot -->
       <div style="flex: 0 0 ${logoWidth}px; display: flex; justify-content: flex-start;">
-        ${logoPosition === "left" && config.logoUrl ? `<img src="${config.logoUrl}" style="width: ${logoWidth}px; height: auto;" />` : ""}
+        ${effectiveLogoPosition === "left" && config.logoUrl ? `<img src="${config.logoUrl}" style="width: ${logoWidth}px; height: auto;" />` : ""}
       </div>
 
       <!-- Center Slot (Identity) -->
@@ -233,7 +236,7 @@ export const getPrintHeaderHTML = (config: PrintLayoutConfig, clinic: any) => {
 
       <!-- Right Slot -->
       <div style="flex: 0 0 ${logoWidth}px; display: flex; justify-content: flex-end;">
-        ${logoPosition === "right" && config.logoUrl ? `<img src="${config.logoUrl}" style="width: ${logoWidth}px; height: auto;" />` : ""}
+        ${effectiveLogoPosition === "right" && config.logoUrl ? `<img src="${config.logoUrl}" style="width: ${logoWidth}px; height: auto;" />` : ""}
       </div>
     </div>
   `;

@@ -39,6 +39,8 @@ import {
   scheduleDoctorAppointmentReminder,
 } from "@/services/sendMessageService";
 import { expertService } from "@/services/expertService";
+import { referralCommissionService } from "@/services/referralCommissionService";
+import { doctorCommissionService } from "@/services/doctorCommissionService";
 
 // Types
 import {
@@ -187,10 +189,10 @@ function DoctorSelect({
   const triggerRef = useRef<HTMLDivElement>(null);
   const filtered = q
     ? doctors.filter(
-        (d) =>
-          d.name.toLowerCase().includes(q.toLowerCase()) ||
-          d.speciality?.toLowerCase().includes(q.toLowerCase()),
-      )
+      (d) =>
+        d.name.toLowerCase().includes(q.toLowerCase()) ||
+        d.speciality?.toLowerCase().includes(q.toLowerCase()),
+    )
     : doctors;
   const selected = doctors.find((d) => d.id === value);
 
@@ -982,8 +984,8 @@ const NewPatientPage: React.FC = () => {
       .then((multi) =>
         multi
           ? branchService
-              .getMainBranch(clinicId)
-              .then((b) => b && setDefaultBranchId(b.id))
+            .getMainBranch(clinicId)
+            .then((b) => b && setDefaultBranchId(b.id))
           : setDefaultBranchId(clinicId),
       )
       .catch(() => setDefaultBranchId(clinicId));
@@ -1241,6 +1243,54 @@ const NewPatientPage: React.FC = () => {
     try {
       const patientId = await patientService.createPatient(buildPatientData());
 
+      // Handle Referral Commission
+      if (profile.referralPartnerId && appt.appointmentType) {
+        try {
+          const selectedType = appointmentTypes.find(t => t.id === appt.appointmentType);
+          if (selectedType) {
+            const price = selectedType.price || 0;
+            if (profile.referralType === "partner") {
+              const partner = await referralPartnerService.getReferralPartnerById(profile.referralPartnerId);
+              if (partner && partner.defaultCommission > 0) {
+                const commissionAmount = (price * partner.defaultCommission) / 100;
+                await referralCommissionService.createRegistrationCommission(
+                  partner,
+                  clinicId,
+                  defaultBranchId || clinicId,
+                  patientId,
+                  profile.name,
+                  selectedType.name,
+                  price,
+                  commissionAmount,
+                  currentUser?.uid || ""
+                );
+              }
+            } else if (profile.referralType === "doctor") {
+              const doctor = await doctorService.getDoctorById(profile.referralPartnerId);
+              if (doctor && doctor.defaultCommission > 0) {
+                const commissionAmount = (price * doctor.defaultCommission) / 100;
+                await doctorCommissionService.createRegistrationCommission(
+                  doctor.id,
+                  doctor.name,
+                  clinicId,
+                  defaultBranchId || clinicId,
+                  patientId,
+                  profile.name,
+                  selectedType.name,
+                  price,
+                  commissionAmount,
+                  doctor.defaultCommission,
+                  currentUser?.uid || ""
+                );
+              }
+            }
+          }
+        } catch (commError) {
+          console.error("Error creating referral commission:", commError);
+          // Don't block patient creation for commission errors
+        }
+      }
+
       if (appt.appointmentDate && appt.doctor && appt.appointmentType) {
         try {
           const apptData = {
@@ -1349,13 +1399,12 @@ const NewPatientPage: React.FC = () => {
               <div className="flex items-center gap-2.5">
                 <div
                   className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 border-2 transition-colors
-                  ${
-                    done
+                  ${done
                       ? "bg-teal-600 border-teal-600 text-white"
                       : active
                         ? "bg-white border-teal-600 text-teal-700"
                         : "bg-white border-mountain-200 text-mountain-400"
-                  }`}
+                    }`}
                 >
                   {done ? <IoCheckmarkCircleOutline className="w-4 h-4" /> : n}
                 </div>
@@ -1769,7 +1818,7 @@ const NewPatientPage: React.FC = () => {
                     disabled
                     type="date"
                     value={appt.registrationDate}
-                    onChange={() => {}}
+                    onChange={() => { }}
                   />
                 </Field>
 
@@ -1786,7 +1835,7 @@ const NewPatientPage: React.FC = () => {
                     }
                     endContent={
                       dateConv.isConverting &&
-                      dateConv.field === "appointmentDate" ? (
+                        dateConv.field === "appointmentDate" ? (
                         <Spinner size="xs" />
                       ) : undefined
                     }
@@ -1817,7 +1866,7 @@ const NewPatientPage: React.FC = () => {
                     }
                     endContent={
                       dateConv.isConverting &&
-                      dateConv.field === "appointmentBS" ? (
+                        dateConv.field === "appointmentBS" ? (
                         <Spinner size="xs" />
                       ) : appt.appointmentBS &&
                         dateConv.lastConversion.timestamp > 0 ? (

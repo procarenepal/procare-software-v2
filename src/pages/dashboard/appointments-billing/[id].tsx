@@ -36,7 +36,8 @@ import {
   getPrintHeaderHTML,
   getPrintFooterHTML,
 } from "@/utils/printBranding";
-import { generateAppointmentInvoiceHTML } from "@/utils/invoicePrinting";
+import { generateAppointmentInvoiceHTML, PrintFormat } from "@/utils/invoicePrinting";
+import { Select, SelectItem } from "@/components/ui/select";
 
 // ── UI Helpers (spec: flat, compact, border-based) ─────────────────────────
 function StatusBadge({
@@ -213,6 +214,7 @@ export default function InvoiceDetailPage() {
   );
   const [clinic, setClinic] = useState<any>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [printFormat, setPrintFormat] = useState<PrintFormat>("A4");
 
   // Payment form state
   const [paymentForm, setPaymentForm] = useState({
@@ -280,7 +282,15 @@ export default function InvoiceDetailPage() {
 
         setInvoice(invoiceData);
         if (clinicData) setClinic(clinicData);
-        if (layoutConfigData) setLayoutConfig(layoutConfigData);
+        if (layoutConfigData) {
+          setLayoutConfig(layoutConfigData);
+          const formatParam = searchParams.get("format") as PrintFormat;
+          if (formatParam) {
+            setPrintFormat(formatParam);
+          } else if (layoutConfigData.defaultPrintFormat) {
+            setPrintFormat(layoutConfigData.defaultPrintFormat as PrintFormat);
+          }
+        }
 
         try {
           const patientData = await patientService.getPatientById(
@@ -310,7 +320,7 @@ export default function InvoiceDetailPage() {
   useEffect(() => {
     if (!loading && invoice && searchParams.get("print") === "true") {
       // Overwrite current window with the generated invoice HTML
-      const html = generateAppointmentInvoiceHTML(invoice, clinic, layoutConfig, patient);
+      const html = generateAppointmentInvoiceHTML(invoice, clinic, layoutConfig, patient, printFormat);
       document.open();
       document.write(html);
       document.close();
@@ -489,7 +499,7 @@ export default function InvoiceDetailPage() {
     const printWindow = window.open("", "_blank", "width=800,height=600");
 
     if (printWindow) {
-      const printContent = generateAppointmentInvoiceHTML(invoice, clinic, layoutConfig, patient);
+      const printContent = generateAppointmentInvoiceHTML(invoice, clinic, layoutConfig, patient, printFormat);
       printWindow.document.write(printContent);
       printWindow.document.close();
     } else {
@@ -614,7 +624,23 @@ export default function InvoiceDetailPage() {
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <div className="w-40 no-print">
+              <Select
+                selectedKeys={[printFormat]}
+                size="sm"
+                onSelectionChange={(keys) => {
+                  const format = Array.from(keys)[0] as PrintFormat;
+                  setPrintFormat(format);
+                }}
+              >
+                <SelectItem key="A4">A4 Full Page</SelectItem>
+                <SelectItem key="A4_HALF">A4 Half (A5)</SelectItem>
+                <SelectItem key="THERMAL_80MM">Thermal 80mm</SelectItem>
+                <SelectItem key="THERMAL_58MM">Thermal 58mm</SelectItem>
+                <SelectItem key="THERMAL_4INCH">Label (4-inch)</SelectItem>
+              </Select>
+            </div>
             <Button
               color="default"
               size="sm"

@@ -23,6 +23,11 @@ import { doctorService } from "@/services/doctorService";
 import { expertService } from "@/services/expertService";
 import { addToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { Select, SelectItem } from "@/components/ui";
+import {
+  generatePatientSlipHTML,
+  PrintFormat,
+} from "@/utils/invoicePrinting";
 
 interface PatientOverviewTabProps {
   patient: Patient;
@@ -146,6 +151,7 @@ export default function PatientOverviewTab({
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [printFormat, setPrintFormat] = useState<PrintFormat>("A4");
 
   useEffect(() => {
     if (!clinicId) return;
@@ -157,8 +163,8 @@ export default function PatientOverviewTab({
         : Promise.resolve(null),
       patient.assignedExpertId
         ? expertService
-            .getExpertById(patient.assignedExpertId)
-            .catch(() => null)
+          .getExpertById(patient.assignedExpertId)
+          .catch(() => null)
         : Promise.resolve(null),
     ])
       .then(([c, lc, d, e]) => {
@@ -170,6 +176,12 @@ export default function PatientOverviewTab({
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [clinicId, patient.doctorId, patient.assignedExpertId]);
+
+  useEffect(() => {
+    if (layoutConfig?.defaultPrintFormat) {
+      setPrintFormat(layoutConfig.defaultPrintFormat as PrintFormat);
+    }
+  }, [layoutConfig]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const calculateAge = (dob: Date): number => {
@@ -214,7 +226,17 @@ export default function PatientOverviewTab({
     const w = window.open("", "_blank", "width=800,height=600");
 
     if (w) {
-      w.document.write(generatePrint(patient, type));
+      if (type === "slip") {
+        const content = generatePatientSlipHTML(
+          patient,
+          clinic,
+          printFormat,
+          layoutConfig,
+        );
+        w.document.write(content);
+      } else {
+        w.document.write(generatePrint(patient, type));
+      }
       w.document.close();
     } else
       addToast({
@@ -299,7 +321,23 @@ export default function PatientOverviewTab({
             Basic information and quick summary
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-40 sm:w-48">
+            <Select
+              label="Print Format"
+              selectedKeys={[printFormat]}
+              size="sm"
+              onSelectionChange={(keys) => {
+                const format = Array.from(keys)[0] as PrintFormat;
+                if (format) setPrintFormat(format);
+              }}
+            >
+              <SelectItem key="A4">A4 Full Page</SelectItem>
+              <SelectItem key="THERMAL_80MM">Thermal 80mm</SelectItem>
+              <SelectItem key="THERMAL_58MM">Thermal 58mm</SelectItem>
+              <SelectItem key="THERMAL_4INCH">Label (4-inch)</SelectItem>
+            </Select>
+          </div>
           <Button
             color="default"
             disabled={loading}

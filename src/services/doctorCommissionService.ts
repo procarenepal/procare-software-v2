@@ -124,6 +124,70 @@ class DoctorCommissionService {
     }
   }
 
+  /**
+   * Create a commission record for a referring doctor during registration
+   * This is used when no full billing record (invoice) exists yet
+   */
+  async createRegistrationCommission(
+    doctorId: string,
+    doctorName: string,
+    clinicId: string,
+    branchId: string,
+    patientId: string,
+    patientName: string,
+    appointmentTypeName: string,
+    totalAmount: number,
+    commissionAmount: number,
+    commissionPercentage: number,
+    createdBy: string,
+  ): Promise<string | null> {
+    try {
+      if (commissionAmount <= 0) return null;
+
+      const commissionData: Omit<DoctorCommission, "id"> = {
+        doctorId,
+        doctorName,
+        clinicId,
+        branchId,
+        billingId: `reg_${Date.now()}`, // Synthetic ID for registration-based commission
+        billingType: "appointment",
+        invoiceNumber: "REG-COMM", // Placeholder for registration commission
+        appointmentDate: new Date(),
+        patientId,
+        patientName,
+        serviceNames: [appointmentTypeName],
+        totalInvoiceAmount: totalAmount,
+        commissionPercentage,
+        commissionAmount,
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy,
+      };
+
+      const docRef = await addDoc(collection(db, this.collectionName), {
+        ...commissionData,
+        createdAt: Timestamp.fromDate(commissionData.createdAt),
+        updatedAt: Timestamp.fromDate(commissionData.updatedAt),
+        appointmentDate: Timestamp.fromDate(commissionData.appointmentDate),
+      });
+
+      // Update doctor's balance and lifetime earnings
+      const doctorRef = doc(db, "doctors", doctorId);
+
+      await updateDoc(doctorRef, {
+        totalCommissionEarned: increment(commissionAmount),
+        totalCommissionBalance: increment(commissionAmount),
+        updatedAt: Timestamp.now(),
+      });
+
+      return docRef.id;
+    } catch (error) {
+      console.error("Error creating registration doctor commission:", error);
+      throw error;
+    }
+  }
+
   // Create commission records for pathology (supports multiple doctors)
   async createPathologyCommissions(
     billing: PathologyBilling,
@@ -304,7 +368,7 @@ class DoctorCommissionService {
         updatedAt: Timestamp.fromDate(new Date()),
         status:
           (currentCommission.paidAmount || 0) + paidAmount >=
-          currentCommission.commissionAmount
+            currentCommission.commissionAmount
             ? "paid"
             : "pending",
       };

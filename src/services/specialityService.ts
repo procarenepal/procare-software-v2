@@ -152,6 +152,7 @@ export const specialityService = {
         return specialities.filter(
           (s) =>
             s.branchId === branchId ||
+            s.branchId === clinicId || // Treat clinicId as a global/default branch
             !s.branchId ||
             (typeof s.branchId === "string" && s.branchId.trim() === ""),
         );

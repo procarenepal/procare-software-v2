@@ -28,6 +28,7 @@ import { useAuthContext } from "@/context/AuthContext";
 // Custom Clinic Clarity UI
 import { addToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { Select, SelectItem } from "@/components/ui";
 
 // --- Components ---
 function ModalShell({
@@ -400,6 +401,7 @@ export default function PurchaseDetailPage() {
   });
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [receiptFormat, setReceiptFormat] = useState<string>("Thermal");
   const medicationCourseInfo = getMedicationCourseInfo(purchase);
 
   // Get available payment methods from pharmacy settings
@@ -529,6 +531,9 @@ export default function PurchaseDetailPage() {
 
         if (layoutConfigData) {
           setLayoutConfig(layoutConfigData);
+          if (layoutConfigData.defaultPrintFormat) {
+            setReceiptFormat(layoutConfigData.defaultPrintFormat);
+          }
         }
       } catch (error) {
         console.error("Error loading purchase details:", error);
@@ -796,8 +801,19 @@ export default function PurchaseDetailPage() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = (format: string = "A4") => {
     if (!purchase) return;
+
+    const isThermal = format.startsWith("THERMAL") || format === "Thermal" || format === "THERMAL_4INCH";
+
+    // Use config-defined width if available and format is thermal
+    let thermalWidth = "80mm";
+    if (format === "THERMAL_80MM" || format === "Thermal") thermalWidth = "80mm";
+    else if (format === "THERMAL_58MM") thermalWidth = "58mm";
+    else if (format === "THERMAL_4INCH") thermalWidth = "104mm";
+    else if (isThermal && layoutConfig?.thermalPaperWidthMm) {
+      thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
+    }
 
     // Create a new window for printing
     const printWindow = window.open("", "_blank", "width=800,height=600");
@@ -866,10 +882,8 @@ export default function PurchaseDetailPage() {
           : "";
 
       // Use Global Branding Utility
-      const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
-      const headerHTML = layoutConfig
-        ? getPrintHeaderHTML(layoutConfig, clinic)
-        : "";
+      const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
+      const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
       const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
       // Generate the HTML content for printing with dynamic clinic data
@@ -878,22 +892,31 @@ export default function PurchaseDetailPage() {
 <head>
   <title>Purchase Receipt - ${purchase.purchaseNo}</title>
   <style>
-    @page { margin: 0; size: A4; }
-    body {
-      font-family: Arial, sans-serif;
+    @page { 
+      margin: 0; 
+      size: ${isThermal ? `${thermalWidth} auto` : "A4"}; 
+    }
+    * { box-sizing: border-box; }
+    html, body {
       margin: 0;
       padding: 0;
       background: white;
+      -webkit-print-color-adjust: exact;
+      width: 100%;
+    }
+    body {
+      font-family: Arial, sans-serif;
       color: #333;
+      font-size: ${isThermal ? "11px" : "13px"};
     }
     .print-container {
-      width: 100%;
-      margin: 0;
+      width: ${isThermal ? thermalWidth : "100%"};
+      margin: 0 auto;
       background: white;
       display: flex;
       flex-direction: column;
       min-height: auto;
-      padding: 20mm;
+      padding: ${isThermal ? "5mm" : "15mm"};
       box-sizing: border-box;
     }
     
@@ -901,15 +924,14 @@ export default function PurchaseDetailPage() {
 
     .content {
       flex: 1;
-      padding: 15mm;
+      padding: ${isThermal ? "0" : "15mm"};
       min-height: 0;
     }
     .document-title {
-      text-align: center;
-      margin: 10px 0 20px 0;
+      margin: ${isThermal ? "10px 0" : "10px 0 20px 0"};
     }
     .document-title h2 {
-      font-size: 18px;
+      font-size: ${isThermal ? "16px" : "18px"};
       font-weight: 800;
       margin: 0;
       text-transform: uppercase;
@@ -925,19 +947,6 @@ export default function PurchaseDetailPage() {
       border-radius: 8px;
       border: 1px solid #f1f5f9;
     }
-    .info-column h3 {
-      margin: 0 0 8px 0;
-      font-size: 11px;
-      font-weight: 700;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .info-column p {
-      margin: 2px 0;
-      font-size: 13px;
-      color: #475569;
-    }
     .items-table {
       width: 100%;
       border-collapse: collapse;
@@ -946,8 +955,8 @@ export default function PurchaseDetailPage() {
     .items-table th,
     .items-table td {
       border: 1px solid #e2e8f0;
-      padding: 12px 10px;
-      font-size: 12px;
+      padding: ${isThermal ? "8px 4px" : "12px 10px"};
+      font-size: ${isThermal ? "10px" : "12px"};
       color: #475569;
     }
     .items-table th {
@@ -965,7 +974,7 @@ export default function PurchaseDetailPage() {
       margin-top: 20px;
     }
     .summary-table {
-      width: 280px;
+      width: ${isThermal ? "100%" : "280px"};
       border-collapse: collapse;
     }
     .summary-table td {
@@ -977,18 +986,22 @@ export default function PurchaseDetailPage() {
     .font-bold {
       font-weight: 700;
     }
-    .total-row {
-      background-color: #f8fafc;
-      font-size: 14px !important;
-      color: #1e293b !important;
-    }
     
-    @page { margin: 0; size: A4; }
+    ${brandingCSS}
+
+    .document-info {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        margin-top: 5px;
+        font-size: 11px;
+    }
   </style>
 </head>
 <body>
-  <div class="print-container">
-    ${headerHTML}
+    <div class="print-container">
+      ${headerHTML}
     
     <div class="document-title">
       <h2>Purchase Receipt</h2>
@@ -1004,11 +1017,11 @@ export default function PurchaseDetailPage() {
       <table class="items-table">
         <thead>
           <tr>
-            <th style="width: 40px; text-align: center;">S.N.</th>
+            <th style="width: 30px; text-align: center;">S.N.</th>
             <th class="text-center" style="text-align: center;">Medicine</th>
-            <th style="width: 50px; text-align: center;">Qty</th>
-            <th style="width: 100px; text-align: center;">Price (LIFO)</th>
-            <th style="width: 100px; text-align: center;">Amount</th>
+            <th style="width: 40px; text-align: center;">Qty</th>
+            <th style="width: 80px; text-align: center;">Price</th>
+            <th style="width: 80px; text-align: center;">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -1027,6 +1040,13 @@ export default function PurchaseDetailPage() {
               <td>Discount</td>
               <td class="text-right">NPR ${purchase.discount.toLocaleString()}</td>
             </tr>
+            ${purchase.taxAmount > 0
+          ? `<tr>
+              <td>Tax (${purchase.taxPercentage}%)</td>
+              <td class="text-right">NPR ${purchase.taxAmount.toLocaleString()}</td>
+            </tr>`
+          : ""
+        }
             <tr class="font-bold">
               <td>Net Total</td>
               <td class="text-right">NPR ${purchase.netAmount.toLocaleString()}</td>
@@ -1036,6 +1056,11 @@ export default function PurchaseDetailPage() {
       </div>
       
       ${paymentsHtml}
+      
+      ${isThermal ? `<div style="text-align: center; margin-top: 20px; font-size: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+        <p>Thank you for your visit!</p>
+        <p>${new Date().toLocaleString()}</p>
+      </div>` : ""}
     </div>
     
     ${footerHTML}
@@ -1149,25 +1174,28 @@ export default function PurchaseDetailPage() {
       <style
         dangerouslySetInnerHTML={{
           __html: `
+          ${receiptFormat === "A4" && layoutConfig ? getPrintBrandingCSS(layoutConfig) : ""}
+          
           .print-only {
             display: none !important;
           }
           @media print {
             @page {
-              size: 80mm auto;
-              margin: 0;
+              size: ${receiptFormat === "Thermal" ? "80mm auto" : "A4 portrait"};
+              margin: ${receiptFormat === "Thermal" ? "0" : "15mm"};
             }
             .no-print {
               display: none !important;
             }
             .print-only {
               display: block !important;
-              position: fixed;
+              position: ${receiptFormat === "Thermal" ? "fixed" : "absolute"};
               top: 0;
               left: 0;
-              width: 100%;
+              right: 0;
+              width: 100% !important;
               margin: 0 !important;
-              padding: 2mm !important;
+              padding: ${receiptFormat === "Thermal" ? "2mm" : "0"} !important;
               border: none !important;
               border-radius: 0 !important;
               box-shadow: none !important;
@@ -1181,7 +1209,6 @@ export default function PurchaseDetailPage() {
             }
             .print-only * {
               color: #000 !important;
-              font-weight: bold !important;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
@@ -1211,12 +1238,28 @@ export default function PurchaseDetailPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <div className="w-32">
+              <Select
+                size="sm"
+                selectedKeys={[receiptFormat]}
+                onSelectionChange={(keys) => {
+                  const val = Array.from(keys)[0] as string;
+                  if (val) setReceiptFormat(val);
+                }}
+              >
+                <SelectItem key="A4">A4 Full Page</SelectItem>
+                <SelectItem key="A4_HALF">A4 Half (A5)</SelectItem>
+                <SelectItem key="THERMAL_80MM">Thermal 80mm</SelectItem>
+                <SelectItem key="THERMAL_58MM">Thermal 58mm</SelectItem>
+                <SelectItem key="THERMAL_4INCH">Label (4-inch)</SelectItem>
+              </Select>
+            </div>
             <Button
               color="default"
               startContent={<IoPrintOutline />}
               variant="bordered"
-              onClick={handlePrint}
+              onClick={() => handlePrint(receiptFormat)}
             >
               Print Receipt
             </Button>
@@ -1629,6 +1672,38 @@ export default function PurchaseDetailPage() {
         )}
       </div>
 
+      {/* Receipt Styles */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+          .print-only { display: none !important; }
+          @media print {
+            .no-print { display: none !important; }
+            .print-only { 
+              display: block !important; 
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            body { 
+              margin: 0 !important; 
+              padding: 0 !important;
+              background: #fff !important;
+            }
+            @page {
+              size: auto;
+              margin: 0;
+            }
+            /* Ensure text is black and high contrast */
+            * {
+              color: #000 !important;
+              -webkit-print-color-adjust: exact;
+            }
+          }
+        `,
+        }}
+      />
+
       {/* ── Print-only receipt (rendered in DOM, visible only via window.print / ?print=true) ── */}
       <div
         className="print-only"
@@ -1640,50 +1715,51 @@ export default function PurchaseDetailPage() {
         }}
       >
         <div
-          style={{ maxWidth: "100%", padding: "5mm", boxSizing: "border-box" }}
+          className={`print-only receipt-container ${receiptFormat === "Thermal" ? "thermal-receipt" : "a4-receipt"}`}
+          style={{
+            width: "100%",
+            maxWidth: receiptFormat === "Thermal" ? "80mm" : "100%",
+            margin: "0 auto",
+            padding: receiptFormat === "Thermal" ? "4mm" : "0",
+            boxSizing: "border-box"
+          }}
         >
-          {/* Header */}
-          <div
-            style={{
-              borderBottom: "1px solid #000",
-              paddingBottom: 10,
-              marginBottom: 10,
-            }}
-          >
-            <h1 style={{ fontSize: 16, fontWeight: "bold", margin: 0 }}>
-              {clinic?.name || layoutConfig?.clinicName || "Clinic Name"}
-            </h1>
-            {layoutConfig?.tagline && (
-              <p style={{ fontSize: 11, margin: "3px 0" }}>
-                {layoutConfig.tagline}
-              </p>
-            )}
-            <div style={{ fontSize: 10, marginTop: 5 }}>
-              <p style={{ margin: "2px 0" }}>
-                {layoutConfig?.address || clinic?.address || ""}
-              </p>
-              <p style={{ margin: "2px 0" }}>
-                {layoutConfig?.city || clinic?.city || ""}
-                {layoutConfig?.state ? `, ${layoutConfig.state}` : ""}{" "}
-                {layoutConfig?.zipCode || ""}
-              </p>
-              {(layoutConfig?.phone || clinic?.phone) && (
-                <p style={{ margin: "2px 0" }}>
-                  Phone: {layoutConfig?.phone || clinic?.phone}
+          {/* Header Area: Using Assigned Branding for A4, Fallback for Thermal */}
+          {receiptFormat === "A4" && layoutConfig ? (
+            <div dangerouslySetInnerHTML={{ __html: getPrintHeaderHTML(layoutConfig, clinic) }} />
+          ) : (
+            <div
+              style={{
+                borderBottom: "1px solid #000",
+                paddingBottom: 10,
+                marginBottom: 10,
+              }}
+            >
+              <h1 style={{ fontSize: 16, fontWeight: "bold", margin: 0 }}>
+                {layoutConfig?.clinicName || clinic?.name || "Clinic Name"}
+              </h1>
+              {layoutConfig?.tagline && (
+                <p style={{ fontSize: 11, margin: "3px 0" }}>
+                  {layoutConfig.tagline}
                 </p>
               )}
-              {(layoutConfig?.email || clinic?.email) && (
+              <div style={{ fontSize: 10, marginTop: 5 }}>
                 <p style={{ margin: "2px 0" }}>
-                  Email: {layoutConfig?.email || clinic?.email}
+                  {layoutConfig?.address || clinic?.address || ""}
                 </p>
-              )}
-              {layoutConfig?.website && (
                 <p style={{ margin: "2px 0" }}>
-                  Website: {layoutConfig.website}
+                  {layoutConfig?.city || clinic?.city || ""}
+                  {layoutConfig?.state ? `, ${layoutConfig.state}` : ""}{" "}
+                  {layoutConfig?.zipCode || ""}
                 </p>
-              )}
+                {(layoutConfig?.phone || clinic?.phone) && (
+                  <p style={{ margin: "2px 0" }}>
+                    Phone: {layoutConfig?.phone || clinic?.phone}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Title */}
           <div style={{ textAlign: "center", margin: "15px 0" }}>
@@ -2017,18 +2093,22 @@ export default function PurchaseDetailPage() {
             </div>
           )}
 
-          {/* Footer */}
-          <div
-            style={{
-              borderTop: "1px solid #000",
-              paddingTop: 8,
-              marginTop: 15,
-              textAlign: "center",
-              fontSize: 10,
-            }}
-          >
-            <p>Thank you for choosing us</p>
-          </div>
+          {/* Footer Area: Using Assigned Branding for A4, Fallback for Thermal */}
+          {receiptFormat === "A4" && layoutConfig ? (
+            <div dangerouslySetInnerHTML={{ __html: getPrintFooterHTML(layoutConfig) }} />
+          ) : (
+            <div
+              style={{
+                borderTop: "1px solid #000",
+                paddingTop: 8,
+                marginTop: 15,
+                textAlign: "center",
+                fontSize: 10,
+              }}
+            >
+              <p>Thank you for choosing us</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2146,5 +2226,7 @@ export default function PurchaseDetailPage() {
         </ModalShell>
       )}
     </>
+
   );
 }
+

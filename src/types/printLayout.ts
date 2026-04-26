@@ -38,6 +38,8 @@ export interface PrintLayoutConfig {
 
   // Print Options (hidden from UI but used internally)
   paperSize: "A4" | "Letter" | "A5";
+  thermalPaperWidthMm?: number;
+  defaultPrintFormat?: string;
   margins: "narrow" | "normal" | "wide";
   fontSize: "small" | "medium" | "large";
 
@@ -94,6 +96,8 @@ export const DEFAULT_PRINT_LAYOUT: Omit<
   secondaryColor: "#64748b",
   contentTopMarginWithoutLetterheadMm: 20,
   defaultPathologyPrintWithoutLetterhead: false,
+  thermalPaperWidthMm: 80,
+  defaultPrintFormat: "A4",
   logoPos: { x: 0, y: 0 },
   clinicNamePos: { x: 0, y: 0 },
   taglinePos: { x: 0, y: 0 },
