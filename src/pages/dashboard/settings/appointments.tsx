@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import clsx from "clsx";
+import toast from "react-hot-toast";
 import {
   IoTimeOutline,
   IoAddOutline,
@@ -25,9 +26,8 @@ import {
   ModalFooter,
   Link,
 } from "@/components/ui";
-import { AppointmentType, TreatmentCategory } from "@/types/models";
+import { AppointmentType } from "@/types/models";
 import { appointmentTypeService } from "@/services/appointmentTypeService";
-import { treatmentCategoryService } from "@/services/treatmentCategoryService";
 import { useAuthContext } from "@/context/AuthContext";
 import {
   APPOINTMENT_COLORS,
@@ -43,9 +43,6 @@ export default function AppointmentSettingsPage() {
     [],
   );
   const [editingType, setEditingType] = useState<AppointmentType | null>(null);
-  const [treatmentCategories, setTreatmentCategories] = useState<
-    TreatmentCategory[]
-  >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [showInactive, setShowInactive] = useState(true);
@@ -61,23 +58,9 @@ export default function AppointmentSettingsPage() {
   useEffect(() => {
     if (clinicId) {
       loadAppointmentTypes();
-      loadCategories();
     }
   }, [clinicId]);
 
-  const loadCategories = async () => {
-    if (!clinicId) return;
-    try {
-      const cats = await treatmentCategoryService.getCategoriesByClinic(
-        clinicId,
-        branchId,
-      );
-
-      setTreatmentCategories(cats);
-    } catch (e) {
-      console.error("Error loading categories:", e);
-    }
-  };
 
   const loadAppointmentTypes = async () => {
     if (!clinicId) return;
@@ -164,9 +147,9 @@ export default function AppointmentSettingsPage() {
           price: type.price,
           isActive: type.isActive,
           color: type.color,
-          categoryId: type.categoryId,
         });
         savedId = editingType.id;
+        toast.success("Appointment type updated successfully");
       } else {
         // Add new type
         console.log("Creating new appointment type");
@@ -178,7 +161,6 @@ export default function AppointmentSettingsPage() {
           color: type.color || "none",
           clinicId,
           createdBy: currentUser.uid,
-          categoryId: type.categoryId,
         };
 
         // Only include branchId if the user has one (for multi-branch clinics)
@@ -186,10 +168,11 @@ export default function AppointmentSettingsPage() {
           newTypeData.branchId = branchId;
         }
 
-        console.log("New type data:", newTypeData);
+        console.log("New type data for creation:", newTypeData);
         savedId =
           await appointmentTypeService.createAppointmentType(newTypeData);
         console.log("Created appointment type with ID:", savedId);
+        toast.success("New appointment type created successfully");
       }
 
       // Invalidate appointment types cache for this clinic so billing gets fresh data
@@ -204,19 +187,6 @@ export default function AppointmentSettingsPage() {
       console.log("Waiting for database write completion...");
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Verify the saved appointment type exists in database
-      if (savedId) {
-        console.log("Verifying saved appointment type exists...");
-        try {
-          const savedType =
-            await appointmentTypeService.getAppointmentTypeById(savedId);
-
-          console.log("Verified saved appointment type:", savedType);
-        } catch (verifyError) {
-          console.error("Error verifying saved appointment type:", verifyError);
-        }
-      }
-
       // Reload appointment types directly from Firebase
       console.log("Reloading appointment types directly from Firebase...");
       await loadAppointmentTypes();
@@ -225,8 +195,9 @@ export default function AppointmentSettingsPage() {
       // Only close the modal and reset state after successful database operation and reload
       modalState.forceClose();
       setEditingType(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving appointment type:", error);
+      toast.error(error.message || "Failed to save appointment type");
       // Don't close modal on error - let user try again or manually close
     } finally {
       setIsLoading(false);
@@ -586,7 +557,6 @@ export default function AppointmentSettingsPage() {
           <AppointmentTypeModal
             isLoading={isLoading}
             modalState={modalState}
-            treatmentCategories={treatmentCategories}
             type={editingType}
             onClose={modalState.close}
             onSave={handleSaveAppointmentType}
@@ -604,14 +574,12 @@ function AppointmentTypeModal({
   onClose,
   modalState,
   isLoading,
-  treatmentCategories,
 }: {
   type: AppointmentType | null;
   onSave: (type: Partial<AppointmentType>) => void;
   onClose: () => void;
   modalState: ReturnType<typeof useModalState>;
   isLoading: boolean;
-  treatmentCategories: TreatmentCategory[];
 }) {
   const [formData, setFormData] = useState<Partial<AppointmentType>>(
     type || {
@@ -685,28 +653,6 @@ function AppointmentTypeModal({
               }))
             }
           />
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-mountain-700">
-              Treatment Category
-            </label>
-            <select
-              className="w-full h-10 px-3 text-sm border-2 border-mountain-200 rounded-lg bg-white focus:border-primary focus:outline-none transition-colors"
-              value={formData.categoryId || ""}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  categoryId: e.target.value,
-                }))
-              }
-            >
-              <option value="">No Category</option>
-              {treatmentCategories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-mountain-700">
               Color Theme
