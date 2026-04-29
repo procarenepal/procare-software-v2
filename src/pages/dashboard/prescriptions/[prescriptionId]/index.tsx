@@ -32,7 +32,7 @@ import {
 
 interface PrescriptionWithDetails extends Prescription {
   patientName?: string;
-  patientAge?: number;
+  patientAge?: string | number;
   patientGender?: string;
   patientPhone?: string;
   doctorName?: string;
@@ -272,7 +272,7 @@ export default function PrescriptionDetailPage() {
         <div class="info-section">
           <h3>Patient Detail</h3>
           <div class="info-item"><span class="info-label">Name:</span><span class="info-value">${prescription.patientName}</span></div>
-          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${prescription.patientAge || "N/A"}Y / ${prescription.patientGender || "N/A"}</span></div>
+          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${prescription.patientAge || "N/A"}${typeof prescription.patientAge === "number" ? "Y" : ""} / ${prescription.patientGender || "N/A"}</span></div>
           <div class="info-item"><span class="info-label">Contact:</span><span class="info-value">${prescription.patientPhone || "N/A"}</span></div>
         </div>
         <div class="info-section">
@@ -447,7 +447,8 @@ export default function PrescriptionDetailPage() {
                     Age
                   </p>
                   <p className="font-medium text-[14.5px] text-mountain-900">
-                    {prescription.patientAge} years
+                    {prescription.patientAge}{" "}
+                    {typeof prescription.patientAge === "number" ? "years" : ""}
                   </p>
                 </div>
                 <div>

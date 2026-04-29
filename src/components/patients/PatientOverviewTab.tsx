@@ -184,25 +184,43 @@ export default function PatientOverviewTab({
   }, [layoutConfig]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  const calculateAge = (dob: Date): number => {
-    const today = new Date(),
-      b = new Date(dob);
-    let a = today.getFullYear() - b.getFullYear();
+  const calculateAge = (dob: Date): string => {
+    if (!dob) return "";
+    const b = new Date(dob);
+    const t = new Date();
 
-    if (
-      today.getMonth() < b.getMonth() ||
-      (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())
-    )
-      a--;
+    let years = t.getFullYear() - b.getFullYear();
+    let months = t.getMonth() - b.getMonth();
+    let days = t.getDate() - b.getDate();
 
-    return a;
+    if (days < 0) {
+      months--;
+      const lastMonth = new Date(t.getFullYear(), t.getMonth(), 0);
+
+      days += lastMonth.getDate();
+    }
+
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years >= 1) {
+      return years.toString();
+    }
+
+    if (months >= 1) {
+      return `${months} month${months > 1 ? "s" : ""}`;
+    }
+
+    return `${days} day${days > 1 ? "s" : ""}`;
   };
 
-  const getAge = (p: Patient): number => {
-    if (typeof p.age === "number" && p.age > 0) return p.age;
+  const getAgeDisplay = (p: Patient): string | number => {
+    if (p.age) return p.age;
     if (p.dob) return calculateAge(p.dob);
 
-    return 0;
+    return "";
   };
 
   const fmtDate = (d: Date) =>
@@ -249,10 +267,7 @@ export default function PatientOverviewTab({
   const generatePrint = (patient: Patient, type: "slip" | "rx") => {
     const row = (l: string, v: string, l2 = "", v2 = "") =>
       `<tr><td class="label">${l}</td><td class="value">${v}</td><td class="label">${l2}</td><td class="value">${v2}</td></tr>`;
-    const ageGender = [
-      patient.dob ? calculateAge(patient.dob) + " yrs" : "",
-      patient.gender || "",
-    ]
+    const ageGender = [getAgeDisplay(patient), patient.gender || ""]
       .filter(Boolean)
       .join(" / ");
     const table = `<table class="pt"><tbody>
@@ -373,9 +388,7 @@ export default function PatientOverviewTab({
             <InfoRow label="Registration #" value={patient.regNumber} />
             <InfoRow
               label="Age"
-              value={
-                getAge(patient) > 0 ? `${getAge(patient)} years` : undefined
-              }
+              value={getAgeDisplay(patient)}
             />
             <InfoRow label="Gender" value={patient.gender} />
             <InfoRow label="Blood Group" value={patient.bloodGroup} />

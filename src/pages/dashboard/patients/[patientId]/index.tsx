@@ -121,20 +121,43 @@ export default function PatientDetailPage() {
   };
 
   // Calculate age from date of birth
-  const calculateAge = (dob: Date): number => {
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
+  const calculateAge = (dob: Date): string => {
+    if (!dob) return "";
+    const b = new Date(dob);
+    const t = new Date();
 
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birthDate.getDate())
-    ) {
-      age--;
+    let years = t.getFullYear() - b.getFullYear();
+    let months = t.getMonth() - b.getMonth();
+    let days = t.getDate() - b.getDate();
+
+    if (days < 0) {
+      months--;
+      const lastMonth = new Date(t.getFullYear(), t.getMonth(), 0);
+
+      days += lastMonth.getDate();
     }
 
-    return age;
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years >= 1) {
+      return years.toString();
+    }
+
+    if (months >= 1) {
+      return `${months} month${months > 1 ? "s" : ""}`;
+    }
+
+    return `${days} day${days > 1 ? "s" : ""}`;
+  };
+
+  const getAgeDisplay = (p: Patient): string | number => {
+    if (p.age) return p.age;
+    if (p.dob) return calculateAge(p.dob);
+
+    return "";
   };
 
   // Format date for display
@@ -413,7 +436,7 @@ export default function PatientDetailPage() {
         <div class="patient-grid">
           <div class="patient-field"><span class="label">Name:</span><span class="value">${patient.name}</span></div>
           ${patient.regNumber ? `<div class="patient-field"><span class="label">Reg #:</span><span class="value">${patient.regNumber}</span></div>` : ""}
-          ${patient.dob ? `<div class="patient-field"><span class="label">Age:</span><span class="value">${calculateAge(patient.dob)} Years</span></div>` : ""}
+          ${getAgeDisplay(patient) ? `<div class="patient-field"><span class="label">Age:</span><span class="value">${getAgeDisplay(patient)}</span></div>` : ""}
           ${patient.gender ? `<div class="patient-field"><span class="label">Gender:</span><span class="value">${patient.gender}</span></div>` : ""}
           ${patient.bloodGroup ? `<div class="patient-field"><span class="label">Blood:</span><span class="value">${patient.bloodGroup}</span></div>` : ""}
           ${patient.mobile ? `<div class="patient-field"><span class="label">Contact:</span><span class="value">${patient.mobile}</span></div>` : ""}

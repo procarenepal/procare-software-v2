@@ -1024,17 +1024,34 @@ const NewPatientPage: React.FC = () => {
   // ── Helpers ─────────────────────────────────────────────────────────────
   const calcAge = (dob: string): string => {
     if (!dob) return "";
-    const b = new Date(dob),
-      t = new Date();
-    let a = t.getFullYear() - b.getFullYear();
+    const b = new Date(dob);
+    const t = new Date();
 
-    if (
-      t.getMonth() < b.getMonth() ||
-      (t.getMonth() === b.getMonth() && t.getDate() < b.getDate())
-    )
-      a--;
+    let years = t.getFullYear() - b.getFullYear();
+    let months = t.getMonth() - b.getMonth();
+    let days = t.getDate() - b.getDate();
 
-    return a.toString();
+    if (days < 0) {
+      months--;
+      const lastMonth = new Date(t.getFullYear(), t.getMonth(), 0);
+
+      days += lastMonth.getDate();
+    }
+
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years >= 1) {
+      return years.toString();
+    }
+
+    if (months >= 1) {
+      return `${months} month${months > 1 ? "s" : ""}`;
+    }
+
+    return `${days} day${days > 1 ? "s" : ""}`;
   };
 
   const fmtTime = (t: string) => {
@@ -1199,7 +1216,7 @@ const NewPatientPage: React.FC = () => {
       patientData.gender = profile.gender as "male" | "female" | "other";
     if (profile.dob) patientData.dob = new Date(profile.dob);
     if (profile.bloodGroup) patientData.bloodGroup = profile.bloodGroup as any;
-    if (profile.age) patientData.age = parseInt(profile.age, 10);
+    if (profile.age) patientData.age = profile.age;
 
     return patientData;
   }, [profile, clinicId, defaultBranchId, currentUser?.uid]);
@@ -1616,8 +1633,8 @@ const NewPatientPage: React.FC = () => {
                   label="Age"
                 >
                   <FlatInput
-                    placeholder="e.g. 35"
-                    type="number"
+                    placeholder="e.g. 35, 3 months, 10 days"
+                    type="text"
                     value={profile.age}
                     onChange={(v) => setProfile((p) => ({ ...p, age: v }))}
                   />

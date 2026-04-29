@@ -191,7 +191,7 @@ export interface Patient {
   dob: Date; // Date of birth
   bsDate?: Date; // B.S Date (Bikram Sambat)
   bloodGroup?: "A+" | "A-" | "B+" | "B-" | "AB+" | "AB-" | "O+" | "O-";
-  age: number;
+  age: string | number;
   referredBy?: string;
   phone?: string;
   picture?: string; // URL to the patient's picture

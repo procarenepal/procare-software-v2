@@ -422,18 +422,34 @@ export default function PatientEditPage() {
 
   const calculateAge = (dateOfBirth: string): string => {
     if (!dateOfBirth) return "";
-    const today = new Date();
-    const birthDate = new Date(dateOfBirth);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
+    const b = new Date(dateOfBirth);
+    const t = new Date();
 
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birthDate.getDate())
-    )
-      age--;
+    let years = t.getFullYear() - b.getFullYear();
+    let months = t.getMonth() - b.getMonth();
+    let days = t.getDate() - b.getDate();
 
-    return age.toString();
+    if (days < 0) {
+      months--;
+      const lastMonth = new Date(t.getFullYear(), t.getMonth(), 0);
+
+      days += lastMonth.getDate();
+    }
+
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years >= 1) {
+      return years.toString();
+    }
+
+    if (months >= 1) {
+      return `${months} month${months > 1 ? "s" : ""}`;
+    }
+
+    return `${days} day${days > 1 ? "s" : ""}`;
   };
 
   const handleFormChange = (
@@ -571,7 +587,7 @@ export default function PatientEditPage() {
       if (formData.bsDate)
         updatedPatientData.bsDate = new Date(formData.bsDate);
       if (formData.dob && formData.age)
-        updatedPatientData.age = parseInt(formData.age, 10);
+        updatedPatientData.age = formData.age;
 
       await patientService.updatePatient(patientId, updatedPatientData);
       addToast({
@@ -757,11 +773,10 @@ export default function PatientEditPage() {
                 onChange={handleFormChange}
               />
               <CustomInput
-                readOnly
                 description="Auto-calculated from DOB"
                 label="Age"
                 name="age"
-                type="number"
+                type="text"
                 value={formData.age}
                 onChange={handleFormChange}
               />

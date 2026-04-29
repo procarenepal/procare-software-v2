@@ -515,12 +515,17 @@ export default function PatientsPage() {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const getAge = (p: Patient): number => {
-    if (typeof (p as any).age === "number" && (p as any).age > 0)
-      return (p as any).age;
-    if (typeof (p as any).age === "string") {
-      const n = parseInt((p as any).age, 10);
+    if (typeof p.age === "number") return p.age;
+    if (typeof p.age === "string") {
+      if (
+        p.age.toLowerCase().includes("month") ||
+        p.age.toLowerCase().includes("day")
+      ) {
+        return 0;
+      }
+      const n = parseInt(p.age, 10);
 
-      if (!isNaN(n) && n > 0) return n;
+      return isNaN(n) ? 0 : n;
     }
     if ((p as any).dob) {
       const d = new Date((p as any).dob);
@@ -537,6 +542,10 @@ export default function PatientsPage() {
     }
 
     return 0;
+  };
+
+  const getAgeDisplay = (p: Patient): string | number => {
+    return p.age || getAge(p) || "—";
   };
 
   const fmt = (d: Date) => {
@@ -716,7 +725,7 @@ export default function PatientsPage() {
         Email: p.email || "",
         Mobile: p.mobile,
         Gender: p.gender,
-        Age: getAge(p),
+        Age: getAgeDisplay(p),
         Status: p.isCritical ? "Critical" : "Normal",
         "Critical Reason": p.criticalReason || "",
         "Reg Date": fmt(p.createdAt),
@@ -743,7 +752,7 @@ export default function PatientsPage() {
         Email: p.email || "",
         Mobile: p.mobile,
         Gender: p.gender,
-        Age: getAge(p),
+        Age: getAgeDisplay(p),
         Status: p.isCritical ? "Critical" : "Normal",
         "Reg Date": fmt(p.createdAt),
       }));
@@ -781,7 +790,7 @@ export default function PatientsPage() {
         .map(
           (p) => `<tr class="${p.isCritical ? "crit" : ""}">
         <td>${p.name}</td><td>${p.regNumber || ""}</td><td>${p.mobile}</td>
-        <td>${p.gender}</td><td>${getAge(p)}</td>
+        <td>${p.gender}</td><td>${getAgeDisplay(p)}</td>
         <td>${p.isCritical ? "Critical" : "Normal"}</td><td>${fmt(p.createdAt)}</td></tr>`,
         )
         .join("")}
