@@ -374,7 +374,7 @@ export const generatePatientSlipHTML = (
         <table class="print-table" style="margin-bottom: 0; border: none;">
           <tbody>
             <tr>
-              <td class="font-bold" style="width: 20%; background: #f8fafc;">Reg#:</td><td>${patient.regNumber || "N/A"}</td>
+              <td class="font-bold" style="width: 20%; background: #f8fafc;">Reg#:</td><td>${patient.regNumber || ""}</td>
               <td class="font-bold" style="width: 20%; background: #f8fafc;">Date:</td><td>${slipDate}</td>
             </tr>
             <tr>
@@ -382,13 +382,13 @@ export const generatePatientSlipHTML = (
             </tr>
             <tr>
               <td class="font-bold" style="background: #f8fafc;">Age/Gen:</td><td>${ageGender}</td>
-              <td class="font-bold" style="background: #f8fafc;">Contact:</td><td>${patient.mobile || "N/A"}</td>
+              <td class="font-bold" style="background: #f8fafc;">Contact:</td><td>${patient.mobile || ""}</td>
             </tr>
             <tr>
-              <td class="font-bold" style="background: #f8fafc;">Address:</td><td colspan="3">${patient.address || "N/A"}</td>
+              <td class="font-bold" style="background: #f8fafc;">Address:</td><td colspan="3">${patient.address || ""}</td>
             </tr>
             <tr>
-              <td class="font-bold" style="background: #f8fafc;">Ref By:</td><td colspan="3">${patient.referredBy || "N/A"}</td>
+              <td class="font-bold" style="background: #f8fafc;">Ref By:</td><td colspan="3">${patient.referredBy || ""}</td>
             </tr>
           </tbody>
         </table>
@@ -495,15 +495,21 @@ export const generatePrescriptionHTML = (
         <div class="info-section">
           <h3>Patient Detail:</h3>
           <div class="info-item"><span class="info-label">Name:</span><span class="info-value"><strong>${prescription.patientName}</strong></span></div>
-          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${prescription.patientAge || "N/A"} / ${prescription.patientGender || "N/A"}</span></div>
-          <div class="info-item"><span class="info-label">Phone:</span><span class="info-value">${prescription.patientPhone || "N/A"}</span></div>
+          ${(() => {
+            const parts = [];
+            if (prescription.patientAge) parts.push(`${prescription.patientAge} yrs`);
+            if (prescription.patientGender && prescription.patientGender !== "N/A") parts.push(prescription.patientGender);
+            if (parts.length === 0) return "";
+            return `<div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${parts.join(" / ")}</span></div>`;
+          })()}
+          ${prescription.patientPhone ? `<div class="info-item"><span class="info-label">Phone:</span><span class="info-value">${prescription.patientPhone}</span></div>` : ""}
         </div>
       </div>
 
       <div class="info-section" style="margin-bottom: 25px; background: transparent;">
         <h3>Doctor Detail:</h3>
         <div class="info-item"><span class="info-label">Physician:</span><span class="info-value">${prescription.doctorName}</span></div>
-        <div class="info-item"><span class="info-label">Speciality:</span><span class="info-value">${prescription.doctorSpeciality || "N/A"}</span></div>
+        ${prescription.doctorSpeciality ? `<div class="info-item"><span class="info-label">Speciality:</span><span class="info-value">${prescription.doctorSpeciality}</span></div>` : ""}
       </div>
       
       <table class="print-table">
@@ -751,13 +757,14 @@ export const generatePathologyReportHTML = (
     : "";
 
   const parametersRows = (test.parameters || [])
+    .filter((p: any) => p.patientResult && p.patientResult.trim() !== "")
     .map(
       (p: any) =>
         `<tr>
-          <td class="font-bold">${p.name}</td>
-          <td class="text-center font-bold" style="font-size: 14px;">${p.result || "—"}</td>
-          <td class="text-center">${p.referenceRange || "—"}</td>
-          <td class="text-center" style="color: #64748b; font-size: 11px;">${p.unit || "—"}</td>
+          <td class="font-bold">${p.parameterName || ""}</td>
+          <td class="text-center font-bold" style="font-size: 14px;">${p.patientResult || ""}</td>
+          <td class="text-center">${p.referenceRange || ""}</td>
+          <td class="text-center" style="color: #64748b; font-size: 11px;">${p.unit || ""}</td>
         </tr>`,
     )
     .join("");
@@ -788,7 +795,13 @@ export const generatePathologyReportHTML = (
         <div class="info-section">
           <h3>Patient Information:</h3>
           <div class="info-item"><span class="info-label">Name:</span><span class="info-value"><strong>${test.patientName}</strong></span></div>
-          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${test.patientAge || "N/A"} / ${test.patientGender || "N/A"}</span></div>
+          ${(() => {
+            const parts = [];
+            if (test.patientAge) parts.push(`${test.patientAge} yrs`);
+            if (test.patientGender && test.patientGender !== "N/A") parts.push(test.patientGender);
+            if (parts.length === 0) return "";
+            return `<div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${parts.join(" / ")}</span></div>`;
+          })()}
           ${test.patientId ? `<div class="info-item"><span class="info-label">Patient ID:</span><span class="info-value">${test.patientId}</span></div>` : ""}
         </div>
         <div class="info-section">
