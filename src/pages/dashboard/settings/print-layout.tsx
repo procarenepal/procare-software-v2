@@ -72,7 +72,7 @@ export default function PrintLayoutPage() {
         if (config) {
           setLayoutConfig({
             ...config,
-            clinicName: config.clinicName ?? clinicObj?.name ?? "",
+            clinicName: clinicObj?.name ?? config.clinicName ?? "", // Prefer latest clinic name
             phone: config.phone ?? clinicObj?.phone ?? "",
             email: config.email ?? clinicObj?.email ?? "",
             // Use existing address or provide a clean default

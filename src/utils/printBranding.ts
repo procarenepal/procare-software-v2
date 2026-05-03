@@ -222,7 +222,7 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     .header {
       position: relative;
       width: 100%;
-      min-height: auto;
+      height: 100%;
       background: #fff;
       flex-shrink: 0;
       z-index: 10;
@@ -230,8 +230,8 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
-      padding-top: 40px;
+      justify-content: center; /* Matches PrintLayoutTemplate.tsx */
+      padding: 0 15mm;
     }
 
     /* Identity Stack Styling */
@@ -248,7 +248,9 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     .logo-container {
       position: ${effectiveLogoPosition === "center" ? "relative" : "absolute"};
       top: ${effectiveLogoPosition === "center" ? (isThermal ? "5px" : "0") : "40px"};
-      transform: none;
+      left: ${effectiveLogoPosition === "left" ? "40px" : (effectiveLogoPosition === "right" ? "auto" : "50%")};
+      right: ${effectiveLogoPosition === "right" ? "40px" : "auto"};
+      transform: ${effectiveLogoPosition === "center" ? "translateX(-50%)" : "none"};
       z-index: 100;
       display: flex;
       justify-content: center;
@@ -369,14 +371,13 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     /* Coordinate Overrides */
     .pos-rel { position: relative; }
     .pos-logo { 
-      transform: ${isThermal ? "none" : `translate(${config.logoPos?.x || 0}px, ${config.logoPos?.y || 0}px)`};
+      transform: ${isThermal ? "none" : `translate(${config.logoPos?.x || 0}px, ${config.logoPos?.y || 0}px)${effectiveLogoPosition === "center" ? " translateX(-50%)" : ""}`};
       ${effectiveLogoPosition !== "center" ? `
         left: ${effectiveLogoPosition === "left" ? "40px" : "auto"};
         right: ${effectiveLogoPosition === "right" ? "40px" : "auto"};
       ` : `
-        left: auto;
+        left: 50%;
         right: auto;
-        margin: 0 auto;
       `}
     }
     .pos-clinicName { transform: ${isThermal ? "none" : `translate(${config.clinicNamePos?.x || 0}px, ${config.clinicNamePos?.y || 0}px)`}; width: fit-content; }
@@ -395,8 +396,8 @@ export const getPrintHeaderHTML = (config: PrintLayoutConfig, clinic: any, isThe
   const logoWidth = config.logoWidth || 80;
   const effectiveLogoPosition = isThermal ? "center" : (config.logoPosition || "center");
 
-  // Use camelCase pos IDs to match config and CSS classes
-  const clinicName = config.clinicName || clinic?.name || "Clinic Name";
+  // Prioritize clinic?.name to match PrintLayoutTemplate.tsx
+  const clinicName = clinic?.name || config.clinicName || "Clinic Name";
 
   return `
     <div class="header" style="height: ${isThermal ? "auto" : (config.headerHeight === "compact" ? "180px" : config.headerHeight === "expanded" ? "300px" : "240px")}; border-bottom-style: ${isThermal ? "dashed" : "solid"};">
