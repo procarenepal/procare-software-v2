@@ -1055,16 +1055,8 @@ export interface AppointmentReminder {
 
 // ============= END SMS REMINDER MANAGEMENT MODELS =============
 
-// Print Layout Configuration model
-export interface PrintLayoutConfig {
-  id?: string;
-  clinicId: string;
-  phone?: string; // Optional override, default is clinic profile value
-  email?: string; // Optional override, default is clinic profile value
-  createdAt: Date;
-  updatedAt: Date;
-  updatedBy: string;
-}
+import { PrintLayoutConfig } from "./printLayout";
+export type { PrintLayoutConfig };
 
 // Item Category model for inventory categorization
 export interface ItemCategory {

@@ -1127,7 +1127,7 @@ export default function PrintLayoutPage() {
               <CardBody className="p-0 overflow-auto bg-slate-50 flex justify-center">
                 <div
                   ref={containerRef}
-                  className="relative p-10 transition-all duration-300 origin-top"
+                  className="relative p-10 origin-top"
                   style={{
                     transform: `scale(${zoom})`,
                   }}

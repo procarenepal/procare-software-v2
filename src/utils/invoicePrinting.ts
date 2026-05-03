@@ -28,7 +28,7 @@ export const generateInvoiceHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
   const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
   const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
@@ -53,193 +53,90 @@ export const generateInvoiceHTML = (
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: white;
-      -webkit-print-color-adjust: exact;
-      width: 100%;
-    }
-    body {
-      font-family: Arial, sans-serif;
-      color: #333;
-      font-size: ${isThermal ? "10px" : format === "A4_HALF" ? "11px" : "12px"};
-    }
+    ${brandingCSS}
     
-    ${!isThermal ? brandingCSS : ""}
-
-    .print-container {
-      width: ${isThermal ? thermalWidth : "100%"};
-      margin: 0 auto;
-      padding: ${isThermal ? "2mm" : "20mm"};
-      display: flex;
-      flex-direction: column;
-      box-sizing: border-box;
-    }
-    .content {
-      flex: 1;
-      padding: ${isThermal ? "0" : "15mm"};
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .document-title {
-      text-align: center;
-      margin: ${isThermal ? "2px 0" : format === "A4_HALF" ? "2px 0" : "5px 0 15px 0"};
-    }
-    .document-title h2 {
-      font-size: ${isThermal ? "12px" : "18px"};
-      font-weight: 800;
-      margin: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #475569;
-    }
-    .document-info {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 2px;
-      border-top: ${isThermal ? "1px dashed #ccc" : "none"};
-      border-bottom: ${isThermal ? "1px dashed #ccc" : "none"};
-      padding: ${isThermal ? "2px 0" : "0"};
-    }
-    .bill-to-section {
-      display: flex;
-      flex-direction: column;
-      margin-bottom: ${isThermal ? "5px" : "25px"};
-      padding: ${isThermal ? "2px 0" : "15px"};
-      background-color: ${isThermal ? "transparent" : "#f8fafc"};
-      border-radius: 8px;
-      border: ${isThermal ? "none" : "1px solid #f1f5f9"};
-    }
-    .bill-to-section h3 {
-      margin: 0 0 8px 0;
-      font-size: 11px;
-      font-weight: 700;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .bill-to-section p {
-      margin: 2px 0;
-      font-size: 13px;
-      color: #475569;
-    }
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: ${isThermal ? "10px" : "30px"};
-    }
-    .items-table th, .items-table td {
-      border: ${isThermal ? "none" : "1px solid #e2e8f0"};
-      padding: ${isThermal ? "2px 0" : "12px 10px"};
-      font-size: ${isThermal ? "10px" : "12px"};
-      color: #475569;
-    }
-    .items-table th {
-      background-color: ${isThermal ? "transparent" : "#f8fafc"};
-      text-align: center;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-size: ${isThermal ? "10px" : "10px"};
-      color: #64748b;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: ${isThermal ? "5px" : "20px"};
-    }
-    .summary-table {
-      width: ${isThermal ? "100%" : "250px"};
-      border-collapse: collapse;
-    }
-    .summary-table td {
-      padding: ${isThermal ? "3px 4px" : "8px 10px"};
-      border-bottom: ${isThermal ? "1px dotted #ccc" : "1px solid #eee"};
-    }
-    .font-bold { font-weight: bold; }
-    .text-right { text-align: right !important; }
-    .text-center { text-align: center !important; }
-    .footer {
-      margin-top: ${isThermal ? "10px" : "20px"};
-      text-align: center;
-      font-size: 10px;
-      color: #666;
-      border-top: 1px solid #eee;
-      padding-top: 5px;
-    }
-    @media print {
-      body { -webkit-print-color-adjust: exact; }
-    }
+    /* Ensure table wrap doesn't show borders */
+    .report-wrap { width: 100%; height: 100%; border-collapse: collapse; border: none; }
+    .report-wrap td { padding: 0; border: none; }
   </style>
 </head>
 <body>
   <div class="print-container">
-    ${headerHTML}
-    
-    <div class="content">
-      <div class="document-title">
-        <h2>Invoice</h2>
-        <div class="document-info">
-          <span># ${billing.invoiceNumber}</span>
-          <span>Date: ${new Date(billing.invoiceDate).toLocaleDateString()}</span>
-        </div>
-      </div>
-      
-      <div class="bill-to-section">
-        <h3>Bill To:</h3>
-        <p><strong>${billing.patientName}</strong></p>
-        ${billing.patientPhone ? `<p>Phone: ${billing.patientPhone}</p>` : ""}
-        ${!isThermal && billing.patientAddress ? `<p>Address: ${billing.patientAddress}</p>` : ""}
-      </div>
-      
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th style="width: 40px; text-align: center;">S.N.</th>
-            <th style="text-align: center;">Test</th>
-            <th style="width: 50px; text-align: center;">Qty</th>
-            ${!isThermal ? `<th style="width: 80px; text-align: center;">Price</th>` : ""}
-            <th style="width: 100px; text-align: center;" class="text-center">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml}
-        </tbody>
-      </table>
-      
-      <div class="summary-section">
-        <table class="summary-table">
-          <tr>
-            <td>Subtotal</td>
-            <td class="text-right">NPR ${billing.subtotal.toLocaleString()}</td>
-          </tr>
-          ${billing.discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">- NPR ${billing.discountAmount.toLocaleString()}</td></tr>` : ""}
-          <tr class="font-bold">
-            <td>Total</td>
-            <td class="text-right">NPR ${billing.totalAmount.toLocaleString()}</td>
-          </tr>
-          <tr>
-            <td>Paid</td>
-            <td class="text-right">NPR ${billing.paidAmount.toLocaleString()}</td>
-          </tr>
-          <tr class="font-bold">
-            <td>Balance</td>
-            <td class="text-right">NPR ${billing.balanceAmount.toLocaleString()}</td>
-          </tr>
-        </table>
-      </div>
-    </div>
-    
-    ${footerHTML || `
-    <div class="footer">
-      <p>Thank you for choosing us</p>
-      <p>${new Date().toLocaleString()}</p>
-    </div>
-    `}
+    <table class="report-wrap">
+      <thead>
+        <tr><td>${headerHTML}</td></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="content">
+              <div class="document-title">
+                <h2>Invoice</h2>
+                <div class="document-subtitle"># ${billing.invoiceNumber} • ${new Date(billing.invoiceDate).toLocaleDateString()}</div>
+              </div>
+              
+              <div class="info-grid">
+                <div class="info-section">
+                  <h3>Bill To:</h3>
+                  <div class="info-item"><span class="info-label">Name:</span><span class="info-value"><strong>${billing.patientName}</strong></span></div>
+                  ${billing.patientPhone ? `<div class="info-item"><span class="info-label">Phone:</span><span class="info-value">${billing.patientPhone}</span></div>` : ""}
+                  ${!isThermal && billing.patientAddress ? `<div class="info-item"><span class="info-label">Address:</span><span class="info-value">${billing.patientAddress}</span></div>` : ""}
+                </div>
+              </div>
+              
+              <table class="print-table">
+                <thead>
+                  <tr>
+                    <th style="width: ${isThermal ? "25px" : "40px"};">S.N.</th>
+                    <th>Test</th>
+                    <th style="width: ${isThermal ? "40px" : "60px"};">Qty</th>
+                    ${!isThermal ? `<th style="width: 100px;">Price</th>` : ""}
+                    <th style="width: ${isThermal ? "80px" : "120px"};">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+              </table>
+              
+              <div class="summary-container">
+                <table class="summary-table">
+                  <tr>
+                    <td>Subtotal</td>
+                    <td class="text-right">NPR ${billing.subtotal.toLocaleString()}</td>
+                  </tr>
+                  ${billing.discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">- NPR ${billing.discountAmount.toLocaleString()}</td></tr>` : ""}
+                  <tr class="total-row">
+                    <td>Total</td>
+                    <td class="text-right">NPR ${billing.totalAmount.toLocaleString()}</td>
+                  </tr>
+                  <tr>
+                    <td>Paid</td>
+                    <td class="text-right">NPR ${billing.paidAmount.toLocaleString()}</td>
+                  </tr>
+                  <tr class="font-bold">
+                    <td>Balance</td>
+                    <td class="text-right">NPR ${billing.balanceAmount.toLocaleString()}</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>
+            ${footerHTML || `
+              <footer class="footer-section">
+                <p class="footer-text">Thank you for choosing us</p>
+                ${isThermal ? `<p class="footer-text" style="margin-top: 4px; font-size: 7px; text-transform: none;">${new Date().toLocaleString()}</p>` : ""}
+              </footer>
+            `}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
   </div>
   
   <script>
@@ -272,7 +169,7 @@ export const generateAppointmentInvoiceHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
   const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
   const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
 
@@ -292,7 +189,7 @@ export const generateAppointmentInvoiceHTML = (
           <td class="text-center" style="text-align: center;">${index + 1}</td>
           <td class="text-center" style="text-align: center;">${item.appointmentTypeName}</td>
           <td class="text-center" style="text-align: center;">${item.quantity}</td>
-          <td class="text-center" style="text-align: center;">${formatCurrency(item.price)}</td>
+          ${!isThermal ? `<td class="text-center" style="text-align: center;">${formatCurrency(item.price)}</td>` : ""}
           <td class="text-center" style="text-align: center;">${formatCurrency(item.amount)}</td>
         </tr>`,
     )
@@ -322,110 +219,7 @@ export const generateAppointmentInvoiceHTML = (
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: white;
-      -webkit-print-color-adjust: exact;
-      width: 100%;
-    }
-    body {
-      font-family: Arial, sans-serif;
-      color: #333;
-    }
-    .print-container {
-      width: ${isThermal ? thermalWidth : "100%"};
-      margin: 0 auto;
-      background: white;
-      display: flex;
-      flex-direction: column;
-      min-height: auto;
-      padding: ${isThermal ? "2mm" : "20mm"};
-      box-sizing: border-box;
-    }
-    
     ${brandingCSS}
-
-    .content {
-      flex: 1;
-      padding: ${isThermal ? "2mm 0" : "15mm"};
-      min-height: 0;
-    }
-    .document-title {
-      text-align: center;
-      margin: 5px 0 15px 0;
-    }
-    .document-title h2 {
-      font-size: 18px;
-      font-weight: 800;
-      margin: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #475569;
-    }
-    .bill-to-section {
-      display: flex;
-      flex-direction: ${isThermal ? "column" : "row"};
-      justify-content: space-between;
-      margin-bottom: ${isThermal ? "10px" : "25px"};
-      padding: ${isThermal ? "8px" : "15px"};
-      background-color: #f8fafc;
-      border-radius: 8px;
-      border: 1px solid #f1f5f9;
-    }
-    .bill-to-section h3 {
-      margin: 0 0 8px 0;
-      font-size: 11px;
-      font-weight: 700;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .bill-to-section p {
-      margin: 2px 0;
-      font-size: 13px;
-      color: #475569;
-    }
-    .items-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: ${isThermal ? "10px" : "30px"};
-    }
-    .items-table th,
-    .items-table td {
-      border: 1px solid #e2e8f0;
-      padding: ${isThermal ? "6px 4px" : "12px 10px"};
-      font-size: ${isThermal ? "11px" : "12px"};
-      color: #475569;
-    }
-    .items-table th {
-      background-color: #f8fafc;
-      font-weight: 700;
-      text-align: center;
-      text-transform: uppercase;
-      font-size: 10px;
-      letter-spacing: 0.05em;
-      color: #64748b;
-    }
-    .summary-section {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 20px;
-    }
-    .summary-table { width: 250px; border-collapse: collapse; }
-    .summary-table td {
-      padding: ${isThermal ? "4px 6px" : "8px 10px"};
-      border-bottom: 1px solid #eee;
-      font-size: ${isThermal ? "11px" : "13px"};
-    }
-    .text-right { text-align: right !important; }
-    .text-center { text-align: center !important; }
-    .font-bold { font-weight: bold; }
-
-    @media print {
-      body { -webkit-print-color-adjust: exact; }
-    }
   </style>
 </head>
 <body>
@@ -435,30 +229,31 @@ export const generateAppointmentInvoiceHTML = (
     <div class="content">
       <div class="document-title">
         <h2>Invoice</h2>
-        <div class="document-info" style="display: flex; justify-content: space-between; margin-top: 10px;">
-          <span># ${invoice.invoiceNumber}</span>
-          <span>Date: ${formatDate(invoice.invoiceDate)}</span>
-        </div>
+        <div class="document-subtitle"># ${invoice.invoiceNumber} • ${formatDate(invoice.invoiceDate)}</div>
       </div>
       
-      <div class="bill-to-section">
-        <div>
+      <div class="info-grid">
+        <div class="info-section">
           <h3>Bill To:</h3>
-          <p><strong>${invoice.patientName}</strong></p>
-          ${patient?.mobile ? `<p>Phone: ${patient.mobile}</p>` : ""}
-          ${patient?.address ? `<p>Address: ${patient.address}</p>` : ""}
+          <div class="info-item"><span class="info-label">Name:</span><span class="info-value"><strong>${invoice.patientName}</strong></span></div>
+          ${patient?.mobile ? `<div class="info-item"><span class="info-label">Phone:</span><span class="info-value">${patient.mobile}</span></div>` : ""}
+          ${patient?.address ? `<div class="info-item"><span class="info-label">Address:</span><span class="info-value">${patient.address}</span></div>` : ""}
         </div>
-        ${!isThermal ? cliniciansHtml : ""}
+        ${!isThermal && cliniciansList.length > 0 ? `
+        <div class="info-section">
+          <h3>${cliniciansList.length > 1 ? "Clinicians" : "Clinician"}:</h3>
+          ${cliniciansList.map((c) => `<div class="info-item"><span class="info-value">${c.name}${c.isPrimary && cliniciansList.length > 1 ? " (Primary)" : ""}</span></div>`).join("")}
+        </div>` : ""}
       </div>
       
-      <table class="items-table">
+      <table class="print-table">
         <thead>
           <tr>
-            <th style="width: 40px; text-align: center;">S.N.</th>
-            <th style="text-align: center;">Service</th>
-            <th style="width: 50px; text-align: center;">Qty</th>
-            ${!isThermal ? `<th style="width: 100px; text-align: center;">Price</th>` : ""}
-            <th style="width: 100px; text-align: center;">Amount</th>
+            <th style="width: ${isThermal ? "25px" : "40px"};">S.N.</th>
+            <th>Service</th>
+            <th style="width: ${isThermal ? "40px" : "60px"};">Qty</th>
+            ${!isThermal ? `<th style="width: 100px;">Price</th>` : ""}
+            <th style="width: ${isThermal ? "90px" : "120px"};">Amount</th>
           </tr>
         </thead>
         <tbody>
@@ -466,14 +261,14 @@ export const generateAppointmentInvoiceHTML = (
         </tbody>
       </table>
       
-      <div class="summary-section">
+      <div class="summary-container">
         <table class="summary-table">
           <tr>
             <td>Subtotal</td>
             <td class="text-right">${formatCurrency(invoice.subtotal)}</td>
           </tr>
           ${invoice.discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">- ${formatCurrency(invoice.discountAmount)}</td></tr>` : ""}
-          <tr class="font-bold">
+          <tr class="total-row">
             <td>Total</td>
             <td class="text-right">${formatCurrency(invoice.totalAmount)}</td>
           </tr>
@@ -487,14 +282,19 @@ export const generateAppointmentInvoiceHTML = (
           </tr>
         </table>
       </div>
-      ${isThermal ? cliniciansHtml : ""}
+      
+      ${isThermal && cliniciansList.length > 0 ? `
+      <div class="info-section" style="margin-top: 15px;">
+        <h3>${cliniciansList.length > 1 ? "Clinicians" : "Clinician"}:</h3>
+        ${cliniciansList.map((c) => `<div class="info-item"><span class="info-value">${c.name}</span></div>`).join("")}
+      </div>` : ""}
     </div>
     
-    ${!isThermal && footerHTML ? footerHTML : `
-    <div style="margin-top: 15px; text-align: center; font-size: 10px; color: #666; border-top: 1px solid #eee; padding-top: 5px;">
-      <p>Thank you for choosing us</p>
-      ${isThermal ? `<p>${new Date().toLocaleString()}</p>` : ""}
-    </div>
+    ${footerHTML || `
+    <footer class="footer-section">
+      <p class="footer-text">Thank you for choosing us</p>
+      ${isThermal ? `<p class="footer-text" style="margin-top: 4px; font-size: 7px; text-transform: none;">${new Date().toLocaleString()}</p>` : ""}
+    </footer>
     `}
   </div>
   
@@ -527,13 +327,7 @@ export const generatePatientSlipHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal) : "";
-
-  // Helper for date formatting
-  const formatDate = (date: Date | string) => {
-    const d = typeof date === "string" ? new Date(date) : date;
-    return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  };
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
 
   const calculateAge = (dob: Date | string): number => {
     const today = new Date();
@@ -554,45 +348,7 @@ export const generatePatientSlipHTML = (
     .filter(Boolean)
     .join(" / ");
 
-  const slipDate = new Date().toISOString().split("T")[0].replace(/-/g, "/");
-
-  // Layout for A4/A5
-  const standardLayout = `
-    <table class="slip-table">
-      <tbody>
-        <tr>
-          <td class="label">Reg#:</td><td class="value">${patient.regNumber || ""}</td>
-          <td class="label">Name:</td><td class="value">${patient.name}</td>
-        </tr>
-        <tr>
-          <td class="label">Age/Gender:</td><td class="value">${ageGender}</td>
-          <td class="label">Date:</td><td class="value">${slipDate}</td>
-        </tr>
-        <tr>
-          <td class="label">Contact:</td><td class="value">${patient.mobile || ""}</td>
-          <td class="label">Address:</td><td class="value">${patient.address || ""}</td>
-        </tr>
-        <tr>
-          <td class="label">Ref By:</td><td class="value" colspan="3">${patient.referredBy || ""}</td>
-        </tr>
-      </tbody>
-    </table>
-  `;
-
-  // Layout for Thermal
-  const thermalLayout = `
-    <table class="slip-table-thermal">
-      <tbody>
-        <tr><td class="label">Reg#:</td><td class="value">${patient.regNumber || ""}</td></tr>
-        <tr><td class="label">Name:</td><td class="value">${patient.name}</td></tr>
-        <tr><td class="label">Age/Gen:</td><td class="value">${ageGender}</td></tr>
-        <tr><td class="label">Date:</td><td class="value">${slipDate}</td></tr>
-        <tr><td class="label">Contact:</td><td class="value">${patient.mobile || ""}</td></tr>
-        <tr><td class="label">Address:</td><td class="value">${patient.address || ""}</td></tr>
-        <tr><td class="label">Ref By:</td><td class="value">${patient.referredBy || ""}</td></tr>
-      </tbody>
-    </table>
-  `;
+  const slipDate = new Date().toLocaleDateString();
 
   return `<!DOCTYPE html>
 <html>
@@ -602,90 +358,490 @@ export const generatePatientSlipHTML = (
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: white;
-      -webkit-print-color-adjust: exact;
-      width: 100%;
-    }
-    body {
-      margin: 0;
-      padding: 0;
-      background: white;
-      color: #333;
-      font-family: Arial, sans-serif;
-      font-size: ${isThermal ? "11px" : "13px"};
-    }
-    
-    ${!isThermal ? brandingCSS : ""}
-
-    .print-container {
-      width: ${isThermal ? thermalWidth : "100%"};
-      margin: 0 auto;
-      padding: ${isThermal ? "2mm" : "20mm"};
-      display: flex;
-      flex-direction: column;
-      box-sizing: border-box;
-    }
-    
-    .document-title {
-      text-align: center;
-      margin: ${isThermal ? "5px 0" : "15px 0"};
-      border-bottom: 1px solid #333;
-      padding-bottom: 5px;
-    }
-    .document-title h2 {
-      font-size: ${isThermal ? "14px" : "18px"};
-      margin: 0;
-      text-transform: uppercase;
-    }
-
-    /* Standard Table Styles */
-    .slip-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    .slip-table td { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
-    .slip-table td.label { background: #f5f5f5; font-weight: bold; width: 15%; }
-    .slip-table td.value { width: 35%; }
-
-    /* Thermal Table Styles */
-    .slip-table-thermal { width: 100%; border-collapse: collapse; margin-top: 5px; }
-    .slip-table-thermal td { border: 1px solid #333; padding: 4px 6px; vertical-align: top; }
-    .slip-table-thermal td.label { font-weight: bold; width: 35%; background: #f9f9f9; }
-    .slip-table-thermal td.value { width: 65%; }
-
-    .header-thermal {
-      text-align: center;
-      margin-bottom: 10px;
-    }
-    .clinic-name-thermal { font-weight: bold; font-size: 14px; margin: 0; }
-    .clinic-info-thermal { font-size: 10px; margin: 2px 0; }
-
-    .footer {
-      margin-top: 15px;
-      text-align: center;
-      font-size: 10px;
-      color: #666;
-      border-top: 1px solid #eee;
-      padding-top: 5px;
-    }
-    @media print {
-      body { -webkit-print-color-adjust: exact; }
-    }
+    ${brandingCSS}
   </style>
 </head>
 <body>
   <div class="print-container">
-    <div style="text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #eee; padding-bottom: 5px;">
-      <h1 style="font-weight: bold; font-size: 14px; margin: 0;">PATIENT SLIP</h1>
+    <div class="content" style="padding-top: 10px;">
+      <div class="document-title">
+        <h2>Patient Registration Slip</h2>
+        <div class="document-subtitle">Confidential Patient Record</div>
+      </div>
+      
+      <div class="info-section">
+        <h3>Patient Identification:</h3>
+        <table class="print-table" style="margin-bottom: 0; border: none;">
+          <tbody>
+            <tr>
+              <td class="font-bold" style="width: 20%; background: #f8fafc;">Reg#:</td><td>${patient.regNumber || "N/A"}</td>
+              <td class="font-bold" style="width: 20%; background: #f8fafc;">Date:</td><td>${slipDate}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Name:</td><td colspan="3"><strong>${patient.name}</strong></td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Age/Gen:</td><td>${ageGender}</td>
+              <td class="font-bold" style="background: #f8fafc;">Contact:</td><td>${patient.mobile || "N/A"}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Address:</td><td colspan="3">${patient.address || "N/A"}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Ref By:</td><td colspan="3">${patient.referredBy || "N/A"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+        <div style="display: flex; justify-content: space-between;">
+          <div style="text-align: center; width: 150px;">
+            <div style="border-top: 1px solid #64748b; margin-top: 40px;"></div>
+            <p style="font-size: 10px; color: #64748b; margin-top: 5px;">Receptionist</p>
+          </div>
+          <div style="text-align: center; width: 150px;">
+            <div style="border-top: 1px solid #64748b; margin-top: 40px;"></div>
+            <p style="font-size: 10px; color: #64748b; margin-top: 5px;">Patient Signature</p>
+          </div>
+        </div>
+      </div>
     </div>
     
-    ${isThermal ? thermalLayout : standardLayout}
+    <footer class="footer-section">
+      <p class="footer-text">This is a system generated document</p>
+      <p class="footer-text" style="text-transform: none; font-size: 7px; margin-top: 2px;">Printed on ${new Date().toLocaleString()}</p>
+    </footer>
+  </div>
+  
+  <script>
+    window.onload = () => {
+      setTimeout(() => { window.print(); window.close(); }, 500);
+    }
+  </script>
+</body>
+</html>`;
+};
+
+/**
+ * Generates HTML content for printing a prescription
+ */
+export const generatePrescriptionHTML = (
+  prescription: any,
+  clinic: any,
+  layoutConfig: PrintLayoutConfig | null,
+  format: PrintFormat = "A4",
+): string => {
+  const isThermal = format === "THERMAL_80MM" || format === "THERMAL_58MM" || format === "THERMAL_4INCH";
+  
+  // Use config-defined width if available and format is thermal
+  let thermalWidth = "80mm";
+  if (format === "THERMAL_80MM") thermalWidth = "80mm";
+  else if (format === "THERMAL_58MM") thermalWidth = "58mm";
+  else if (format === "THERMAL_4INCH") thermalWidth = "104mm";
+  else if (isThermal && layoutConfig?.thermalPaperWidthMm) {
+    thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
+  }
+
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
+  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+
+  const itemsHtml = (prescription.items || [])
+    .map(
+      (item: any) =>
+        `<tr>
+          <td>${item.medicineName}</td>
+          <td class="text-center">${item.dosage}</td>
+          <td class="text-center">${item.frequency}</td>
+          <td class="text-center">${item.duration}</td>
+          <td class="text-center">${item.time}</td>
+        </tr>`,
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Prescription - ${prescription.prescriptionNo}</title>
+  <style>
+    @page {
+      ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
+    }
+    ${brandingCSS}
     
-    <div class="footer">
-      <p>Thank you</p>
-      <p>${new Date().toLocaleString()}</p>
+    .signature-section { margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .signature-box { text-align: center; width: 180px; }
+    .sign-line { border-top: 1px solid #475569; margin-bottom: 5px; }
+    .sign-label { font-size: 11px; color: #64748b; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="print-container">
+    ${headerHTML}
+    
+    <div class="content">
+      <div class="document-title">
+        <h2>Medical Prescription</h2>
+        <div class="document-subtitle">Professional Treatment Plan</div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-section">
+          <h3>Prescription Detail:</h3>
+          <div class="info-item"><span class="info-label">No:</span><span class="info-value">#${prescription.prescriptionNo}</span></div>
+          <div class="info-item"><span class="info-label">Date:</span><span class="info-value">${new Date(prescription.prescriptionDate).toLocaleDateString()}</span></div>
+        </div>
+        <div class="info-section">
+          <h3>Patient Detail:</h3>
+          <div class="info-item"><span class="info-label">Name:</span><span class="info-value"><strong>${prescription.patientName}</strong></span></div>
+          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${prescription.patientAge || "N/A"} / ${prescription.patientGender || "N/A"}</span></div>
+          <div class="info-item"><span class="info-label">Phone:</span><span class="info-value">${prescription.patientPhone || "N/A"}</span></div>
+        </div>
+      </div>
+
+      <div class="info-section" style="margin-bottom: 25px; background: transparent;">
+        <h3>Doctor Detail:</h3>
+        <div class="info-item"><span class="info-label">Physician:</span><span class="info-value">${prescription.doctorName}</span></div>
+        <div class="info-item"><span class="info-label">Speciality:</span><span class="info-value">${prescription.doctorSpeciality || "N/A"}</span></div>
+      </div>
+      
+      <table class="print-table">
+        <thead>
+          <tr>
+            <th>Medicine Name & Description</th>
+            <th style="width: 80px;">Dosage</th>
+            <th style="width: 100px;">Frequency</th>
+            <th style="width: 80px;">Duration</th>
+            <th style="width: 80px;">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
+      
+      ${prescription.notes ? `
+      <div class="info-section" style="background: #fff; margin-top: 20px;">
+        <h3>Clinical Notes & Instructions:</h3>
+        <p style="font-size: 13px; color: #1e293b; line-height: 1.6; margin: 0;">${prescription.notes}</p>
+      </div>` : ""}
+
+      ${!isThermal ? `
+      <div class="signature-section">
+        <div class="signature-box">
+          <div class="sign-line"></div>
+          <p class="sign-label">Patient/Guardian Signature</p>
+        </div>
+        <div class="signature-box">
+          <div class="sign-line"></div>
+          <p class="sign-label">Authorized Physician Signature</p>
+        </div>
+      </div>` : ""}
     </div>
+    
+    ${footerHTML || `
+    <footer class="footer-section">
+      <p class="footer-text">Thank you for choosing us</p>
+    </footer>
+    `}
+  </div>
+  
+  <script>
+    window.onload = () => {
+      setTimeout(() => { window.print(); window.close(); }, 500);
+    }
+  </script>
+</body>
+</html>`;
+};
+
+/**
+ * Generates HTML content for printing a pharmacy purchase receipt
+ */
+export const generatePharmacyPurchaseHTML = (
+  purchase: any,
+  payments: any[],
+  clinic: any,
+  layoutConfig: PrintLayoutConfig | null,
+  format: PrintFormat = "A4",
+  itemLifoPrices: Record<string, number> = {},
+): string => {
+  const isThermal = format.startsWith("THERMAL");
+  
+  let thermalWidth = "80mm";
+  if (format === "THERMAL_80MM") thermalWidth = "80mm";
+  else if (format === "THERMAL_58MM") thermalWidth = "58mm";
+  else if (format === "THERMAL_4INCH") thermalWidth = "104mm";
+  else if (isThermal && layoutConfig?.thermalPaperWidthMm) {
+    thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
+  }
+
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
+  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+
+  const itemsHtml = purchase.items
+    .map((item: any, index: number) => {
+      const price = itemLifoPrices[item.id] ?? item.salePrice;
+      return `<tr>
+        <td class="text-center">${index + 1}</td>
+        <td>${item.medicineName}</td>
+        <td class="text-center">${item.quantity}</td>
+        ${!isThermal ? `<td class="text-right">NPR ${price.toLocaleString()}</td>` : ""}
+        <td class="text-right">NPR ${item.amount.toLocaleString()}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const paidAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+  const dueAmount = Math.max(0, (purchase.netAmount || 0) - paidAmount);
+
+  const paymentsHtml = payments.length > 0 ? `
+    <div class="info-section" style="margin-top: 25px;">
+      <h3>Payment History:</h3>
+      <table class="print-table" style="margin-bottom: 0;">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Method</th>
+            <th class="text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${payments.map(p => `
+            <tr>
+              <td>${new Date(p.paymentDate).toLocaleDateString()}</td>
+              <td class="text-center">${p.paymentMethod.toUpperCase()}</td>
+              <td class="text-right">NPR ${p.amount.toLocaleString()}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>` : "";
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Purchase Receipt - ${purchase.purchaseNo}</title>
+  <style>
+    @page {
+      ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
+    }
+    ${brandingCSS}
+    
+    /* Ensure table wrap doesn't show borders */
+    .report-wrap { width: 100%; border-collapse: collapse; border: none; }
+    .report-wrap td { padding: 0; border: none; }
+  </style>
+</head>
+<body>
+  <div class="print-container">
+    <table class="report-wrap">
+      <thead>
+        <tr><td>${headerHTML}</td></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="content">
+              <div class="document-title">
+                <h2>Pharmacy Receipt</h2>
+                <div class="document-subtitle">Medicine Purchase Record</div>
+              </div>
+
+              <div class="info-grid">
+                <div class="info-section">
+                  <h3>Receipt Detail:</h3>
+                  <div class="info-item"><span class="info-label">No:</span><span class="info-value">#${purchase.purchaseNo}</span></div>
+                  <div class="info-item"><span class="info-label">Date:</span><span class="info-value">${new Date(purchase.purchaseDate).toLocaleDateString()}</span></div>
+                  ${purchase.patientName ? `<div class="info-item"><span class="info-label">Patient:</span><span class="info-value">${purchase.patientName}</span></div>` : ""}
+                </div>
+              </div>
+              
+              <table class="print-table">
+                <thead>
+                  <tr>
+                    <th style="width: ${isThermal ? "25px" : "40px"};">S.N.</th>
+                    <th>Medicine</th>
+                    <th style="width: ${isThermal ? "40px" : "60px"};">Qty</th>
+                    ${!isThermal ? `<th style="width: 70px;">Price</th>` : ""}
+                    <th style="width: ${isThermal ? "80px" : "120px"};">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+              </table>
+              
+              <div class="summary-container">
+                <table class="summary-table">
+                  <tr>
+                    <td>Subtotal</td>
+                    <td class="text-right">NPR ${purchase.total.toLocaleString()}</td>
+                  </tr>
+                  ${purchase.discount > 0 ? `<tr><td>Discount</td><td class="text-right">- NPR ${purchase.discount.toLocaleString()}</td></tr>` : ""}
+                  ${purchase.taxAmount > 0 ? `<tr><td>Tax (${purchase.taxPercentage}%)</td><td class="text-right">NPR ${purchase.taxAmount.toLocaleString()}</td></tr>` : ""}
+                  <tr class="total-row">
+                    <td>Net Amount</td>
+                    <td class="text-right">NPR ${purchase.netAmount.toLocaleString()}</td>
+                  </tr>
+                  ${payments.length > 0 ? `
+                    <tr>
+                      <td>Paid Amount</td>
+                      <td class="text-right">NPR ${paidAmount.toLocaleString()}</td>
+                    </tr>
+                    <tr class="font-bold">
+                      <td>Balance Due</td>
+                      <td class="text-right">NPR ${dueAmount.toLocaleString()}</td>
+                    </tr>
+                  ` : ""}
+                </table>
+              </div>
+
+              ${paymentsHtml}
+
+              ${isThermal ? `
+              <div style="text-align: center; margin-top: 20px; font-size: 10px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 10px;">
+                <p>Thank you for your visit!</p>
+                <p>${new Date().toLocaleString()}</p>
+              </div>` : ""}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>
+            ${footerHTML || `
+              <footer class="footer-section">
+                <p class="footer-text">Get Well Soon</p>
+              </footer>
+            `}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  
+  <script>
+    window.onload = () => {
+      setTimeout(() => { window.print(); window.close(); }, 500);
+    }
+  </script>
+</body>
+</html>`;
+};
+
+/**
+ * Generates HTML content for printing a pathology report
+ */
+export const generatePathologyReportHTML = (
+  test: any,
+  clinic: any,
+  layoutConfig: PrintLayoutConfig | null,
+  options: { hideLetterhead?: boolean } = {},
+): string => {
+  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
+  const headerHtml = !options.hideLetterhead && layoutConfig
+    ? getPrintHeaderHTML(layoutConfig, clinic)
+    : "";
+  const footerHtml = !options.hideLetterhead && layoutConfig
+    ? getPrintFooterHTML(layoutConfig)
+    : "";
+
+  const parametersRows = (test.parameters || [])
+    .map(
+      (p: any) =>
+        `<tr>
+          <td class="font-bold">${p.name}</td>
+          <td class="text-center font-bold" style="font-size: 14px;">${p.result || "—"}</td>
+          <td class="text-center">${p.referenceRange || "—"}</td>
+          <td class="text-center" style="color: #64748b; font-size: 11px;">${p.unit || "—"}</td>
+        </tr>`,
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Investigation Report - ${test.testName}</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    ${brandingCSS}
+    
+    .signature-block { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 60px; }
+    .sign-line { border-top: 1px solid #1e293b; width: 200px; margin-top: 40px; padding-top: 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; text-align: center; color: #475569; }
+  </style>
+</head>
+<body>
+  <div class="print-container">
+    ${headerHtml}
+    
+    <div class="content">
+      <div class="document-title">
+        <h2>Clinical Investigation Report</h2>
+        <div class="document-subtitle">Certified Laboratory Diagnostics</div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-section">
+          <h3>Patient Information:</h3>
+          <div class="info-item"><span class="info-label">Name:</span><span class="info-value"><strong>${test.patientName}</strong></span></div>
+          <div class="info-item"><span class="info-label">Age/Gen:</span><span class="info-value">${test.patientAge || "N/A"} / ${test.patientGender || "N/A"}</span></div>
+          ${test.patientId ? `<div class="info-item"><span class="info-label">Patient ID:</span><span class="info-value">${test.patientId}</span></div>` : ""}
+        </div>
+        <div class="info-section">
+          <h3>Report Detail:</h3>
+          <div class="info-item"><span class="info-label">Investigation:</span><span class="info-value"><strong>${test.testName}</strong></span></div>
+          <div class="info-item"><span class="info-label">Sample Date:</span><span class="info-value">${new Date(test.createdAt).toLocaleDateString()}</span></div>
+          <div class="info-item"><span class="info-label">Status:</span><span class="info-value">${test.status?.toUpperCase() || "COMPLETED"}</span></div>
+        </div>
+      </div>
+
+      <div class="info-section" style="margin-top: 20px;">
+        <h3 style="border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">Test Results & Observations</h3>
+        <table class="print-table">
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th class="text-center">Observation / Result</th>
+              <th class="text-center">Reference Range</th>
+              <th class="text-center">Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${parametersRows}
+          </tbody>
+        </table>
+      </div>
+
+      ${test.notes ? `
+      <div class="info-section" style="margin-top: 20px; background: #fff;">
+        <h3>Clinical Remarks:</h3>
+        <p style="font-size: 13px; color: #1e293b; line-height: 1.6; margin: 0;">${test.notes}</p>
+      </div>` : ""}
+
+      <div class="signature-block">
+        <div>
+          <p style="font-size: 10px; color: #94a3b8;">Report generated via ProCare Platform</p>
+          <p style="font-size: 10px; color: #94a3b8;">Timestamp: ${new Date().toLocaleString()}</p>
+        </div>
+        <div style="text-align: right;">
+          ${test.labTechnicianName ? `
+            <p style="margin: 0; font-weight: 700; font-size: 14px; color: #1e293b;">${test.labTechnicianName}</p>
+            <p style="margin: 0; font-size: 11px; color: #64748b;">Laboratory Technician</p>
+          ` : ""}
+          <div class="sign-line">Authorized Signatory</div>
+        </div>
+      </div>
+    </div>
+    
+    ${footerHtml || `
+    <footer class="footer-section">
+      <p class="footer-text">Certified Diagnostic Results</p>
+    </footer>
+    `}
   </div>
   
   <script>

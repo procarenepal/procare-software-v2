@@ -371,24 +371,31 @@ export default function PatientDetailPage() {
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: white; -webkit-print-color-adjust: exact; width: 100%; height: 100%; }
-    body { font-family: Arial, sans-serif; color: #333; line-height: 1.4; font-size: 11px; }
+    body { font-family: 'Inter', -apple-system, sans-serif; color: #1e293b; line-height: 1.4; font-size: 11px; }
     
     ${brandingCSS}
+    
+    /* MS Word style repetition */
+    .report-wrap { width: 100%; height: 100%; border-collapse: collapse; border: none; }
+    .report-wrap td { padding: 0; border: none; }
 
     .print-container { 
       width: 210mm; 
-      min-height: auto;
+      min-height: 100vh;
       margin: 0 auto; 
       background: white; 
       display: flex; 
       flex-direction: column; 
-      padding: 0 25mm 20mm 25mm; 
+      padding: 0;
       box-sizing: border-box; 
     }
     
-    .content { flex: 1; padding: 0; min-height: 0; }
+    .content { 
+      padding: 0 15mm; 
+      min-height: 0; 
+    }
     
-    .document-title { text-align: center; margin: 5px 0 10px 0; }
+    .document-title { text-align: center; margin: 0 0 10px 0; }
     .document-title h2 { font-size: 18px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; }
     .document-subtitle { font-size: 11px; color: #64748b; margin: 1px 0; font-weight: 500; }
     
@@ -404,13 +411,13 @@ export default function PatientDetailPage() {
     .section-header h3 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
 
     .report-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; page-break-inside: avoid; }
-    .report-table th { background: #f8fafc; color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 8px 12px; border: 1px solid #e2e8f0; text-align: left; }
-    .report-table td { padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 11px; color: #334155; vertical-align: top; }
-    .report-table tr:nth-child(even) { background-color: #fafafa; }
+    .report-table th { background: #f8fafc; color: #475569; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 6px 8px; border: 1px solid #e2e8f0; text-align: left; letter-spacing: 0.05em; }
+    .report-table td { padding: 6px 8px; border: 1px solid #e2e8f0; font-size: 11px; color: #475569; vertical-align: top; }
+    .report-table tr:nth-child(even) { background-color: #f8fafc; }
     
     .financial-summary-table { width: 100%; border-collapse: collapse; page-break-inside: avoid; }
-    .financial-summary-table th { background: #f8fafc; color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 6px 12px; border: 1px solid #e2e8f0; text-align: left; }
-    .financial-summary-table td { padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 11px; }
+    .financial-summary-table th { background: #f8fafc; color: #475569; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 6px 8px; border: 1px solid #e2e8f0; text-align: left; }
+    .financial-summary-table td { padding: 6px 8px; border: 1px solid #e2e8f0; font-size: 11px; color: #475569; }
 
     .med-item { margin-bottom: 6px; padding: 6px; background: #f8fafc; border-radius: 4px; font-size: 10px; border-left: 3px solid #cbd5e1; }
     .med-name { font-weight: 700; color: #1e293b; }
@@ -418,14 +425,19 @@ export default function PatientDetailPage() {
 
     .empty-state { text-align: center; color: #94a3b8; font-style: italic; padding: 20px; font-size: 11px; }
 
-    @media print { body { padding: 0; margin: 0; } .print-container { padding: 25mm 25mm 10mm 25mm !important; } .section, .report-table, .financial-summary-table { page-break-inside: avoid; } }
+    @media print { body { padding: 0; margin: 0; } .print-container { padding: 0 !important; } .section, .report-table, .financial-summary-table { page-break-inside: avoid; } }
   </style>
 </head>
 <body>
   <div class="print-container">
-    ${headerHtml}
-
-    <div class="content">
+    <table class="report-wrap">
+      <thead>
+        <tr><td>${headerHtml}</td></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="content">
       <div class="document-title">
         <h2>Comprehensive Health Record</h2>
         <p class="document-subtitle">Patient Medical Summary</p>
@@ -574,9 +586,14 @@ export default function PatientDetailPage() {
       `
         : ""
       }
-    </div>
-
-    ${footerHtml}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr><td>${footerHtml}</td></tr>
+      </tfoot>
+    </table>
   </div>
   
   <script>
