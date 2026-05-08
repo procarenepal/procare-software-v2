@@ -747,6 +747,20 @@ export interface ItemPurchaseItem {
   amount: number;
 }
 
+/**
+ * Individual payment record for a medicine purchase
+ */
+export interface PaymentRecord {
+  id: string;
+  amount: number;
+  paymentDate: Date;
+  /** Payment method key (e.g., "cash", "card", "esewa") */
+  paymentMethod: string;
+  reference?: string;
+  notes?: string;
+  recordedBy: string;
+}
+
 // Medicine Purchase model for recording medicine purchases
 export interface MedicinePurchase {
   id: string;
@@ -788,7 +802,12 @@ export interface MedicinePurchase {
    * calculations without scanning the returns array on every render.
    */
   totalReturnedAmount?: number;
+  /**
+   * List of payments made against this purchase.
+   */
+  payments?: PaymentRecord[];
 }
+
 
 // Supplier Purchase Record model for tracking purchases from suppliers
 export interface SupplierPurchaseRecord {

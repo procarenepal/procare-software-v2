@@ -18,6 +18,7 @@ import { db } from "../config/firebase";
 import {
   MedicinePurchase,
   MedicinePurchaseReturn,
+  PaymentRecord,
   MedicineUsage,
   PharmacySettings,
   PaymentMethod,
@@ -228,6 +229,16 @@ export const pharmacyService = {
           })) as MedicinePurchaseReturn[];
         }
 
+        // Normalise payments array date fields (if any)
+        if (Array.isArray((data as any).payments)) {
+          purchase.payments = (data as any).payments.map((pay: any) => ({
+            ...pay,
+            paymentDate: pay.paymentDate?.toDate
+              ? pay.paymentDate.toDate()
+              : pay.paymentDate,
+          })) as PaymentRecord[];
+        }
+
         return purchase;
       }
 
@@ -268,13 +279,30 @@ export const pharmacyService = {
       return querySnapshot.docs.map((doc) => {
         const data = doc.data();
 
-        return {
+        const purchase: MedicinePurchase = {
           id: doc.id,
           ...data,
           purchaseDate: data.purchaseDate?.toDate(),
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as MedicinePurchase;
+
+        // Normalise nested arrays
+        if (Array.isArray((data as any).returns)) {
+          purchase.returns = (data as any).returns.map((ret: any) => ({
+            ...ret,
+            createdAt: ret.createdAt?.toDate ? ret.createdAt.toDate() : ret.createdAt,
+          })) as MedicinePurchaseReturn[];
+        }
+
+        if (Array.isArray((data as any).payments)) {
+          purchase.payments = (data as any).payments.map((pay: any) => ({
+            ...pay,
+            paymentDate: pay.paymentDate?.toDate ? pay.paymentDate.toDate() : pay.paymentDate,
+          })) as PaymentRecord[];
+        }
+
+        return purchase;
       });
     } catch (error) {
       console.error("Error getting medicine purchases:", error);
@@ -294,8 +322,17 @@ export const pharmacyService = {
     try {
       const docRef = doc(db, MEDICINE_PURCHASES_COLLECTION, id);
 
+      // Filter out undefined values to prevent Firebase errors
+      const cleanData = Object.entries(updateData).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = value;
+        }
+
+        return acc;
+      }, {} as any);
+
       await updateDoc(docRef, {
-        ...updateData,
+        ...cleanData,
         updatedAt: Timestamp.now(),
       });
     } catch (error) {

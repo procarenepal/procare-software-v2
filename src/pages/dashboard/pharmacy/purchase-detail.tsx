@@ -16,7 +16,7 @@ import {
 import { pharmacyService } from "@/services/pharmacyService";
 import { clinicService } from "@/services/clinicService";
 import { medicineService } from "@/services/medicineService";
-import { MedicinePurchase } from "@/types/models";
+import { MedicinePurchase, PaymentRecord } from "@/types/models";
 import { PrintLayoutConfig } from "@/types/printLayout";
 import {
   getPrintBrandingCSS,
@@ -338,16 +338,7 @@ interface PharmacySettings {
   updatedBy: string;
 }
 
-interface PaymentRecord {
-  id: string;
-  amount: number;
-  paymentDate: Date;
-  /** Payment method key stored in the purchase (e.g. "cash", "card", "esewa"). */
-  paymentMethod: string;
-  reference?: string;
-  notes?: string;
-  recordedBy: string;
-}
+// Medication course helper logic moved to separate function below component
 
 const getMedicationCourseInfo = (purchase?: MedicinePurchase | null) => {
   if (!purchase?.medicationDurationDays || !purchase.purchaseDate) {
@@ -500,29 +491,38 @@ export default function PurchaseDetailPage() {
         }
 
         setPurchase(purchaseData);
-
-        if (purchaseData.paymentStatus === "paid") {
-          setPayments([
-            {
-              id: "1",
-              amount: purchaseData.netAmount,
-              paymentDate: purchaseData.purchaseDate,
-              paymentMethod: purchaseData.paymentType,
-              notes: "Full payment on purchase",
-              recordedBy: purchaseData.createdBy,
-            },
-          ]);
-        } else if (purchaseData.paymentStatus === "partial") {
-          setPayments([
-            {
-              id: "1",
-              amount: purchaseData.netAmount * 0.6,
-              paymentDate: purchaseData.purchaseDate,
-              paymentMethod: purchaseData.paymentType,
-              notes: "Partial payment",
-              recordedBy: purchaseData.createdBy,
-            },
-          ]);
+        
+        // Use payments from database if they exist
+        if (purchaseData.payments && Array.isArray(purchaseData.payments)) {
+          setPayments(purchaseData.payments);
+        } else {
+          // Fallback for legacy records that don't have the payments array yet
+          if (purchaseData.paymentStatus === "paid") {
+            setPayments([
+              {
+                id: "initial-payment",
+                amount: purchaseData.netAmount,
+                paymentDate: purchaseData.purchaseDate,
+                paymentMethod: purchaseData.paymentType,
+                notes: "Full payment recorded at purchase",
+                recordedBy: purchaseData.createdBy,
+              },
+            ]);
+          } else if (purchaseData.paymentStatus === "partial") {
+            // Restore legacy assumption for existing partial bills
+            setPayments([
+              {
+                id: "initial-partial-estimate",
+                amount: purchaseData.netAmount * 0.6,
+                paymentDate: purchaseData.purchaseDate,
+                paymentMethod: purchaseData.paymentType,
+                notes: "Partial payment (legacy record)",
+                recordedBy: purchaseData.createdBy,
+              },
+            ]);
+          } else {
+            setPayments([]);
+          }
         }
 
         // Set clinic and layout data
@@ -678,12 +678,12 @@ export default function PurchaseDetailPage() {
   const paidAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
   const dueAmount = Math.max(0, netAfterReturns - paidAmount);
   const paymentProgress =
-    totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+    netAfterReturns > 0 ? (paidAmount / netAfterReturns) * 100 : 0;
 
   // Determine payment status
   const getPaymentStatus = () => {
     if (paidAmount === 0) return "unpaid";
-    if (paidAmount >= totalAmount) return "paid";
+    if (paidAmount >= netAfterReturns) return "paid";
 
     return "partial";
   };
@@ -744,8 +744,8 @@ export default function PurchaseDetailPage() {
         amount: paymentForm.amount,
         paymentDate: new Date(),
         paymentMethod: paymentForm.paymentMethod,
-        reference: paymentForm.reference || undefined,
-        notes: paymentForm.notes || undefined,
+        reference: paymentForm.reference || "",
+        notes: paymentForm.notes || "",
         recordedBy: currentUser.uid,
       };
 
@@ -760,15 +760,16 @@ export default function PurchaseDetailPage() {
         0,
       );
       const newStatus =
-        newPaidAmount >= totalAmount
+        newPaidAmount >= netAfterReturns
           ? "paid"
           : newPaidAmount > 0
             ? "partial"
             : "pending";
 
-      // Update purchase record with new payment status
+      // Update purchase record with new payment status AND the updated payments array
       await pharmacyService.updateMedicinePurchase(purchase.id, {
         paymentStatus: newStatus,
+        payments: updatedPayments,
       });
 
       // Update local purchase state
