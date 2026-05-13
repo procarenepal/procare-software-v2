@@ -48,12 +48,8 @@ export default function PathologyUnitsTab({
           <table className="clarity-table w-full text-left border-collapse">
             <thead>
               <tr className="bg-mountain-50 border-b border-mountain-200">
-                <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
-                  Name
-                </th>
-                <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
-                  Actions
-                </th>
+                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Name</th>
+                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Actions</th>
               </tr>
             </thead>
             <tbody>

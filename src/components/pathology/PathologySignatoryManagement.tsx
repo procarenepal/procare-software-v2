@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
-import {
-  IoAddOutline,
-  IoSearchOutline,
-  IoCreateOutline,
-  IoTrashOutline,
+import { 
+  IoAddOutline, 
+  IoSearchOutline, 
+  IoCreateOutline, 
+  IoTrashOutline, 
   IoImageOutline,
   IoCallOutline,
   IoMailOutline,
-  IoLocationOutline,
-  IoSchoolOutline,
   IoShieldCheckmarkOutline,
-  IoCloseOutline
+  IoCloseOutline,
+  IoPersonOutline,
+  IoBriefcaseOutline
 } from "react-icons/io5";
 import { createPortal } from "react-dom";
 
@@ -18,53 +18,50 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { addToast } from "@/components/ui/toast";
-import { LabTechnician } from "@/types/models";
-import { labTechnicianService } from "@/services/labTechnicianService";
+import { PathologySignatory } from "@/types/models";
+import { pathologySignatoryService } from "@/services/pathologySignatoryService";
 import { uploadImage } from "@/services/appwriteStorageService";
 import { useAuthContext } from "@/context/AuthContext";
 import { useModalState } from "@/hooks/useModalState";
 
-interface LabTechnicianManagementProps {
+interface PathologySignatoryManagementProps {
   clinicId: string;
   branchId: string;
   onRefresh?: () => Promise<void>;
 }
 
-export default function LabTechnicianManagement({
+export default function PathologySignatoryManagement({
   clinicId,
   branchId,
   onRefresh,
-}: LabTechnicianManagementProps) {
+}: PathologySignatoryManagementProps) {
   const { currentUser } = useAuthContext();
-  const [technicians, setTechnicians] = useState<LabTechnician[]>([]);
+  const [signatories, setSignatories] = useState<PathologySignatory[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const modalState = useModalState();
   const [isEditing, setIsEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
+  
   const [form, setForm] = useState({
     name: "",
-    employeeId: "",
+    designation: "Consultant Pathologist",
+    registrationNumber: "",
     phone: "",
     email: "",
-    address: "",
-    specialization: "",
-    qualifications: "",
-    registrationNumber: "",
     signatureUrl: "",
     isActive: true,
   });
 
-  const loadTechnicians = async () => {
+  const loadSignatories = async () => {
     try {
       setLoading(true);
-      const data = await labTechnicianService.getTechniciansByClinic(clinicId, branchId);
-      setTechnicians(data);
+      const data = await pathologySignatoryService.getSignatoriesByClinic(clinicId, branchId);
+      setSignatories(data);
     } catch (error) {
-      console.error("Error loading technicians:", error);
-      addToast({ title: "Error", description: "Failed to load technicians", color: "danger" });
+      console.error("Error loading signatories:", error);
+      addToast({ title: "Error", description: "Failed to load signatories", color: "danger" });
     } finally {
       setLoading(false);
     }
@@ -72,26 +69,23 @@ export default function LabTechnicianManagement({
 
   useEffect(() => {
     if (clinicId && branchId) {
-      loadTechnicians();
+      loadSignatories();
     }
   }, [clinicId, branchId]);
 
-  const filteredTechnicians = technicians.filter(t =>
-    t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.employeeId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.specialization?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSignatories = signatories.filter(s => 
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.registrationNumber.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const resetForm = () => {
     setForm({
       name: "",
-      employeeId: "",
+      designation: "Consultant Pathologist",
+      registrationNumber: "",
       phone: "",
       email: "",
-      address: "",
-      specialization: "",
-      qualifications: "",
-      registrationNumber: "",
       signatureUrl: "",
       isActive: true,
     });
@@ -99,35 +93,32 @@ export default function LabTechnicianManagement({
     setSelectedId(null);
   };
 
-  const handleEdit = (t: LabTechnician) => {
+  const handleEdit = (s: PathologySignatory) => {
     setForm({
-      name: t.name,
-      employeeId: t.employeeId || "",
-      phone: t.phone || "",
-      email: t.email || "",
-      address: t.address || "",
-      specialization: t.specialization || "",
-      qualifications: t.qualifications || "",
-      registrationNumber: t.registrationNumber || "",
-      signatureUrl: t.signatureUrl || "",
-      isActive: t.isActive,
+      name: s.name,
+      designation: s.designation,
+      registrationNumber: s.registrationNumber,
+      phone: s.phone || "",
+      email: s.email || "",
+      signatureUrl: s.signatureUrl || "",
+      isActive: s.isActive,
     });
-    setSelectedId(t.id);
+    setSelectedId(s.id);
     setIsEditing(true);
     modalState.open();
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete technician "${name}"?`)) return;
-
+    if (!confirm(`Are you sure you want to delete signatory "${name}"?`)) return;
+    
     try {
-      await labTechnicianService.deleteTechnician(id);
-      addToast({ title: "Success", description: "Technician deleted successfully", color: "success" });
-      loadTechnicians();
+      await pathologySignatoryService.deleteSignatory(id);
+      addToast({ title: "Success", description: "Signatory deleted successfully", color: "success" });
+      loadSignatories();
       if (onRefresh) onRefresh();
     } catch (error) {
-      console.error("Error deleting technician:", error);
-      addToast({ title: "Error", description: "Failed to delete technician", color: "danger" });
+      console.error("Error deleting signatory:", error);
+      addToast({ title: "Error", description: "Failed to delete signatory", color: "danger" });
     }
   };
 
@@ -137,7 +128,7 @@ export default function LabTechnicianManagement({
 
     try {
       setSubmitting(true);
-      const result = await uploadImage(file, `sig-${Date.now()}-${file.name}`, 400, 200);
+      const result = await uploadImage(file, `signatory-sig-${Date.now()}-${file.name}`, 400, 200);
       setForm(prev => ({ ...prev, signatureUrl: result.fileUrl }));
       addToast({ title: "Success", description: "Signature uploaded successfully", color: "success" });
     } catch (error) {
@@ -155,25 +146,25 @@ export default function LabTechnicianManagement({
     try {
       setSubmitting(true);
       if (isEditing && selectedId) {
-        await labTechnicianService.updateTechnician(selectedId, {
+        await pathologySignatoryService.updateSignatory(selectedId, {
           ...form,
         });
-        addToast({ title: "Success", description: "Technician updated successfully", color: "success" });
+        addToast({ title: "Success", description: "Signatory updated successfully", color: "success" });
       } else {
-        await labTechnicianService.createTechnician({
+        await pathologySignatoryService.createSignatory({
           ...form,
           clinicId,
           branchId,
           createdBy: currentUser.uid,
         });
-        addToast({ title: "Success", description: "Technician added successfully", color: "success" });
+        addToast({ title: "Success", description: "Signatory added successfully", color: "success" });
       }
       modalState.close();
-      loadTechnicians();
+      loadSignatories();
       if (onRefresh) onRefresh();
     } catch (error) {
       console.error("Submit error:", error);
-      addToast({ title: "Error", description: "Failed to save technician", color: "danger" });
+      addToast({ title: "Error", description: "Failed to save signatory", color: "danger" });
     } finally {
       setSubmitting(false);
     }
@@ -182,7 +173,7 @@ export default function LabTechnicianManagement({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Spinner size="lg" label="Loading technicians..." />
+        <Spinner size="lg" label="Loading signatories..." />
       </div>
     );
   }
@@ -194,78 +185,75 @@ export default function LabTechnicianManagement({
           <IoSearchOutline className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mountain-400" />
           <input
             className="w-full h-[32px] pl-9 pr-3 border border-mountain-200 rounded text-[13.5px] text-mountain-800 bg-white focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-100"
-            placeholder="Search technicians..."
+            placeholder="Search signatories..."
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button
-          color="primary"
-          startContent={<IoAddOutline />}
+        <Button 
+          color="primary" 
+          startContent={<IoAddOutline />} 
           onClick={() => { resetForm(); modalState.open(); }}
         >
-          Add Lab Technician
+          Add Authorized Signatory
         </Button>
       </div>
 
-      {filteredTechnicians.length > 0 ? (
+      {filteredSignatories.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="clarity-table w-full text-left border-collapse">
             <thead>
               <tr className="bg-mountain-50 border-b border-mountain-200">
-                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Technician Details</th>
-                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Credentials</th>
+                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Signatory Details</th>
+                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Professional Credentials</th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Contact</th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Signature</th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredTechnicians.map((t) => (
-                <tr key={t.id} className="hover:bg-mountain-50/40 border-b border-mountain-100 transition-colors">
+              {filteredSignatories.map((s) => (
+                <tr key={s.id} className="hover:bg-mountain-50/40 border-b border-mountain-100 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-teal-700 font-semibold text-xs border border-teal-100">
-                        {t.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)}
+                        {s.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)}
                       </div>
                       <div>
-                        <p className="text-[13.5px] font-semibold text-mountain-900">{t.name}</p>
-                        <p className="text-[11.5px] text-mountain-500">{t.specialization || "Generalist"}</p>
+                        <p className="text-[13.5px] font-semibold text-mountain-900">{s.name}</p>
+                        <p className="text-[11.5px] text-mountain-500">{s.designation}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-[12px] text-mountain-600">
-                        <IoShieldCheckmarkOutline className="w-3.5 h-3.5" />
-                        <span>Reg: {t.registrationNumber || "—"}</span>
-                      </div>
-                      <div className="text-[11px] font-mono text-mountain-400">ID: {t.employeeId || "—"}</div>
+                    <div className="flex items-center gap-1.5 text-[12px] text-mountain-600">
+                      <IoShieldCheckmarkOutline className="w-3.5 h-3.5 text-teal-600" />
+                      <span className="font-medium">{s.registrationNumber}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
-                      {t.phone && (
+                      {s.phone && (
                         <div className="flex items-center gap-1.5 text-[12px] text-mountain-600">
                           <IoCallOutline className="w-3.5 h-3.5" />
-                          <span>{t.phone}</span>
+                          <span>{s.phone}</span>
                         </div>
                       )}
-                      {t.email && (
+                      {s.email && (
                         <div className="flex items-center gap-1.5 text-[12px] text-mountain-600">
                           <IoMailOutline className="w-3.5 h-3.5" />
-                          <span>{t.email}</span>
+                          <span>{s.email}</span>
                         </div>
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {t.signatureUrl ? (
-                      <img
-                        src={t.signatureUrl}
-                        alt="Signature"
-                        className="h-10 w-auto object-contain border border-mountain-100 rounded bg-mountain-50/50"
+                    {s.signatureUrl ? (
+                      <img 
+                        src={s.signatureUrl} 
+                        alt="Signature" 
+                        className="h-10 w-auto object-contain border border-mountain-100 rounded bg-mountain-50/50" 
                       />
                     ) : (
                       <span className="text-[11px] text-mountain-400 italic">No signature</span>
@@ -278,7 +266,7 @@ export default function LabTechnicianManagement({
                         size="sm"
                         startContent={<IoCreateOutline />}
                         variant="flat"
-                        onClick={() => handleEdit(t)}
+                        onClick={() => handleEdit(s)}
                       >
                         Edit
                       </Button>
@@ -287,7 +275,7 @@ export default function LabTechnicianManagement({
                         size="sm"
                         startContent={<IoTrashOutline />}
                         variant="flat"
-                        onClick={() => handleDelete(t.id, t.name)}
+                        onClick={() => handleDelete(s.id, s.name)}
                       >
                         Delete
                       </Button>
@@ -300,12 +288,12 @@ export default function LabTechnicianManagement({
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 bg-mountain-50/30 rounded-xl border border-dashed border-mountain-200">
-          <IoSchoolOutline className="w-12 h-12 text-mountain-200 mb-3" />
+          <IoShieldCheckmarkOutline className="w-12 h-12 text-mountain-200 mb-3" />
           <p className="text-mountain-500 text-[14px] font-medium">
-            {searchQuery ? "No matching technicians found" : "No lab technicians registered yet"}
+            {searchQuery ? "No matching signatories found" : "No authorized signatories registered yet"}
           </p>
           <p className="text-mountain-400 text-[12px] mt-1">
-            {searchQuery ? "Try adjusting your search terms" : "Click the button above to add your first technician"}
+            {searchQuery ? "Try adjusting your search terms" : "Click the button above to add a pathologist or clinical director"}
           </p>
         </div>
       )}
@@ -318,56 +306,50 @@ export default function LabTechnicianManagement({
             <div className="px-6 py-4 border-b border-mountain-100 bg-mountain-50/50 flex items-center justify-between">
               <div>
                 <h2 className="text-[16px] font-bold text-mountain-900">
-                  {isEditing ? "Edit Technician Details" : "Add New Lab Technician"}
+                  {isEditing ? "Edit Signatory Details" : "Add Authorized Signatory"}
                 </h2>
                 <p className="text-[12px] text-mountain-500 mt-0.5">
-                  Enter professional credentials and contact information
+                  Enter professional designation and medical registration details
                 </p>
               </div>
               <button className="p-2 hover:bg-mountain-100 rounded-full transition-colors" onClick={modalState.close}>
                 <IoCloseOutline className="w-5 h-5 text-mountain-500" />
               </button>
             </div>
-
+            
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
               <div className="grid grid-cols-2 gap-5">
                 <div className="col-span-2 md:col-span-1">
                   <Input
                     isRequired
                     label="Full Name"
-                    placeholder="e.g. Dr. Ramesh Sharma"
+                    placeholder="e.g. Dr. Anjali Joshi"
                     value={form.name}
                     onValueChange={(v) => setForm(prev => ({ ...prev, name: v }))}
-                    startContent={<IoSchoolOutline className="text-mountain-400" />}
+                    startContent={<IoPersonOutline className="text-mountain-400" />}
                   />
                 </div>
                 <div className="col-span-2 md:col-span-1">
                   <Input
-                    label="Employee ID"
-                    placeholder="e.g. LAB-001"
-                    value={form.employeeId}
-                    onValueChange={(v) => setForm(prev => ({ ...prev, employeeId: v }))}
+                    isRequired
+                    label="Designation"
+                    placeholder="e.g. Consultant Pathologist"
+                    value={form.designation}
+                    onValueChange={(v) => setForm(prev => ({ ...prev, designation: v }))}
+                    startContent={<IoBriefcaseOutline className="text-mountain-400" />}
                   />
                 </div>
-
+                
                 <div className="col-span-2 md:col-span-1">
                   <Input
-                    label="Specialization"
-                    placeholder="e.g. Hematology"
-                    value={form.specialization}
-                    onValueChange={(v) => setForm(prev => ({ ...prev, specialization: v }))}
-                  />
-                </div>
-                <div className="col-span-2 md:col-span-1">
-                  <Input
-                    label="Registration Number (NHPC)"
-                    placeholder="e.g. NHPC-1234-LAB"
+                    isRequired
+                    label="Registration Number (e.g. NMC)"
+                    placeholder="e.g. NMC-12345"
                     value={form.registrationNumber}
                     onValueChange={(v) => setForm(prev => ({ ...prev, registrationNumber: v }))}
                     startContent={<IoShieldCheckmarkOutline className="text-mountain-400" />}
                   />
                 </div>
-
                 <div className="col-span-2 md:col-span-1">
                   <Input
                     label="Phone Number"
@@ -377,33 +359,15 @@ export default function LabTechnicianManagement({
                     startContent={<IoCallOutline className="text-mountain-400" />}
                   />
                 </div>
-                <div className="col-span-2 md:col-span-1">
+
+                <div className="col-span-2">
                   <Input
                     label="Email Address"
-                    placeholder="e.g. technician@clinic.com"
+                    placeholder="e.g. pathologist@clinic.com"
                     type="email"
                     value={form.email}
                     onValueChange={(v) => setForm(prev => ({ ...prev, email: v }))}
                     startContent={<IoMailOutline className="text-mountain-400" />}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <Input
-                    label="Qualifications"
-                    placeholder="e.g. B.Sc. MLT, M.Sc. Microbiology"
-                    value={form.qualifications}
-                    onValueChange={(v) => setForm(prev => ({ ...prev, qualifications: v }))}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <Input
-                    label="Address"
-                    placeholder="Residential or Clinical address"
-                    value={form.address}
-                    onValueChange={(v) => setForm(prev => ({ ...prev, address: v }))}
-                    startContent={<IoLocationOutline className="text-mountain-400" />}
                   />
                 </div>
 
@@ -413,12 +377,12 @@ export default function LabTechnicianManagement({
                     <div className="shrink-0">
                       {form.signatureUrl ? (
                         <div className="relative group">
-                          <img
-                            src={form.signatureUrl}
-                            alt="Preview"
-                            className="h-20 w-40 object-contain bg-white border border-mountain-200 rounded p-1 shadow-sm"
+                          <img 
+                            src={form.signatureUrl} 
+                            alt="Preview" 
+                            className="h-20 w-40 object-contain bg-white border border-mountain-200 rounded p-1 shadow-sm" 
                           />
-                          <button
+                          <button 
                             type="button"
                             className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => setForm(prev => ({ ...prev, signatureUrl: "" }))}
@@ -435,18 +399,18 @@ export default function LabTechnicianManagement({
                     </div>
                     <div className="flex-1">
                       <p className="text-[11px] text-mountain-500 mb-3">
-                        Upload a clear PNG/JPG image of the technician's signature. This will be used on automated pathology reports.
+                        Upload a clear PNG/JPG image of the signatory's signature. This will be used as the authorized signature on pathology reports.
                       </p>
                       <input
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        id="signature-upload"
+                        id="signatory-signature-upload"
                         onChange={handleFileUpload}
                         disabled={submitting}
                       />
-                      <label
-                        htmlFor="signature-upload"
+                      <label 
+                        htmlFor="signatory-signature-upload"
                         className={`inline-flex items-center px-4 py-2 border border-mountain-200 rounded-md bg-white text-[12px] font-medium text-mountain-700 hover:bg-mountain-50 cursor-pointer transition-all active:scale-95 ${submitting ? 'opacity-50 pointer-events-none' : ''}`}
                       >
                         <IoImageOutline className="mr-2 w-4 h-4 text-teal-600" />
@@ -462,7 +426,7 @@ export default function LabTechnicianManagement({
                   Cancel
                 </Button>
                 <Button color="primary" type="submit" isLoading={submitting}>
-                  {isEditing ? "Save Changes" : "Register Technician"}
+                  {isEditing ? "Save Changes" : "Register Signatory"}
                 </Button>
               </div>
             </form>

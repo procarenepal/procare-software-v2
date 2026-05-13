@@ -44,12 +44,14 @@ import {
   PathologyBilling,
   PathologyBillingItem,
   PathologyBillingSettings,
-  PathologyTest,
-  PathologyTestType,
+  PathologyOrder,
+  PathologyTestTemplate,
+  Patient,
   ReferringDoctor,
   Doctor,
   ReferralPartner,
 } from "@/types/models";
+
 import { PrintLayoutConfig } from "@/types/printLayout";
 import { generateInvoiceHTML, PrintFormat } from "@/utils/invoicePrinting";
 import { doctorService } from "@/services/doctorService";
@@ -58,10 +60,16 @@ import { referralPartnerService } from "@/services/referralPartnerService";
 interface PathologyBillingTabProps {
   clinicId: string;
   branchId: string;
+  templates: PathologyTestTemplate[];
+  patients: Patient[];
+  onRefresh?: () => Promise<void>;
 }
 
+
 interface InvoiceFormData {
+  patientId: string;
   patientName: string;
+
   patientEmail: string;
   patientPhone: string;
   patientAddress: string;
@@ -75,10 +83,15 @@ interface InvoiceFormData {
   notes?: string;
 }
 
+
 export default function PathologyBillingTab({
   clinicId,
   branchId,
+  templates,
+  patients,
+  onRefresh,
 }: PathologyBillingTabProps) {
+
   const { currentUser, userData } = useAuthContext();
   const invoiceModal = useModalState(false);
   const paymentModal = useModalState(false);
@@ -87,10 +100,8 @@ export default function PathologyBillingTab({
   const [activeTab, setActiveTab] = useState("create");
 
   // Data states
-  const [tests, setTests] = useState<PathologyTest[]>([]);
-  const [testTypes, setTestTypes] = useState<PathologyTestType[]>([]);
-  const [testNames, setTestNames] = useState<PathologyTest[]>([]);
   const [billings, setBillings] = useState<PathologyBilling[]>([]);
+
   const [billingSettings, setBillingSettings] =
     useState<PathologyBillingSettings | null>(null);
   const [layoutConfig, setLayoutConfig] = useState<PrintLayoutConfig | null>(
@@ -124,6 +135,7 @@ export default function PathologyBillingTab({
 
   // Form data
   const [formData, setFormData] = useState<InvoiceFormData>({
+    patientId: "",
     patientName: "",
     patientEmail: "",
     patientPhone: "",
@@ -137,6 +149,7 @@ export default function PathologyBillingTab({
     referringDoctors: [],
     notes: "",
   });
+
 
   const [selectedPrintFormat, setSelectedPrintFormat] =
     useState<PrintFormat>("A4");
@@ -211,13 +224,11 @@ export default function PathologyBillingTab({
         referralPartnerService.getReferralPartnersByClinic(clinicId),
       ]);
 
-      setTests(testsData);
-      setTestTypes(testTypesData);
-      setTestNames(testNamesData);
       setBillings(billingsData);
       setBillingSettings(settingsData);
       setClinic(clinicData);
       setLayoutConfig(layoutConfigData);
+
       if (layoutConfigData?.defaultPrintFormat) {
         setSelectedPrintFormat(layoutConfigData.defaultPrintFormat as PrintFormat);
       }
@@ -267,6 +278,10 @@ export default function PathologyBillingTab({
 
   const calculateTotals = () => {
     if (!formData.items.length || !billingSettings) {
+      const updatedReferringDoctors = formData.referringDoctors.map((doc) => {
+        return { ...doc, calculatedAmount: doc.commissionType === "flat" ? doc.commissionValue : 0 };
+      });
+
       setCalculations({
         subtotal: 0,
         discountAmount: 0,
@@ -274,7 +289,13 @@ export default function PathologyBillingTab({
         totalAmount: 0,
       });
 
+      setFormData((prev) => ({
+        ...prev,
+        referringDoctors: updatedReferringDoctors,
+      }));
+
       return;
+
     }
 
     // Calculate subtotal by summing all item amounts
@@ -342,26 +363,24 @@ export default function PathologyBillingTab({
   ) => {
     const updatedItems = [...formData.items];
 
-    if (field === "testName") {
+    if (field === "testId") {
+      const template = templates.find((t) => t.id === value);
+
+      if (template) {
+        updatedItems[index] = {
+          ...updatedItems[index],
+          testId: template.id,
+          testName: template.name,
+          testType: template.categoryName,
+          price: template.price,
+          amount: template.price * updatedItems[index].quantity,
+        };
+      }
+    } else if (field === "testName") {
       updatedItems[index] = {
         ...updatedItems[index],
         testName: value,
-        // Keep testId empty for manual entries
         testId: "",
-      };
-    } else if (field === "testType") {
-      const selectedTestType = testTypes.find((tt) => tt.name === value);
-
-      updatedItems[index] = {
-        ...updatedItems[index],
-        testType: value || "",
-        price: selectedTestType
-          ? selectedTestType.price
-          : updatedItems[index].price,
-        amount:
-          (selectedTestType
-            ? selectedTestType.price
-            : updatedItems[index].price) * updatedItems[index].quantity,
       };
     } else if (field === "quantity") {
       const qty = parseFloat(value) || 1;
@@ -397,6 +416,7 @@ export default function PathologyBillingTab({
     }));
   };
 
+
   const addReferralSource = (sourceId: string) => {
     const source = allReferralSources.find((s) => s.id === sourceId);
 
@@ -424,7 +444,8 @@ export default function PathologyBillingTab({
           commissionType: "percent",
           commissionValue: source.defaultCommission || 0,
           calculatedAmount:
-            (calculations.subtotal * (source.defaultCommission || 0)) / 100,
+            ((formData.items.reduce((sum, item) => sum + (item.amount || 0), 0)) * (source.defaultCommission || 0)) / 100,
+
         },
       ],
     }));
@@ -442,7 +463,8 @@ export default function PathologyBillingTab({
     data: Partial<ReferringDoctor>,
   ) => {
     const newDocs = [...formData.referringDoctors];
-    const subtotal = calculations.subtotal;
+    const subtotal = formData.items.reduce((sum, item) => sum + (item.amount || 0), 0);
+
 
     newDocs[index] = { ...newDocs[index], ...data };
 
@@ -553,7 +575,35 @@ export default function PathologyBillingTab({
         createdBy: currentUser.uid,
       };
 
-      await pathologyBillingService.createBilling(billingData);
+      const billingId = await pathologyBillingService.createBilling(billingData);
+
+      // AUTOMATICALLY CREATE LAB ORDER
+      const testNames = formData.items.map((i) => i.testName);
+      const testTemplateIds = formData.items
+        .map((i) => i.testId)
+        .filter((id) => id !== "");
+
+      const orderData: Omit<PathologyOrder, "id" | "createdAt" | "updatedAt"> = {
+        clinicId,
+        branchId,
+        patientId: formData.patientId,
+        patientName: formData.patientName.trim(),
+        patientAge: parseInt(formData.patientAge) || 0,
+        patientGender: formData.patientGender as any,
+        testTemplateIds,
+        testNames,
+        status: "ordered",
+        orderNumber: invoiceNumber.replace("INV", "LAB"),
+        billingId: billingId,
+        isActive: true,
+        createdBy: currentUser.uid,
+        results: [],
+      };
+
+
+      await pathologyService.createOrder(orderData);
+
+
 
       addToast({
         title: "Success",
@@ -563,6 +613,7 @@ export default function PathologyBillingTab({
 
       // Reset form
       setFormData({
+        patientId: "",
         patientName: "",
         patientEmail: "",
         patientPhone: "",
@@ -579,6 +630,7 @@ export default function PathologyBillingTab({
 
       // Reload billings
       await loadData();
+      if (onRefresh) await onRefresh();
 
       // Switch to manage tab
       setActiveTab("manage");
@@ -655,6 +707,7 @@ export default function PathologyBillingTab({
       );
 
       setBillings(updatedBillings);
+      if (onRefresh) await onRefresh();
 
       // Close payment modal
       paymentModal.forceClose();
@@ -691,6 +744,7 @@ export default function PathologyBillingTab({
 
       // Reload data
       await loadData();
+      if (onRefresh) await onRefresh();
     } catch (error) {
       console.error("Error finalizing invoice:", error);
       addToast({
@@ -807,15 +861,51 @@ export default function PathologyBillingTab({
                     Patient Information
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
+                    <Autocomplete
+                      allowsCustomValue
                       isRequired
                       label="Patient Name *"
-                      placeholder="Enter patient name"
-                      value={formData.patientName}
-                      onValueChange={(value) =>
+                      placeholder="Search or enter patient name"
+                      inputValue={formData.patientName}
+                      selectedKey={formData.patientId || undefined}
+                      onInputChange={(value) =>
                         setFormData((prev) => ({ ...prev, patientName: value }))
                       }
-                    />
+                      onSelectionChange={(key) => {
+                        const patient = patients.find((p) => p.id === key);
+
+                        if (patient) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            patientId: patient.id,
+                            patientName: patient.name,
+                            patientPhone: patient.phone || "",
+                            patientEmail: patient.email || "",
+                            patientAddress: patient.address || "",
+                            patientAge: patient.age?.toString() || "",
+                            patientGender: patient.gender || "",
+                          }));
+                        }
+
+                      }}
+                    >
+                      {patients.map((patient) => (
+                        <AutocompleteItem
+                          key={patient.id}
+                          textValue={patient.name}
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-small font-medium">
+                              {patient.name}
+                            </span>
+                            <span className="text-tiny text-default-400">
+                              {patient.phone} • {patient.gender}
+                            </span>
+                          </div>
+                        </AutocompleteItem>
+                      ))}
+                    </Autocomplete>
+
                     <Input
                       label="Phone"
                       placeholder="Enter phone number"
@@ -902,82 +992,46 @@ export default function PathologyBillingTab({
                           key={item.id}
                           className="grid grid-cols-12 gap-2 items-end p-3 border rounded-lg"
                         >
-                          <div className="col-span-3">
+                          <div className="col-span-6">
                             <Autocomplete
-                              isRequired
-                              defaultItems={testNames}
-                              label="Test Name *"
-                              placeholder="Search and select test name"
+                              allowsCustomValue
+                              label="Test / Package"
+                              placeholder="Select test template or type manual"
                               popoverProps={{
                                 shouldCloseOnBlur: false,
                                 classNames: {
                                   content: "max-h-60 overflow-auto z-[1001]",
                                 },
                               }}
-                              selectedKey={item.testName || null}
-                              onOpenChange={
-                                invoiceModal.handleDropdownInteraction
+                              inputValue={item.testName}
+                              selectedKey={item.testId || undefined}
+                              onInputChange={(value) =>
+                                updateInvoiceItem(index, "testName", value)
                               }
-                              onSelectionChange={(key) => {
-                                const selectedName = key ? key.toString() : "";
-
+                              onSelectionChange={(key) =>
                                 updateInvoiceItem(
                                   index,
-                                  "testName",
-                                  selectedName,
-                                );
-                              }}
-                            >
-                              {(testName) => (
-                                <AutocompleteItem
-                                  key={testName.testName}
-                                  textValue={testName.testName}
-                                >
-                                  {testName.testName}
-                                </AutocompleteItem>
-                              )}
-                            </Autocomplete>
-                          </div>
-                          <div className="col-span-3">
-                            <Autocomplete
-                              defaultItems={testTypes}
-                              label="Test Type"
-                              placeholder="Search and select test type"
-                              popoverProps={{
-                                shouldCloseOnBlur: false,
-                                classNames: {
-                                  content: "max-h-60 overflow-auto z-[1001]",
-                                },
-                              }}
-                              selectedKey={item.testType || null}
-                              onOpenChange={
-                                invoiceModal.handleDropdownInteraction
+                                  "testId",
+                                  key?.toString() || "",
+                                )
                               }
-                              onSelectionChange={(key) => {
-                                const selectedName = key ? key.toString() : "";
-
-                                updateInvoiceItem(
-                                  index,
-                                  "testType",
-                                  selectedName || "",
-                                );
-                              }}
                             >
-                              {(testType) => (
+                              {templates.map((template) => (
                                 <AutocompleteItem
-                                  key={testType.name}
-                                  textValue={`${testType.name} - NPR ${testType.price.toFixed(2)} `}
+                                  key={template.id}
+                                  textValue={template.name}
                                 >
                                   <div className="flex flex-col">
-                                    <span className="text-small">
-                                      {testType.name}
+                                    <span className="text-small font-semibold">
+                                      {template.name}
                                     </span>
-                                    <span className="text-tiny text-default-400">
-                                      NPR {testType.price.toFixed(2)}
+                                    <span className="text-tiny text-default-500">
+                                      {template.categoryName} • NPR{" "}
+                                      {template.price.toLocaleString()}
                                     </span>
                                   </div>
                                 </AutocompleteItem>
-                              )}
+                              ))}
                             </Autocomplete>
                           </div>
                           <div className="col-span-2">
@@ -1042,7 +1096,7 @@ export default function PathologyBillingTab({
                 <div className="space-y-4">
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 py-3 border-b border-default-100">
                     <div>
-                      <h3 className="text-lg font-bold text-default-800">
+                      <h3 className="text-lg font-semibold text-default-800">
                         Referral Sources
                       </h3>
                       <p className="text-xs text-default-500">
@@ -1129,11 +1183,11 @@ export default function PathologyBillingTab({
                                   )}
                                 </div>
                                 <div className="overflow-hidden">
-                                  <p className="font-bold text-default-800 truncate">
+                                  <p className="font-semibold text-default-800 truncate">
                                     {refDoc.doctorName}
                                   </p>
                                   <span
-                                    className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${refDoc.type === "doctor" ? "bg-primary-100 text-primary-700" : "bg-secondary-100 text-secondary-700"}`}
+                                    className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${refDoc.type === "doctor" ? "bg-primary-100 text-primary-700" : "bg-secondary-100 text-secondary-700"}`}
                                   >
                                     {refDoc.type}
                                   </span>
@@ -1185,13 +1239,14 @@ export default function PathologyBillingTab({
                                 </div>
 
                                 <div className="flex flex-col">
-                                  <span className="text-[10px] text-default-400 font-bold uppercase tracking-wider">
+                                  <span className="text-[10px] text-default-400 font-medium">
                                     Estimated Earned
                                   </span>
                                   <span className="text-md font-black text-primary">
                                     NPR{" "}
-                                    {refDoc.calculatedAmount.toLocaleString()}
+                                    {refDoc.calculatedAmount.toFixed(2)}
                                   </span>
+
                                 </div>
                               </div>
 
@@ -1282,15 +1337,15 @@ export default function PathologyBillingTab({
             {filteredBillings.length > 0 ? (
               <Table aria-label="Pathology invoices table">
                 <TableHeader>
-                  <TableColumn>INVOICE #</TableColumn>
-                  <TableColumn>DATE</TableColumn>
-                  <TableColumn>PATIENT</TableColumn>
-                  <TableColumn>ITEMS</TableColumn>
-                  <TableColumn>TOTAL</TableColumn>
-                  <TableColumn>PAID</TableColumn>
-                  <TableColumn>BALANCE</TableColumn>
-                  <TableColumn>STATUS</TableColumn>
-                  <TableColumn align="center">Actions</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Invoice #</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Date</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Patient</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Items</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Total</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Paid</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Balance</TableColumn>
+                  <TableColumn className="text-[12px] font-medium">Status</TableColumn>
+                  <TableColumn align="center" className="text-[12px] font-medium">Actions</TableColumn>
                 </TableHeader>
                 <TableBody>
                   {filteredBillings.map((billing) => {
@@ -1343,7 +1398,7 @@ export default function PathologyBillingTab({
                             startContent={<StatusIcon size={14} />}
                             variant="flat"
                           >
-                            {billing.paymentStatus.toUpperCase()}
+                            {billing.paymentStatus}
                           </Chip>
                         </TableCell>
                         <TableCell>

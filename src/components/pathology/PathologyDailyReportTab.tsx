@@ -7,10 +7,10 @@ import {
 } from "react-icons/io5";
 
 import { Button } from "@/components/ui/button";
-import { PathologyTest, PathologyBilling } from "@/types/models";
+import { PathologyOrder, PathologyBilling, PathologyCategory } from "@/types/models";
 
 export interface DailyReportData {
-  dailyTests: PathologyTest[];
+  dailyTests: PathologyOrder[];
   dailyBillings: PathologyBilling[];
   totalTests: number;
   totalBillings: number;
@@ -26,6 +26,7 @@ export interface DailyReportData {
 interface PathologyDailyReportTabProps {
   dailyReportData: DailyReportData;
   selectedDate: string;
+  categories: PathologyCategory[];
   onDateChange: (date: string) => void;
   onPrintReport: () => void;
 }
@@ -33,6 +34,7 @@ interface PathologyDailyReportTabProps {
 export default function PathologyDailyReportTab({
   dailyReportData,
   selectedDate,
+  categories,
   onDateChange,
   onPrintReport,
 }: PathologyDailyReportTabProps) {
@@ -77,7 +79,7 @@ export default function PathologyDailyReportTab({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[12px] text-mountain-500">Total Tests</p>
-              <p className="text-[22px] font-bold text-mountain-900">
+              <p className="text-[22px] font-semibold text-mountain-900">
                 {dailyReportData.totalTests}
               </p>
             </div>
@@ -88,7 +90,7 @@ export default function PathologyDailyReportTab({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[12px] text-mountain-500">Total Patients</p>
-              <p className="text-[22px] font-bold text-mountain-900">
+              <p className="text-[22px] font-semibold text-mountain-900">
                 {dailyReportData.totalPatients}
               </p>
             </div>
@@ -99,7 +101,7 @@ export default function PathologyDailyReportTab({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[12px] text-mountain-500">Total Revenue</p>
-              <p className="text-[22px] font-bold text-mountain-900">
+              <p className="text-[22px] font-semibold text-mountain-900">
                 NPR {dailyReportData.totalRevenue.toLocaleString()}
               </p>
             </div>
@@ -110,7 +112,7 @@ export default function PathologyDailyReportTab({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[12px] text-mountain-500">Total Invoices</p>
-              <p className="text-[22px] font-bold text-mountain-900">
+              <p className="text-[22px] font-semibold text-mountain-900">
                 {dailyReportData.totalBillings}
               </p>
             </div>
@@ -123,19 +125,19 @@ export default function PathologyDailyReportTab({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="clarity-card p-4">
           <p className="text-[12px] text-mountain-500 mb-2">Paid Amount</p>
-          <p className="text-xl font-bold text-health-700">
+          <p className="text-xl font-semibold text-health-700">
             NPR {dailyReportData.totalPaid.toLocaleString()}
           </p>
         </div>
         <div className="clarity-card p-4">
           <p className="text-[12px] text-mountain-500 mb-2">Pending Amount</p>
-          <p className="text-xl font-bold text-saffron-700">
+          <p className="text-xl font-semibold text-saffron-700">
             NPR {dailyReportData.totalPending.toLocaleString()}
           </p>
         </div>
         <div className="clarity-card p-4">
           <p className="text-[12px] text-mountain-500 mb-2">Payment Rate</p>
-          <p className="text-xl font-bold text-mountain-900">
+          <p className="text-xl font-semibold text-mountain-900">
             {dailyReportData.totalRevenue > 0
               ? (
                   (dailyReportData.totalPaid / dailyReportData.totalRevenue) *
@@ -160,22 +162,22 @@ export default function PathologyDailyReportTab({
               <table className="clarity-table w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-mountain-50 border-b border-mountain-200">
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Test Name
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Patient
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Test Type
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Category
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Lab Technician
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Time
                     </th>
                   </tr>
@@ -188,7 +190,7 @@ export default function PathologyDailyReportTab({
                     >
                       <td className="px-4 py-2">
                         <p className="text-[13.5px] font-medium text-mountain-900">
-                          {test.testName}
+                          {test.testNames?.join(", ") || "No tests listed"}
                         </p>
                       </td>
                       <td className="px-4 py-2">
@@ -212,12 +214,26 @@ export default function PathologyDailyReportTab({
                         </div>
                       </td>
                       <td className="px-4 py-2 text-[13px] text-mountain-700">
-                        {test.testType || "—"}
+                        —
                       </td>
                       <td className="px-4 py-2">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-semibold bg-teal-100 text-teal-700 border-teal-200">
-                          {test.categoryName}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {(() => {
+                            const orderCategories = new Set<string>();
+                            test.results?.forEach(res => {
+                              const cat = categories.find(c => c.id === (res as any).categoryId);
+                              if (cat) orderCategories.add(cat.name);
+                            });
+                            
+                            if (orderCategories.size === 0) return <span className="text-mountain-400 text-[13px]">—</span>;
+                            
+                            return Array.from(orderCategories).map((catName, i) => (
+                              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-semibold bg-teal-100 text-teal-700 border-teal-200">
+                                {catName}
+                              </span>
+                            ));
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-2">
                         {test.labTechnicianName ? (
@@ -259,22 +275,22 @@ export default function PathologyDailyReportTab({
               <table className="clarity-table w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-mountain-50 border-b border-mountain-200">
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Invoice No
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Patient
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Items
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Amount
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Status
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Time
                     </th>
                   </tr>
@@ -312,13 +328,13 @@ export default function PathologyDailyReportTab({
                       </td>
                       <td className="px-4 py-2">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-semibold ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-medium ${
                             billing.status === "paid"
                               ? "bg-health-100 text-health-700 border-health-200"
                               : "bg-saffron-100 text-saffron-700 border-saffron-200"
                           }`}
                         >
-                          {billing.status.toUpperCase()}
+                          {billing.status}
                         </span>
                       </td>
                       <td className="px-4 py-2 text-[13px] text-mountain-700">
@@ -352,10 +368,10 @@ export default function PathologyDailyReportTab({
                 <table className="clarity-table w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-mountain-50 border-b border-mountain-200">
-                      <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                      <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                         Test Type
                       </th>
-                      <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                      <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                         Count
                       </th>
                     </tr>
@@ -372,7 +388,7 @@ export default function PathologyDailyReportTab({
                             {type}
                           </td>
                           <td className="px-4 py-2">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-semibold bg-teal-100 text-teal-700 border-teal-200">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-medium bg-teal-100 text-teal-700 border-teal-200">
                               {count}
                             </span>
                           </td>
@@ -402,10 +418,10 @@ export default function PathologyDailyReportTab({
                 <table className="clarity-table w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-mountain-50 border-b border-mountain-200">
-                      <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                      <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                         Category
                       </th>
-                      <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                      <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                         Count
                       </th>
                     </tr>
@@ -422,7 +438,7 @@ export default function PathologyDailyReportTab({
                             {category}
                           </td>
                           <td className="px-4 py-2">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-semibold bg-health-100 text-health-700 border-health-200">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-medium bg-health-100 text-health-700 border-health-200">
                               {count}
                             </span>
                           </td>
@@ -453,10 +469,10 @@ export default function PathologyDailyReportTab({
               <table className="clarity-table w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-mountain-50 border-b border-mountain-200">
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Technician
                     </th>
-                    <th className="px-4 py-2 text-[11px] font-semibold text-mountain-600 uppercase tracking-[0.08em]">
+                    <th className="px-4 py-2 text-[12px] font-medium text-mountain-500">
                       Tests Performed
                     </th>
                   </tr>

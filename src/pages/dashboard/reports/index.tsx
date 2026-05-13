@@ -58,7 +58,10 @@ import {
   AppointmentBillingSettings,
   AppointmentType,
   Branch,
+  PathologyBilling,
 } from "@/types/models";
+
+import { pathologyBillingService } from "@/services/pathologyBillingService";
 
 interface ReportData {
   appointments: Appointment[];
@@ -74,6 +77,7 @@ interface ReportData {
   itemCategories: ItemCategory[];
   issuedItems: IssuedItem[];
   billings: AppointmentBilling[];
+  pathologyBillings: PathologyBilling[];
   billingSettings: AppointmentBillingSettings | null;
 }
 
@@ -146,6 +150,7 @@ export default function ReportsPage() {
     itemCategories: [],
     issuedItems: [],
     billings: [],
+    pathologyBillings: [],
     billingSettings: null,
   });
   const [selectedTab, setSelectedTab] = useState("overview");
@@ -161,13 +166,28 @@ export default function ReportsPage() {
   const [allDates, setAllDates] = useState(false);
 
   // Create doctor options for select
-  const doctorOptions = [
-    { key: "all", label: "All Doctors" },
-    ...reportData.doctors.map((doctor) => ({
-      key: doctor.id,
-      label: doctor.name,
-    })),
-  ];
+  const doctorOptions = useMemo(() => {
+    const options = [{ key: "all", label: "All Doctors" }];
+    const addedIds = new Set<string>();
+
+    // Add standard doctors
+    reportData.doctors.forEach((doctor) => {
+      options.push({ key: doctor.id, label: doctor.name });
+      addedIds.add(doctor.id);
+    });
+
+    // Add any doctors found in pathology but not in standard doctors list (e.g. external referring)
+    reportData.pathologyBillings.forEach(pb => {
+      pb.referringDoctors?.forEach(rd => {
+        if (rd.doctorId && !addedIds.has(rd.doctorId)) {
+          options.push({ key: rd.doctorId, label: rd.doctorName || "Unknown External" });
+          addedIds.add(rd.doctorId);
+        }
+      });
+    });
+
+    return options;
+  }, [reportData.doctors, reportData.pathologyBillings]);
 
   // Create appointment type options for select
   const appointmentTypeOptions = [
@@ -264,6 +284,7 @@ export default function ReportsPage() {
 
         // Load billing data if enabled
         let billings: AppointmentBilling[] = [];
+        let pathologyBillings: PathologyBilling[] = [];
         let billingSettings: AppointmentBillingSettings | null = null;
 
         try {
@@ -279,6 +300,13 @@ export default function ReportsPage() {
               reportBranchId,
             );
           }
+
+          // Always load pathology billings for reports if they exist
+          const pathBillings = await pathologyBillingService.getBillingByClinic(
+            clinicId,
+            reportBranchId
+          );
+          pathologyBillings = pathBillings || [];
         } catch (billingError) {
           console.warn("Billing data not available:", billingError);
           // Don't fail the entire report loading if billing fails
@@ -310,6 +338,7 @@ export default function ReportsPage() {
             itemCategories,
             issuedItems,
             billings,
+            pathologyBillings,
             billingSettings,
           });
         }
@@ -459,50 +488,119 @@ export default function ReportsPage() {
     });
   }, [reportData.medicineUsage, dateRange.start, dateRange.end, allDates]);
 
-  // Filter billings by date range and doctor (for Billing tab)
+  // Filter all billings (Appointment + Pathology) by date range and doctor
   const filteredBillings = useMemo(() => {
-    if (!reportData.billingSettings || !reportData.billings.length)
-      return reportData.billings;
+    // Combine both billing types into a unified structure for filtering
+    const allBillings = [
+      ...reportData.billings.map(b => ({ ...b, type: 'appointment' as const })),
+      ...reportData.pathologyBillings.map(pb => ({ ...pb, type: 'pathology' as const }))
+    ];
 
-    // Start with all billings
-    let billings = reportData.billings;
+    if (!allBillings.length) return [];
 
-    // Apply date range filter if not showing all dates
+    let billings = allBillings;
+
+    // Apply date range filter
     if (!allDates && dateRange.start && dateRange.end) {
       const start = new Date(dateRange.start);
-
       start.setHours(0, 0, 0, 0);
       const end = new Date(dateRange.end);
-
       end.setHours(23, 59, 59, 999);
 
       billings = billings.filter((b) => {
-        const d = b.invoiceDate
-          ? new Date(b.invoiceDate)
-          : b.createdAt
-            ? new Date((b as any).createdAt)
-            : null;
-
+        const d = b.invoiceDate ? new Date(b.invoiceDate) : (b.createdAt ? new Date((b as any).createdAt) : null);
         if (!d || Number.isNaN(d.getTime())) return false;
-
         return d >= start && d <= end;
       });
     }
 
-    // Apply doctor filter if a specific doctor is selected
+    // Apply doctor filter - check primary AND secondary/referring doctors
     if (selectedDoctor !== "all") {
-      billings = billings.filter((b) => b.doctorId === selectedDoctor);
+      billings = billings.filter((b) => {
+        if (b.type === 'appointment') {
+          // Check primary doctor
+          if (b.doctorId === selectedDoctor) return true;
+          // Check item-level doctors
+          return b.items?.some((item: any) => item.doctorId === selectedDoctor);
+        } else {
+          // Check pathology referring doctors
+          return (b as any).referringDoctors?.some((rd: any) => rd.doctorId === selectedDoctor);
+        }
+      });
     }
 
     return billings;
   }, [
     reportData.billings,
-    reportData.billingSettings,
+    reportData.pathologyBillings,
     dateRange.start,
     dateRange.end,
     allDates,
     selectedDoctor,
   ]);
+
+  // Aggregate sales by doctor accurately
+  const doctorPerformance = useMemo(() => {
+    const perf: Record<string, { totalRevenue: number; invoiceCount: number; doctorName: string }> = {};
+
+    // We use ALL relevant billings for performance calculation, respecting the date range filter
+    const baseBillings = [
+      ...reportData.billings.map(b => ({ ...b, type: 'appointment' as const })),
+      ...reportData.pathologyBillings.map(pb => ({ ...pb, type: 'pathology' as const }))
+    ].filter(b => {
+      if (allDates) return true;
+      const d = b.invoiceDate ? new Date(b.invoiceDate) : (b.createdAt ? new Date((b as any).createdAt) : null);
+      if (!d || Number.isNaN(d.getTime())) return false;
+      const start = new Date(dateRange.start);
+      const end = new Date(dateRange.end);
+      start.setHours(0,0,0,0);
+      end.setHours(23,59,59,999);
+      return d >= start && d <= end;
+    });
+
+    baseBillings.forEach(b => {
+      if (b.type === 'appointment') {
+        const doctorsInInvoice = new Set<string>();
+        
+        b.items?.forEach((item: any) => {
+          const dId = item.doctorId || b.doctorId;
+          if (!dId) return;
+          
+          if (!perf[dId]) {
+            perf[dId] = { totalRevenue: 0, invoiceCount: 0, doctorName: item.doctorName || b.doctorName || "Unknown" };
+          }
+          
+          perf[dId].totalRevenue += item.amount || 0;
+          doctorsInInvoice.add(dId);
+        });
+
+        if ((!b.items || b.items.length === 0) && b.doctorId) {
+          if (!perf[b.doctorId]) {
+            perf[b.doctorId] = { totalRevenue: 0, invoiceCount: 0, doctorName: b.doctorName || "Unknown" };
+          }
+          perf[b.doctorId].totalRevenue += b.totalAmount || 0;
+          doctorsInInvoice.add(b.doctorId);
+        }
+
+        doctorsInInvoice.forEach(dId => {
+          perf[dId].invoiceCount += 1;
+        });
+      } else {
+        const refDocs = (b as any).referringDoctors || [];
+        refDocs.forEach((rd: any) => {
+          if (!rd.doctorId) return;
+          if (!perf[rd.doctorId]) {
+            perf[rd.doctorId] = { totalRevenue: 0, invoiceCount: 0, doctorName: rd.doctorName || "Unknown" };
+          }
+          // For pathology, we often credit the whole bill to the referring doctor
+          perf[rd.doctorId].totalRevenue += b.totalAmount || 0;
+          perf[rd.doctorId].invoiceCount += 1;
+        });
+      }
+    });
+
+    return perf;
+  }, [reportData.billings, reportData.pathologyBillings, dateRange, allDates]);
 
   // Generate statistics for overview
   const generateOverviewStats = (): OverviewStats => {
@@ -803,7 +901,7 @@ export default function ReportsPage() {
   };
 
   const exportBillingReport = () => {
-    if (!reportData.billingSettings || !reportData.billings.length) {
+    if (!filteredBillings.length) {
       addToast({
         title: "No Data",
         description: "No billing data available for export.",
@@ -815,47 +913,48 @@ export default function ReportsPage() {
 
     setIsGenerating(true);
     try {
-      const billingData = filteredBillings.map((billing) => {
+      const billingData = filteredBillings.map((billing: any) => {
         const patient = reportData.patients.find(
           (p) => p.id === billing.patientId,
         );
-        const doctor = reportData.doctors.find(
-          (d) => d.id === billing.doctorId,
-        );
+
+        let itemsDetail = "";
+        if (billing.type === 'appointment') {
+          itemsDetail = (billing.items || [])
+            .map((item: any) => `${item.appointmentTypeName} (Qty: ${item.quantity}, Price: NPR ${item.price})`)
+            .join("; ");
+        } else {
+          itemsDetail = (billing.labOrders || [])
+            .map((order: any) => `${order.testName} (NPR ${order.price})`)
+            .join("; ");
+        }
 
         return {
           "Invoice Number": billing.invoiceNumber,
+          Type: billing.type === 'appointment' ? 'Appointment' : 'Pathology',
           Date: formatDate(billing.invoiceDate),
           "Patient Name": billing.patientName,
           "Patient Reg #": patient?.regNumber || "N/A",
-          Doctor: billing.doctorName,
-          "Doctor Type":
-            billing.doctorType === "visitor" ? "Visiting" : "Regular",
-          Subtotal: `NPR ${billing.subtotal.toLocaleString()}`,
-          "Discount Type": billing.discountType,
-          "Discount Value": billing.discountValue,
-          "Discount Amount": `NPR ${billing.discountAmount.toLocaleString()}`,
-          "Tax Rate": `${billing.taxPercentage}%`,
-          "Tax Amount": `NPR ${billing.taxAmount.toLocaleString()}`,
-          "Total Amount": `NPR ${billing.totalAmount.toLocaleString()}`,
+          Doctor: billing.doctorName || (billing.referringDoctors?.[0]?.doctorName) || "N/A",
+          "Secondary Clinicians": billing.type === 'appointment' 
+            ? billing.items?.filter((i: any) => i.doctorId && i.doctorId !== billing.doctorId).map((i: any) => i.doctorName).join(", ") || "None"
+            : billing.referringDoctors?.slice(1).map((rd: any) => rd.doctorName).join(", ") || "None",
+          Subtotal: `NPR ${billing.subtotal?.toLocaleString() || 0}`,
+          "Discount Type": billing.discountType || "flat",
+          "Discount Value": billing.discountValue || 0,
+          "Discount Amount": `NPR ${billing.discountAmount?.toLocaleString() || 0}`,
+          "Tax Rate": `${billing.taxPercentage || 0}%`,
+          "Tax Amount": `NPR ${billing.taxAmount?.toLocaleString() || 0}`,
+          "Total Amount": `NPR ${billing.totalAmount?.toLocaleString() || 0}`,
           "Payment Status": billing.paymentStatus,
-          "Paid Amount": `NPR ${billing.paidAmount.toLocaleString()}`,
-          "Balance Amount": `NPR ${billing.balanceAmount.toLocaleString()}`,
+          "Paid Amount": `NPR ${billing.paidAmount?.toLocaleString() || 0}`,
+          "Balance Amount": `NPR ${billing.balanceAmount?.toLocaleString() || 0}`,
           "Payment Method": billing.paymentMethod || "N/A",
           "Payment Reference": billing.paymentReference || "N/A",
-          "Payment Date": billing.paymentDate
-            ? formatDate(billing.paymentDate)
-            : "N/A",
           Status: billing.status,
           Notes: billing.notes || "N/A",
           "Created Date": formatDate(billing.createdAt),
-          "Items Count": billing.items.length,
-          "Items Detail": billing.items
-            .map(
-              (item) =>
-                `${item.appointmentTypeName} (Qty: ${item.quantity}, Price: NPR ${item.price})`,
-            )
-            .join("; "),
+          "Items Detail": itemsDetail,
         };
       });
 
@@ -1904,48 +2003,34 @@ export default function ReportsPage() {
                     <Divider className="my-3" />
                     <h4 className="clarity-section-header">Doctor Analysis</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {Array.from(
-                        new Set(filteredBillings.map((b) => b.doctorId)),
-                      )
-                        .slice(0, 6)
-                        .map((doctorId) => {
-                          const doctorBillings = filteredBillings.filter(
-                            (b) => b.doctorId === doctorId,
-                          );
-                          const doctorName =
-                            doctorBillings[0]?.doctorName || "Unknown";
-                          const totalRevenue = doctorBillings.reduce(
-                            (sum, b) => sum + b.totalAmount,
-                            0,
-                          );
-
+                      {Object.entries(doctorPerformance)
+                        .sort((a, b) => b[1].totalRevenue - a[1].totalRevenue)
+                        .slice(0, 12)
+                        .map(([doctorId, data]) => {
+                          if (data.totalRevenue === 0 && selectedDoctor !== doctorId) return null;
                           return (
                             <div
                               key={doctorId}
                               className="clarity-stat text-center"
                             >
                               <p className="clarity-stat-value text-mountain-900">
-                                NPR {totalRevenue.toLocaleString()}
+                                NPR {data.totalRevenue.toLocaleString()}
                               </p>
                               <p className="text-xs text-mountain-600">
-                                {doctorName}
+                                {data.doctorName}
                               </p>
                               <p className="text-[11px] text-mountain-500">
-                                {doctorBillings.length} invoices
+                                {data.invoiceCount} invoices involved
                               </p>
                             </div>
                           );
-                        })}
+                        }).filter(Boolean)}
                     </div>
-                    {Array.from(
-                      new Set(filteredBillings.map((b) => b.doctorId)),
-                    ).length > 6 && (
+                    {Object.keys(doctorPerformance).filter(id => doctorPerformance[id].totalRevenue > 0).length > 12 && (
                       <p className="text-sm text-mountain-500 text-center mt-2">
                         +
-                        {Array.from(
-                          new Set(filteredBillings.map((b) => b.doctorId)),
-                        ).length - 6}{" "}
-                        more doctors
+                        {Object.keys(doctorPerformance).filter(id => doctorPerformance[id].totalRevenue > 0).length - 12}{" "}
+                        more doctors with sales
                       </p>
                     )}
                     <Divider className="my-3" />

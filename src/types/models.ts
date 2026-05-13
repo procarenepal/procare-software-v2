@@ -1390,13 +1390,50 @@ export interface PathologyUnit {
   createdBy: string;
 }
 
+/**
+ * Result types for pathology parameters
+ */
+export type PathologyResultType = "numeric" | "text" | "choice" | "calculated" | "qualitative";
+
+export interface PathologyRangeTier {
+  label: string; // e.g. "Optimal", "Borderline High", "Very High"
+  min?: number;
+  max?: number;
+  status: "normal" | "borderline" | "high" | "critical" | "low";
+}
+
+/**
+ * Interface for gender-sensitive reference ranges
+ */
+export interface ReferenceRange {
+  min?: number;
+  max?: number;
+  description?: string; // For text-based ranges
+  normalValue?: string; // For choice-based results (e.g., "Negative")
+  tiers?: PathologyRangeTier[]; // For multi-tier numeric ranges (e.g. Lipid Profile)
+}
+
 // Pathology Parameter model for test parameters (Sub-categories)
 export interface PathologyParameter {
   id: string;
-  categoryId?: string; // Reference to PathologyCategory (Optional for legacy compatibility)
+  categoryId?: string; // Reference to PathologyCategory
   name: string;
-  referenceRange: string;
   unit: string; // Unit ID reference or string
+  
+  resultType: PathologyResultType;
+  options?: string[]; // For choice types (e.g., ["Positive", "Negative"])
+  formula?: string; // For calculated types (e.g., "{cholesterol} - {hdl}")
+
+  // Reference Ranges
+  isGenderSensitive: boolean;
+  allRange: ReferenceRange;
+  maleRange: ReferenceRange;
+  femaleRange: ReferenceRange;
+  
+  // Multi-layer support
+  isHeader?: boolean; // If true, this acts as a section header with no value
+  indentationLevel?: number; // 0 for root, 1 for sub-item, etc.
+  
   clinicId: string;
   branchId: string;
   isActive: boolean;
@@ -1405,38 +1442,101 @@ export interface PathologyParameter {
   createdBy: string;
 }
 
-// Pathology Test Parameter (nested within a test)
-export interface PathologyTestParameter {
-  parameterId: string; // Reference to PathologyParameter
-  parameterName: string; // Denormalized for display
-  categoryId?: string; // Reference to PathologyCategory (for UI filtering)
-  patientResult: string;
-  referenceRange: string;
-  unit: string;
+/**
+ * A Test Template groups multiple parameters together (e.g., CBC Package)
+ */
+export interface PathologyTestTemplate {
+  id: string;
+  name: string;
+  shortName?: string;
+  categoryId: string;
+  categoryName: string;
+  targetType?: "category" | "parameter"; // Strategy for parameter inclusion
+  parameters: string[]; // Array of PathologyParameter IDs
+  price: number;
+  reportDays?: number;
+  method?: string;
+  clinicId: string;
+  branchId: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  isMicrobiology?: boolean;
 }
 
-// Pathology Test model
-export interface PathologyTest {
+// Pathology Order status workflow
+export type PathologyOrderStatus = 
+  | "ordered"    // Billed but sample not yet collected
+  | "collected"  // Sample taken from patient
+  | "received"   // Sample arrived at lab
+  | "processing" // Results being entered
+  | "completed"  // Results entered but not yet verified
+  | "verified"   // Approved by Pathologist
+  | "cancelled";
+
+// Individual result for a parameter within an order
+export interface PathologyResult {
+  parameterId: string;
+  parameterName: string;
+  unit: string;
+  value: string;
+  referenceRange: string;
+  status: "normal" | "abnormal" | "critical";
+  flag?: "H" | "L" | "N" | "B" | "C"; // High, Low, Normal, Borderline, Critical
+  isCalculated?: boolean;
+  isHeader?: boolean; // For nested report structure
+  indentationLevel?: number;
+}
+
+
+/**
+ * Main Pathology Order model (The Hospital Workflow Record)
+ */
+export interface PathologyOrder {
   id: string;
-  patientId?: string; // Optional - for backward compatibility with existing tests
-  patientName: string; // Required - can be any name (including outsiders)
-  patientEmail?: string; // Denormalized for display
-  patientAge?: number; // Patient age
-  patientGender?: "male" | "female" | "other"; // Patient gender
-  testName: string;
-  shortName?: string;
-  testType?: string;
-  categoryId: string; // Reference to PathologyCategory
-  categoryName: string; // Denormalized for display
-  unit?: string;
-  subCategory?: string;
-  method?: string;
-  reportDays?: number;
-  chargeCategory?: string;
-  standardCharge?: number; // In NPR (Nepali Rupees)
-  parameters: PathologyTestParameter[]; // Array of test parameters
-  labTechnicianId?: string; // Optional reference to LabTechnician
-  labTechnicianName?: string; // Denormalized for display
+  orderNumber: string; // LAB-YYYY-MM-XXXX
+  billingId?: string; // Link to the invoice
+  
+  patientId: string;
+  patientName: string;
+  patientAge: number;
+  patientGender: "male" | "female" | "other";
+  
+  testTemplateIds: string[]; // Array of PathologyTestTemplate IDs
+  testNames: string[];
+
+  status: PathologyOrderStatus;
+  results: PathologyResult[];
+  
+  isMicrobiology?: boolean;
+  organismIsolated?: string;
+  colonyCount?: string;
+  sensitivities?: {
+    antibiotic: string;
+    sensitivity: "S" | "I" | "R" | "None";
+    zoneOfInhibition?: string;
+  }[];
+
+  
+  labTechnicianIds?: string[];
+  labTechnicianNames?: string[];
+  labTechnicianId?: string;
+  labTechnicianName?: string;
+  labTechnicianSignatureUrls?: string[]; // Array of signature URLs for multiple technicians
+  
+  verifiedById?: string;
+  verifiedByName?: string;
+  verifiedByRegNo?: string;
+  verifiedByDesignation?: string;
+  verifiedBySignatureUrl?: string; // Signature URL for the pathologist
+  
+  collectionDate?: Date;
+  receivedDate?: Date;
+  completedDate?: Date;
+  verifiedDate?: Date;
+  
+  notes?: string;
   clinicId: string;
   branchId: string;
   isActive: boolean;
@@ -1455,6 +1555,8 @@ export interface LabTechnician {
   address?: string;
   specialization?: string; // Area of specialization
   qualifications?: string; // Educational qualifications, certifications
+  signatureUrl?: string; // URL to the technician's digital signature image
+  registrationNumber?: string; // NHPC or equivalent registration number
   isActive: boolean; // Availability status
   clinicId: string;
   branchId: string;
@@ -1462,6 +1564,25 @@ export interface LabTechnician {
   updatedAt: Date;
   createdBy: string;
 }
+
+// Authorized Signatory model (e.g. Consultant Pathologist)
+export interface PathologySignatory {
+  id: string;
+  name: string;
+  designation: string; // e.g. Consultant Pathologist, HOD
+  registrationNumber: string; // e.g. NMC Reg No
+  signatureUrl?: string;
+  phone?: string;
+  email?: string;
+  isActive: boolean;
+  clinicId: string;
+  branchId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+
 
 // Pathology Billing models
 
