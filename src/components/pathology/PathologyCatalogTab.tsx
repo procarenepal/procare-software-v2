@@ -4,7 +4,9 @@ import {
   IoOptionsOutline,
   IoFolderOpenOutline,
   IoScaleOutline,
-  IoMedkitOutline
+  IoMedkitOutline,
+  IoPeopleOutline,
+  IoShieldCheckmarkOutline
 } from "react-icons/io5";
 import { Button } from "@heroui/button";
 
@@ -12,6 +14,8 @@ import PathologyTemplatesTab from "./PathologyTemplatesTab";
 import PathologyParametersTab from "./PathologyParametersTab";
 import PathologyCategoriesTab from "./PathologyCategoriesTab";
 import PathologyUnitsTab from "./PathologyUnitsTab";
+import LabTechnicianManagement from "./LabTechnicianManagement";
+import PathologySignatoryManagement from "./PathologySignatoryManagement";
 import {
   PathologyTestTemplate,
   PathologyParameter,
@@ -43,16 +47,21 @@ interface PathologyCatalogTabProps {
   onDeleteUnit: (u: PathologyUnit) => void;
   onBackfillRanges: () => void;
   onOpenSeeder: () => void;
+  branchId: string;
+  clinicId: string;
+  onRefreshData: () => Promise<void>;
 }
 
 export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"templates" | "parameters" | "categories" | "units">("templates");
+  const [activeSubTab, setActiveSubTab] = useState<"templates" | "parameters" | "categories" | "units" | "staff" | "signatories">("templates");
 
   const subTabs = [
     { id: "templates", label: "Test Templates", icon: <IoFileTrayFullOutline /> },
     { id: "parameters", label: "Parameters", icon: <IoOptionsOutline /> },
     { id: "categories", label: "Categories", icon: <IoFolderOpenOutline /> },
     { id: "units", label: "Units", icon: <IoScaleOutline /> },
+    { id: "staff", label: "Staff", icon: <IoPeopleOutline /> },
+    { id: "signatories", label: "Signatories", icon: <IoShieldCheckmarkOutline /> },
   ] as const;
 
   return (
@@ -94,6 +103,7 @@ export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
           <PathologyTemplatesTab
             filteredTemplates={props.templates}
             parameters={props.parameters}
+            categories={props.categories}
             searchQuery={props.searchQuery}
             onSearchChange={props.onSearchChange}
             onAdd={props.onAddTemplate}
@@ -135,6 +145,36 @@ export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
             onEdit={props.onEditUnit}
             onDelete={props.onDeleteUnit}
           />
+        )}
+        {activeSubTab === "staff" && (
+          <div className="p-4 bg-mountain-50/20 border border-mountain-100 rounded-xl">
+             <div className="flex items-center justify-between mb-4 px-2">
+                <div>
+                   <h3 className="text-base font-bold text-mountain-900">Laboratory Personnel</h3>
+                   <p className="text-[12px] text-mountain-500">Manage lab technicians and their credentials</p>
+                </div>
+             </div>
+             <LabTechnicianManagement
+                branchId={props.branchId}
+                clinicId={props.clinicId}
+                onRefresh={props.onRefreshData}
+             />
+          </div>
+        )}
+        {activeSubTab === "signatories" && (
+           <div className="p-4 bg-mountain-50/20 border border-mountain-100 rounded-xl">
+              <div className="flex items-center justify-between mb-4 px-2">
+                 <div>
+                    <h3 className="text-base font-bold text-mountain-900">Authorized Signatories</h3>
+                    <p className="text-[12px] text-mountain-500">Manage clinical consultants and report signatories</p>
+                 </div>
+              </div>
+              <PathologySignatoryManagement
+                 branchId={props.branchId}
+                 clinicId={props.clinicId}
+                 onRefresh={props.onRefreshData}
+              />
+           </div>
         )}
       </div>
     </div>

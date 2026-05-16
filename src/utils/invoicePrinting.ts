@@ -36,11 +36,11 @@ export const generateInvoiceHTML = (
     .map(
       (item, index) =>
         `<tr>
-      <td class="text-center" style="text-align: center;">${index + 1}</td>
-      <td class="text-center" style="text-align: center;">${item.testName}${item.testType ? ` (${item.testType})` : ""}</td>
-      <td class="text-center" style="text-align: center;">${item.quantity}</td>
-      ${!isThermal ? `<td class="text-center" style="text-align: center;">NPR ${item.price.toLocaleString()}</td>` : ""}
-      <td class="text-center" style="text-align: center;">NPR ${item.amount.toLocaleString()}</td>
+      <td style="text-align: center; width: 40px;">${index + 1}</td>
+      <td style="text-align: left;">${item.testName}${item.testType ? ` (${item.testType})` : ""}</td>
+      <td style="text-align: center; width: 60px;">${item.quantity}</td>
+      ${!isThermal ? `<td style="text-align: right; width: 100px;">NPR ${item.price.toLocaleString()}</td>` : ""}
+      <td style="text-align: right; width: 120px;">NPR ${item.amount.toLocaleString()}</td>
     </tr>`,
     )
     .join("");
@@ -60,7 +60,7 @@ export const generateInvoiceHTML = (
     .report-wrap td { padding: 0; border: none; }
   </style>
 </head>
-<body>
+<body class="print-window-body">
   <div class="print-container">
     <table class="report-wrap">
       <thead>
@@ -102,21 +102,21 @@ export const generateInvoiceHTML = (
               <div class="summary-container">
                 <table class="summary-table">
                   <tr>
-                    <td>Subtotal</td>
+                    <td style="font-weight: 600;">Subtotal</td>
                     <td class="text-right">NPR ${billing.subtotal.toLocaleString()}</td>
                   </tr>
                   ${billing.discountAmount > 0 ? `<tr><td>Discount</td><td class="text-right">- NPR ${billing.discountAmount.toLocaleString()}</td></tr>` : ""}
                   <tr class="total-row">
-                    <td>Total</td>
-                    <td class="text-right">NPR ${billing.totalAmount.toLocaleString()}</td>
+                    <td style="font-weight: 800;">TOTAL</td>
+                    <td class="text-right" style="font-weight: 900;">NPR ${billing.totalAmount.toLocaleString()}</td>
                   </tr>
                   <tr>
                     <td>Paid</td>
                     <td class="text-right">NPR ${billing.paidAmount.toLocaleString()}</td>
                   </tr>
                   <tr class="font-bold">
-                    <td>Balance</td>
-                    <td class="text-right">NPR ${billing.balanceAmount.toLocaleString()}</td>
+                    <td style="font-weight: 800;">BALANCE</td>
+                    <td class="text-right" style="font-weight: 900;">NPR ${billing.balanceAmount.toLocaleString()}</td>
                   </tr>
                 </table>
               </div>
@@ -186,11 +186,11 @@ export const generateAppointmentInvoiceHTML = (
     .map(
       (item, index) =>
         `<tr>
-          <td class="text-center" style="text-align: center;">${index + 1}</td>
-          <td class="text-center" style="text-align: center;">${item.appointmentTypeName}</td>
-          <td class="text-center" style="text-align: center;">${item.quantity}</td>
-          ${!isThermal ? `<td class="text-center" style="text-align: center;">${formatCurrency(item.price)}</td>` : ""}
-          <td class="text-center" style="text-align: center;">${formatCurrency(item.amount)}</td>
+          <td style="text-align: center; width: 40px;">${index + 1}</td>
+          <td style="text-align: left;">${item.appointmentTypeName}</td>
+          <td style="text-align: center; width: 60px;">${item.quantity}</td>
+          ${!isThermal ? `<td style="text-align: right; width: 100px;">${formatCurrency(item.price)}</td>` : ""}
+          <td style="text-align: right; width: 120px;">${formatCurrency(item.amount)}</td>
         </tr>`,
     )
     .join("");
@@ -222,7 +222,7 @@ export const generateAppointmentInvoiceHTML = (
     ${brandingCSS}
   </style>
 </head>
-<body>
+<body class="print-window-body">
   <div class="print-container">
     ${headerHTML}
     
@@ -361,7 +361,7 @@ export const generatePatientSlipHTML = (
     ${brandingCSS}
   </style>
 </head>
-<body>
+<body class="print-window-body">
   <div class="print-container">
     <div class="content" style="padding-top: 10px;">
       <div class="document-title">
@@ -476,7 +476,7 @@ export const generatePrescriptionHTML = (
     .sign-label { font-size: 11px; color: #64748b; font-weight: 500; }
   </style>
 </head>
-<body>
+<body class="print-window-body">
   <div class="print-container">
     ${headerHTML}
     
@@ -591,11 +591,11 @@ export const generatePharmacyPurchaseHTML = (
     .map((item: any, index: number) => {
       const price = itemLifoPrices[item.id] ?? item.salePrice;
       return `<tr>
-        <td class="text-center">${index + 1}</td>
-        <td>${item.medicineName}</td>
-        <td class="text-center">${item.quantity}</td>
-        ${!isThermal ? `<td class="text-right">NPR ${price.toLocaleString()}</td>` : ""}
-        <td class="text-right">NPR ${item.amount.toLocaleString()}</td>
+        <td style="text-align: center; width: 40px;">${index + 1}</td>
+        <td style="text-align: left;">${item.medicineName}</td>
+        <td style="text-align: center; width: 60px;">${item.quantity}</td>
+        ${!isThermal ? `<td style="text-align: right; width: 100px;">NPR ${price.toLocaleString()}</td>` : ""}
+        <td style="text-align: right; width: 120px;">NPR ${item.amount.toLocaleString()}</td>
       </tr>`;
     })
     .join("");
@@ -609,17 +609,17 @@ export const generatePharmacyPurchaseHTML = (
       <table class="print-table" style="margin-bottom: 0;">
         <thead>
           <tr>
-            <th>Date</th>
+            <th style="width: 120px;">Date</th>
             <th>Method</th>
-            <th class="text-right">Amount</th>
+            <th style="width: 120px;">Amount</th>
           </tr>
         </thead>
         <tbody>
           ${payments.map(p => `
             <tr>
-              <td>${new Date(p.paymentDate).toLocaleDateString()}</td>
-              <td class="text-center">${p.paymentMethod.toUpperCase()}</td>
-              <td class="text-right">NPR ${p.amount.toLocaleString()}</td>
+              <td style="text-align: center;">${new Date(p.paymentDate).toLocaleDateString()}</td>
+              <td style="text-align: center;">${p.paymentMethod.toUpperCase()}</td>
+              <td style="text-align: right;">NPR ${p.amount.toLocaleString()}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -641,7 +641,7 @@ export const generatePharmacyPurchaseHTML = (
     .report-wrap td { padding: 0; border: none; }
   </style>
 </head>
-<body>
+<body class="print-window-body">
   <div class="print-container">
     <table class="report-wrap">
       <thead>
@@ -802,9 +802,9 @@ export const generatePathologyReportHTML = (
 
         if (isHeader) {
           return `<tr>
-            <td colspan="4" style="background-color: #f8fafc; padding: 8px 12px; font-weight: 800; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid #e2e8f0; letter-spacing: 0.5px; color: #334155;">
+            <td colspan="4" style="background-color: #f1f5f9; padding: 8px 12px; font-weight: 900; text-transform: uppercase; font-size: 11px; border-bottom: 2px solid #94a3b8; letter-spacing: 0.5px; color: #000000;">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="width: 3px; height: 12px; background-color: #0d9488; border-radius: 2px;"></div>
+                <div style="width: 4px; height: 14px; background-color: #0d9488; border-radius: 2px;"></div>
                 ${res.parameterName}
               </div>
             </td>
@@ -818,13 +818,13 @@ export const generatePathologyReportHTML = (
           : "padding-left: 12px;";
 
         return `<tr>
-          <td class="${isAbnormal ? "font-bold" : ""}" style="${indentStyle}">${res.parameterName || ""}</td>
-          <td class="${isLongText ? "" : "text-center"}" style="font-size: 14px; ${isAbnormal ? "font-weight: 800;" : "font-weight: 500;"} ${isLongText ? "text-align: left; white-space: pre-wrap; padding: 8px;" : ""}">
+          <td class="${isAbnormal ? "font-bold" : ""}" style="${indentStyle} font-weight: 600; color: #1e293b;">${res.parameterName || ""}</td>
+          <td class="${isLongText ? "" : "text-center"}" style="font-size: 14px; ${isAbnormal ? "font-weight: 900;" : "font-weight: 700;"} color: #000000; ${isLongText ? "text-align: left; white-space: pre-wrap; padding: 8px;" : ""}">
             ${res.value || ""}
-            ${res.flag && isAbnormal ? `<span style="font-size: 10px; margin-left: 4px;">(${res.flag})</span>` : ""}
+            ${res.flag && isAbnormal ? `<span style="font-size: 10px; margin-left: 4px; font-weight: 900;">(${res.flag})</span>` : ""}
           </td>
-          <td class="text-center">${res.referenceRange || ""}</td>
-          <td class="text-center" style="color: #64748b; font-size: 11px;">${res.unit || ""}</td>
+          <td class="text-center" style="font-weight: 600; color: #1e293b;">${res.referenceRange || ""}</td>
+          <td class="text-center" style="color: #334155; font-size: 11px; font-weight: 600;">${res.unit || ""}</td>
         </tr>`;
       })
       .join("");
@@ -836,12 +836,12 @@ export const generatePathologyReportHTML = (
       <div class="content">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
           <div class="document-title" style="margin-bottom: 0; text-align: left;">
-            <h2 style="font-size: 16px; color: #1e293b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Clinical Investigation Report</h2>
-            <div class="document-subtitle" style="font-size: 9px; color: #64748b; margin-top: 1px;">CERTIFIED LABORATORY DIAGNOSTICS</div>
+            <h2 style="font-size: 16px; color: #000000; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">Clinical Investigation Report</h2>
+            <div class="document-subtitle" style="font-size: 9px; color: #334155; margin-top: 1px; font-weight: 700;">CERTIFIED LABORATORY DIAGNOSTICS</div>
           </div>
-          <div style="background: #f8fafc; padding: 4px 12px; border-radius: 4px; border: 1px solid #e2e8f0; text-align: right; min-width: 120px;">
-            <p style="margin: 0; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; font-weight: 700;">Department</p>
-            <p style="margin: 0; font-size: 12px; color: #334155; font-weight: 700;">${page.categoryName || "General Diagnostics"}</p>
+          <div style="background: #f1f5f9; padding: 4px 12px; border-radius: 4px; border: 1px solid #94a3b8; text-align: right; min-width: 120px;">
+            <p style="margin: 0; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; color: #334155; font-weight: 800;">Department</p>
+            <p style="margin: 0; font-size: 12px; color: #000000; font-weight: 800;">${page.categoryName || "General Diagnostics"}</p>
           </div>
         </div>
 
@@ -867,7 +867,7 @@ export const generatePathologyReportHTML = (
         </div>
 
         <div class="info-section" style="margin-top: 10px; padding: 0; background: transparent; border: none;">
-          <h3 style="border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 10px; font-size: 10px; color: #475569;">Test Results & Observations</h3>
+          <h3 style="border-bottom: 2px solid #94a3b8; padding-bottom: 5px; margin-bottom: 10px; font-size: 10px; color: #1e293b; font-weight: 800;">Test Results & Observations</h3>
           <table class="print-table">
             <thead>
               <tr>
@@ -918,9 +918,9 @@ export const generatePathologyReportHTML = (
                       <tr style="border-bottom: 1px solid #f1f5f9;">
                         <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 700; color: #1e293b;">${s.antibiotic}</td>
                         <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-align: center; font-weight: 900;">
-                          ${s.sensitivity === 'S' ? '<span style="color: #059669; background: #ecfdf5; padding: 2px 6px; rounded: 4px;">S (Sensitive)</span>' : 
-                            s.sensitivity === 'I' ? '<span style="color: #d97706; background: #fffbeb; padding: 2px 6px; rounded: 4px;">I (Intermediate)</span>' : 
-                            s.sensitivity === 'R' ? '<span style="color: #dc2626; background: #fef2f2; padding: 2px 6px; rounded: 4px;">R (Resistant)</span>' : '-'}
+                          ${s.sensitivity === 'S' ? '<span style="color: #059669; background: #ecfdf5; padding: 2px 6px; rounded: 4px;">S (Sensitive)</span>' :
+          s.sensitivity === 'I' ? '<span style="color: #d97706; background: #fffbeb; padding: 2px 6px; rounded: 4px;">I (Intermediate)</span>' :
+            s.sensitivity === 'R' ? '<span style="color: #dc2626; background: #fef2f2; padding: 2px 6px; rounded: 4px;">R (Resistant)</span>' : '-'}
                         </td>
                         <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-align: center; color: #64748b; font-weight: 600;">${s.zoneOfInhibition || "—"}</td>
                       </tr>
@@ -942,21 +942,21 @@ export const generatePathologyReportHTML = (
             <td style="width: 60%; vertical-align: bottom; text-align: left; padding: 0;">
               <div style="display: flex; flex-wrap: wrap; gap: 30px; margin-bottom: 10px;">
                 ${(() => {
-                  const names = test.labTechnicianNames && test.labTechnicianNames.length > 0 
-                    ? test.labTechnicianNames 
-                    : test.labTechnicianName 
-                      ? [test.labTechnicianName] 
-                      : [];
-                  const sigs = test.labTechnicianSignatureUrls || [];
-                  
-                  return names.map((name, i) => `
+        const names = test.labTechnicianNames && test.labTechnicianNames.length > 0
+          ? test.labTechnicianNames
+          : test.labTechnicianName
+            ? [test.labTechnicianName]
+            : [];
+        const sigs = test.labTechnicianSignatureUrls || [];
+
+        return names.map((name, i) => `
                     <div style="display: inline-block; min-width: 130px; margin-right: 20px; opacity: 0.9;">
                       ${sigs[i] ? `<img src="${sigs[i]}" style="height: 50px; width: auto; max-width: 130px; object-fit: contain; margin-bottom: 4px; mix-blend-mode: multiply;" />` : '<div style="height: 50px; margin-bottom: 4px;"></div>'}
                       <p style="margin: 0; font-weight: 700; font-size: 11px; color: #1e293b; position: relative; z-index: 1;">${name}</p>
                       <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px;">Laboratory Technician</p>
                     </div>
                   `).join("");
-                })()}
+      })()}
               </div>
               <div style="border-top: 1px solid #e2e8f0; width: 200px; padding-top: 5px;">
                 <p style="margin: 0; font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Performed By</p>
@@ -1002,7 +1002,7 @@ export const generatePathologyReportHTML = (
     .sign-line { border-top: 1px solid #1e293b; width: 200px; padding-top: 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; text-align: center; color: #475569; }
   </style>
 </head>
-<body>
+<body class="print-window-body">
   <div class="print-container">
     ${pagesHtml}
   </div>

@@ -409,7 +409,6 @@ export const pathologyBillingService = {
       let q = query(
         billingRef,
         where("clinicId", "==", clinicId),
-        orderBy("createdAt", "desc"),
       );
 
       if (branchId) {
@@ -417,11 +416,12 @@ export const pathologyBillingService = {
           billingRef,
           where("clinicId", "==", clinicId),
           where("branchId", "==", branchId),
-          orderBy("createdAt", "desc"),
         );
       }
 
+      console.log(`[Service Diagnostic] getBillingByClinic: clinicId=${clinicId}, branchId=${branchId}`);
       const querySnapshot = await getDocs(q);
+      console.log(`[Service Diagnostic] Query returned ${querySnapshot.size} documents`);
       const billings: PathologyBilling[] = [];
 
       querySnapshot.forEach((doc) => {
@@ -438,7 +438,7 @@ export const pathologyBillingService = {
         } as PathologyBilling);
       });
 
-      return billings;
+      return billings.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     } catch (error) {
       console.error("Error getting pathology billing by clinic:", error);
       throw error;

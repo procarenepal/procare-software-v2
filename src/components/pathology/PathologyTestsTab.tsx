@@ -232,8 +232,11 @@ export default function PathologyTestsTab({
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">
                   Verified By
                 </th>
+                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500 text-center">
+                  Next Action
+                </th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500 text-right">
-                  Actions
+                  Manage
                 </th>
               </tr>
             </thead>
@@ -314,37 +317,60 @@ export default function PathologyTestsTab({
                       onChange={(id) => onAssignSignatory(order.id, id)}
                     />
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex gap-2 justify-end">
-                      <Button
-                        color="secondary"
-                        size="sm"
-                        startContent={<IoPrintOutline />}
-                        variant="flat"
-                        className="h-8"
-                        onClick={() => onPrint(order)}
-                      >
-                        Report
-                      </Button>
+                  <td className="px-4 py-3 text-center">
+                    {order.status === "ordered" ? (
                       <Button
                         color="primary"
                         size="sm"
+                        className="h-8 font-bold text-[11px] uppercase tracking-wider"
+                        onClick={() => onEdit(order)} // Assuming opening the modal to collect/process
+                      >
+                        Collect Sample
+                      </Button>
+                    ) : order.status === "verified" ? (
+                      <Button
+                        color="success"
+                        size="sm"
+                        variant="flat"
+                        startContent={<IoPrintOutline />}
+                        className="h-8 font-bold text-[11px] uppercase tracking-wider"
+                        onClick={() => onPrint(order)}
+                      >
+                        Final Report
+                      </Button>
+                    ) : (
+                      <Button
+                        color="secondary"
+                        size="sm"
                         startContent={<IoCreateOutline />}
                         variant="flat"
-                        className="h-8"
+                        className="h-8 font-bold text-[11px] uppercase tracking-wider"
                         onClick={() => onEdit(order)}
                       >
-                        Results
+                        Enter Results
                       </Button>
-                      <Button
-                        color="danger"
-                        size="sm"
-                        isIconOnly
-                        startContent={<IoTrashOutline />}
-                        variant="flat"
-                        className="h-8 w-8 min-w-0"
-                        onClick={() => onDelete(order)}
-                      />
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex gap-2 justify-end">
+                      <Dropdown placement="bottom-end">
+                        <DropdownTrigger>
+                          <Button isIconOnly size="sm" variant="light" className="h-8 w-8 min-w-0">
+                            <IoChevronDownOutline />
+                          </Button>
+                        </DropdownTrigger>
+                        <DropdownMenu aria-label="Order Actions">
+                          <DropdownItem key="edit" startContent={<IoCreateOutline className="w-4 h-4" />} onClick={() => onEdit(order)}>
+                            Full Edit
+                          </DropdownItem>
+                          <DropdownItem key="print" startContent={<IoPrintOutline className="w-4 h-4" />} onClick={() => onPrint(order)}>
+                            View Draft
+                          </DropdownItem>
+                          <DropdownItem key="delete" color="danger" className="text-danger" startContent={<IoTrashOutline className="w-4 h-4" />} onClick={() => onDelete(order)}>
+                            Cancel Order
+                          </DropdownItem>
+                        </DropdownMenu>
+                      </Dropdown>
                     </div>
                   </td>
                 </tr>

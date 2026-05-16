@@ -157,8 +157,9 @@ export const pathologyService = {
         );
       }
 
-
+      console.log(`[Service Diagnostic] getOrdersByClinic: clinicId=${clinicId}, branchId=${branchId}`);
       const querySnapshot = await getDocs(q);
+      console.log(`[Service Diagnostic] Query returned ${querySnapshot.size} documents`);
       const orders: PathologyOrder[] = [];
 
       querySnapshot.forEach((doc) => {
@@ -1856,7 +1857,13 @@ export const pathologyService = {
   /**
    * Bulk Seed Selected Tests from master pathologySeederData
    */
-  async seedSelectedTests(testIds: string[], clinicId: string, branchId: string, userId: string): Promise<boolean> {
+  async seedSelectedTests(
+    testIds: string[], 
+    clinicId: string, 
+    branchId: string, 
+    userId: string,
+    onProgress?: (current: number, total: number, currentName: string) => void
+  ): Promise<boolean> {
     try {
       const { pathologySeederData } = await import('./pathologySeederData');
       
@@ -1870,9 +1877,14 @@ export const pathologyService = {
         return await this.createParameter(paramData);
       };
 
-      for (const testId of testIds) {
+      for (let i = 0; i < testIds.length; i++) {
+        const testId = testIds[i];
         const seedData = pathologySeederData.find(t => t.id === testId);
         if (!seedData) continue;
+
+        if (onProgress) {
+          onProgress(i + 1, testIds.length, seedData.name);
+        }
 
         // 1. Create or Find Category
         const categoryId = await this.createCategory({

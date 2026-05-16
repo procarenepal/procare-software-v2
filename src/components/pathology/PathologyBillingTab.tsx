@@ -198,10 +198,13 @@ export default function PathologyBillingTab({
   ]);
 
   const loadData = async () => {
-    if (!clinicId || !branchId) return;
+    if (!clinicId) return;
 
     try {
       setLoading(true);
+      const isAdmin = userData?.role?.toLowerCase().includes('admin');
+      const queryBranchId = (isAdmin && (branchId === clinicId || !branchId)) ? null : branchId;
+
       const [
         testsData,
         testTypesData,
@@ -213,10 +216,10 @@ export default function PathologyBillingTab({
         doctorsList,
         partnersList,
       ] = await Promise.all([
-        pathologyService.getTestsByClinic(clinicId, branchId),
-        pathologyService.getTestTypesByClinic(clinicId, branchId),
-        pathologyService.getTestsByClinic(clinicId, branchId),
-        pathologyBillingService.getBillingByClinic(clinicId, branchId),
+        pathologyService.getTestsByClinic(clinicId, queryBranchId || undefined),
+        pathologyService.getTestTypesByClinic(clinicId, queryBranchId || undefined),
+        pathologyService.getTestsByClinic(clinicId, queryBranchId || undefined),
+        pathologyBillingService.getBillingByClinic(clinicId, queryBranchId || undefined),
         pathologyBillingService.getBillingSettings(clinicId),
         clinicService.getClinicById(clinicId),
         clinicService.getPrintLayoutConfig(clinicId),
@@ -224,7 +227,16 @@ export default function PathologyBillingTab({
         referralPartnerService.getReferralPartnersByClinic(clinicId),
       ]);
 
-      setBillings(billingsData);
+      let finalBillings = billingsData;
+
+      if (isAdmin && (finalBillings.length === 0 || !queryBranchId)) {
+        console.log("[Diagnostic] Attempting clinic-wide search for billing for admin visibility...");
+        const clinicWideBillings = await pathologyBillingService.getBillingByClinic(clinicId, null as any);
+        console.log(`[Diagnostic] Clinic-wide search found ${clinicWideBillings.length} billings`);
+        finalBillings = clinicWideBillings;
+      }
+
+      setBillings(finalBillings);
       setBillingSettings(settingsData);
       setClinic(clinicData);
       setLayoutConfig(layoutConfigData);

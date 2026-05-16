@@ -25,17 +25,26 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
 
     * { box-sizing: border-box; }
     
-    html, body {
+    @media print {
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        width: 100% !important;
+        display: block !important;
+      }
+    }
+    
+    /* Scoped styles for the print container only */
+    .print-window-body {
       margin: 0;
       padding: 0;
-      background: #f8fafc; /* Subtle background for preview */
-      -webkit-print-color-adjust: exact;
+      background: #f8fafc;
       width: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #1e293b;
+      font-family: 'Inter', -apple-system, sans-serif;
     }
 
     @media print {
@@ -91,13 +100,13 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
       margin: 0;
       text-transform: uppercase;
       letter-spacing: 0.1em;
-      color: #475569;
+      color: #000000;
     }
     .document-subtitle {
       font-size: ${isThermal ? "10px" : "10px"};
-      color: #64748b;
+      color: #334155;
       margin: 0;
-      font-weight: 500;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
@@ -120,11 +129,11 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     .info-section h3 {
       margin: 0 0 4px 0;
       font-size: 9px;
-      font-weight: 700;
-      color: #64748b;
+      font-weight: 800;
+      color: #334155;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid #cbd5e1;
       padding-bottom: 3px;
     }
 
@@ -136,15 +145,15 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     }
 
     .info-label {
-      font-weight: 600;
-      color: #64748b;
+      font-weight: 700;
+      color: #334155;
       width: ${isThermal ? "60px" : "80px"};
       flex-shrink: 0;
     }
 
     .info-value {
-      color: #1e293b;
-      font-weight: 500;
+      color: #000000;
+      font-weight: 600;
       word-break: break-word;
     }
 
@@ -166,53 +175,57 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     }
 
     .print-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 15px;
+      width: 100% !important;
+      border-collapse: collapse !important;
+      margin: 15px 0 !important;
+      border: 1px solid #000000 !important;
     }
 
     .print-table th, .print-table td {
-      border: 1px solid #e2e8f0;
-      padding: ${isThermal ? "4px 4px" : "6px 8px"};
-      font-size: ${isThermal ? "10px" : "11px"};
-      color: #475569;
+      border: 1px solid #000000 !important;
+      padding: ${isThermal ? "4px 4px" : "8px 12px"} !important;
+      font-size: ${isThermal ? "10px" : "12px"} !important;
+      color: #000000 !important;
+      text-align: left !important;
     }
 
     .print-table th {
-      background-color: #f8fafc;
-      font-weight: 700;
-      text-align: center;
-      color: #475569;
-      text-transform: uppercase;
-      font-size: ${isThermal ? "8px" : "10px"};
-      letter-spacing: 0.05em;
+      background-color: #f1f5f9 !important;
+      font-weight: 700 !important;
+      text-align: center !important;
+      text-transform: uppercase !important;
+      font-size: ${isThermal ? "8px" : "10px"} !important;
     }
 
     /* Summary Layout */
     .summary-container {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 10px;
+      display: flex !important;
+      justify-content: flex-end !important;
+      margin-top: 15px !important;
     }
 
     .summary-table {
-      width: ${isThermal ? "100%" : "280px"};
-      border-collapse: collapse;
+      width: ${isThermal ? "100%" : "320px"} !important;
+      border-collapse: collapse !important;
+      border: 1px solid #000000 !important;
     }
 
     .summary-table td {
-      padding: ${isThermal ? "3px 4px" : "4px 8px"};
-      border-bottom: 1px solid #f1f5f9;
-      font-size: ${isThermal ? "11px" : "12px"};
-      color: #475569;
+      padding: ${isThermal ? "3px 4px" : "8px 12px"} !important;
+      border: 1px solid #000000 !important;
+      font-size: ${isThermal ? "11px" : "13px"} !important;
+      color: #000000 !important;
     }
 
     .summary-table tr.total-row td {
-      font-weight: 800;
-      color: #1e293b;
-      font-size: ${isThermal ? "12px" : "14px"};
-      border-bottom: 2px solid #e2e8f0;
-      padding-top: 8px;
+      font-weight: 800 !important;
+      background-color: #f8fafc !important;
+    }
+
+    .summary-table tr.total-row td {
+      font-weight: 800 !important;
+      color: #000000 !important;
+      font-size: ${isThermal ? "12px" : "14px"} !important;
     }
 
     .text-right { text-align: right !important; }
@@ -303,7 +316,7 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
 
     .city-info {
       font-size: 11px;
-      color: #64748b;
+      color: #334155;
       margin-top: 2px;
       text-align: center;
     }
@@ -328,8 +341,8 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
 
     .contact-label {
       font-size: 9px;
-      font-weight: 700;
-      color: #94a3b8;
+      font-weight: 800;
+      color: #475569;
       text-transform: uppercase;
     }
 
@@ -361,8 +374,8 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
 
     .footer-text {
       font-size: ${config.fieldSizes?.footerText ? `${config.fieldSizes.footerText}px` : "9px"};
-      font-weight: 700;
-      color: #94a3b8;
+      font-weight: 800;
+      color: #475569;
       text-transform: uppercase;
       letter-spacing: 0.3em;
       margin: 0;
@@ -461,3 +474,4 @@ export const getPrintFooterHTML = (config: PrintLayoutConfig) => {
     </footer>
   `;
 };
+

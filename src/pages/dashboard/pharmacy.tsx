@@ -3672,18 +3672,7 @@ export default function PharmacyPage() {
                                     >
                                       <IoCreateOutline />
                                     </button>
-                                    <button
-                                      className="p-1.5 text-mountain-500 hover:text-health-600 hover:bg-health-50 rounded"
-                                      title="Print"
-                                      onClick={() =>
-                                        window.open(
-                                          `/dashboard/pharmacy/purchase/${purchase.id}?print=true`,
-                                          "_blank",
-                                        )
-                                      }
-                                    >
-                                      <IoPrintOutline />
-                                    </button>
+
                                     <button
                                       className="p-1.5 text-mountain-500 hover:text-saffron-600 hover:bg-saffron-50 rounded disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-mountain-500"
                                       disabled={netAfterReturns <= 0}

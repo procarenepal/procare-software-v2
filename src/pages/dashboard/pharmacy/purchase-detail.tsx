@@ -714,7 +714,7 @@ export default function PurchaseDetailPage() {
       return;
     }
 
-    if (paymentForm.amount > dueAmount) {
+    if (paymentForm.amount > dueAmount + 0.01) {
       addToast({
         title: "Validation Error",
         description: `Payment amount cannot exceed due amount (NPR ${dueAmount.toLocaleString()})`,

@@ -1148,6 +1148,7 @@ export interface AppointmentBillingSettings {
 // Individual line item in an appointment invoice
 export interface AppointmentBillingItem {
   id: string;
+  itemType?: "appointment" | "pathology";
   appointmentTypeId: string;
   appointmentTypeName: string; // Denormalized for easy display
   price: number; // Price per appointment (auto-fetched from appointment type)
@@ -1433,6 +1434,7 @@ export interface PathologyParameter {
   // Multi-layer support
   isHeader?: boolean; // If true, this acts as a section header with no value
   indentationLevel?: number; // 0 for root, 1 for sub-item, etc.
+  price?: number; // Price per parameter in NPR
   
   clinicId: string;
   branchId: string;
@@ -1449,10 +1451,21 @@ export interface PathologyTestTemplate {
   id: string;
   name: string;
   shortName?: string;
-  categoryId: string;
-  categoryName: string;
+  categoryId?: string;
+  categoryName?: string;
+  categoryIds?: string[];
+  categoryNames?: string[];
   targetType?: "category" | "parameter"; // Strategy for parameter inclusion
   parameters: string[]; // Array of PathologyParameter IDs
+  parameterOverrides?: {
+    id: string;
+    name?: string;
+    unit?: string;
+    maleRange?: string;
+    femaleRange?: string;
+    allRange?: string;
+    price?: number;
+  }[];
   price: number;
   reportDays?: number;
   method?: string;
@@ -1463,6 +1476,7 @@ export interface PathologyTestTemplate {
   updatedAt: Date;
   createdBy: string;
   isMicrobiology?: boolean;
+  excludedParameterIds?: string[];
 }
 
 // Pathology Order status workflow

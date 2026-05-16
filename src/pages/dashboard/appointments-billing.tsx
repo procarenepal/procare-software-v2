@@ -44,6 +44,8 @@ import { appointmentTypeService } from "@/services/appointmentTypeService";
 import { doctorCommissionService } from "@/services/doctorCommissionService";
 import { branchService } from "@/services/branchService";
 import { treatmentCategoryService } from "@/services/treatmentCategoryService";
+import { pathologyService } from "@/services/pathologyService";
+import { pathologyBillingService } from "@/services/pathologyBillingService";
 import {
   AppointmentBilling,
   AppointmentBillingItem,
@@ -52,6 +54,9 @@ import {
   Doctor,
   AppointmentType,
   TreatmentCategory,
+  PathologyTestTemplate,
+  PathologyBilling,
+  PathologyOrder,
 } from "@/types/models";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -390,6 +395,7 @@ export default function AppointmentBillingPage() {
   // Data
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [pathologyTemplates, setPathologyTemplates] = useState<PathologyTestTemplate[]>([]);
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>(
     [],
   );
@@ -523,7 +529,7 @@ export default function AppointmentBillingPage() {
       if (!settings?.enabledByAdmin || !settings?.isActive) return;
       setBillingSettings(settings);
 
-      const [pData, dData, aData, bData, tcData] = await Promise.all([
+      const [pData, dData, aData, bData, tcData, ptData, brData] = await Promise.all([
         patientService.getPatientsByClinic(clinicId, effectiveBranchId),
         doctorService.getDoctorsByClinic(clinicId, effectiveBranchId),
         appointmentTypeService.getAppointmentTypesByClinic(
@@ -538,12 +544,16 @@ export default function AppointmentBillingPage() {
           clinicId,
           effectiveBranchId,
         ),
+        pathologyService.getTestTemplatesByClinic(clinicId, effectiveBranchId),
+        branchService.getClinicBranches(clinicId),
       ]);
 
       setPatients(pData);
       setDoctors(dData);
       setAppointmentTypes(aData);
       setTreatmentCategories(tcData);
+      setPathologyTemplates(ptData);
+      setBranches(brData || []);
       let filtered = bData || [];
 
       if (filterDate) {
@@ -658,6 +668,7 @@ export default function AppointmentBillingPage() {
         ...p.items,
         {
           id: `item_${Date.now()}`,
+          itemType: "appointment",
           appointmentTypeId: "",
           appointmentTypeName: "",
           price: 0,
@@ -688,51 +699,37 @@ export default function AppointmentBillingPage() {
     });
   };
 
-  const updateInvoiceItem = (
-    index: number,
-    updates: Partial<AppointmentBillingItem>,
-  ) => {
-    setFormData((p) => {
-      const items = [...p.items];
-      const item = { ...items[index], ...updates };
+  const updateInvoiceItem = (index: number, updates: Partial<AppointmentBillingItem & { itemType?: string }>) => {
+    setFormData((prev) => {
+      const newItems = [...prev.items];
+      const item = { ...newItems[index], ...updates };
 
-      // Auto-fetch price and category if appointment type changes
-      if ("appointmentTypeId" in updates) {
-        const at = appointmentTypes.find(
-          (t) => t.id === updates.appointmentTypeId,
-        );
-
-        if (at) {
-          item.appointmentTypeName = at.name;
-          item.price = at.price;
-          item.categoryId = at.categoryId;
-
-          const doc = doctors.find(
-            (d) => d.id === (item.doctorId || p.doctorId),
-          );
-
-          item.commission = doc?.defaultCommission || 0;
+      if (item.itemType === "pathology" && updates.appointmentTypeId) {
+        const template = pathologyTemplates.find(t => t.id === updates.appointmentTypeId);
+        if (template) {
+          item.appointmentTypeName = template.name;
+          item.price = template.price;
+        }
+      } else if (item.itemType === "appointment" && updates.appointmentTypeId) {
+        const type = appointmentTypes.find(t => t.id === updates.appointmentTypeId);
+        if (type) {
+          item.appointmentTypeName = type.name;
+          item.price = type.price;
         }
       }
 
-      // Recalculate discount and final amount
-      const baseAmount = item.price * item.quantity;
-      let discAmt = 0;
-      const dVal = item.discountValue || 0;
-      const dType = item.discountType || "percent";
-
-      if (dType === "percent") {
-        discAmt = (baseAmount * dVal) / 100;
-      } else {
-        discAmt = Math.min(dVal, baseAmount);
+      item.amount = (item.price || 0) * (item.quantity || 1);
+      
+      if (item.discountValue && item.discountValue > 0) {
+        if (item.discountType === "percent") {
+          item.amount -= (item.amount * item.discountValue) / 100;
+        } else {
+          item.amount -= item.discountValue;
+        }
       }
 
-      item.discountAmount = discAmt;
-      item.amount = baseAmount - discAmt;
-
-      items[index] = item;
-
-      return { ...p, items };
+      newItems[index] = item;
+      return { ...prev, items: newItems };
     });
   };
 
@@ -746,7 +743,7 @@ export default function AppointmentBillingPage() {
     if (
       !formData.items.every(
         (i) =>
-          i.appointmentTypeId && i.quantity > 0 && i.price > 0 && i.doctorId,
+          i.appointmentTypeId && i.quantity > 0 && i.price >= 0 && i.doctorId,
       )
     ) {
       addToast({ title: "Select doctor for all items", color: "warning" });
@@ -808,6 +805,103 @@ export default function AppointmentBillingPage() {
       };
 
       const id = await appointmentBillingService.createBilling(data);
+
+      // --- PATHOLOGY INTEGRATION ---
+      const pathologyItems = formData.items.filter(i => i.itemType === 'pathology');
+      
+      if (pathologyItems.length > 0) {
+        try {
+          const testNames = pathologyItems.map(i => i.appointmentTypeName);
+          const testTemplateIds = pathologyItems.map(i => i.appointmentTypeId).filter(id => !!id);
+          
+          // 1. Generate a proper pathology invoice number
+          const pathInvoiceNumber = await pathologyBillingService.generateInvoiceNumber(clinicId);
+          const selectedPatient = patients.find(p => p.id === formData.patientId);
+          // Resolve a concrete branch ID for visibility.
+          // Fallback order: Selected Branch -> Main Branch -> First Branch -> User's Branch
+          const mainBranch = branches.find(b => b.isMainBranch);
+          const targetBranchId = (effectiveBranchId === "all" || !effectiveBranchId) 
+            ? (mainBranch?.id || branches[0]?.id || userData?.branchId || "") 
+            : effectiveBranchId;
+          
+          // 2. Create the PathologyBilling record first to get an ID
+          const pathBillingData: Omit<PathologyBilling, "id" | "createdAt" | "updatedAt"> = {
+            invoiceNumber: pathInvoiceNumber,
+            clinicId,
+            branchId: targetBranchId,
+            patientName: formData.patientName.trim(),
+            patientAge: selectedPatient?.age ? parseInt(selectedPatient.age.toString().replace(/[^0-9]/g, '')) : 0,
+            patientGender: (selectedPatient?.gender?.toLowerCase() as any) || "other",
+            patientPhone: selectedPatient?.phone || "",
+            patientEmail: selectedPatient?.email || "",
+            patientAddress: selectedPatient?.address || "",
+            invoiceDate: new Date(formData.invoiceDate),
+            items: pathologyItems.map(i => ({
+              id: i.id,
+              testId: i.appointmentTypeId,
+              testName: i.appointmentTypeName,
+              price: i.price,
+              quantity: i.quantity,
+              amount: i.amount
+            })),
+            subtotal: pathologyItems.reduce((sum, i) => sum + i.amount, 0),
+            discountType: formData.discountType,
+            discountValue: 0, 
+            discountAmount: 0,
+            taxPercentage: 0,
+            taxAmount: 0,
+            totalAmount: pathologyItems.reduce((sum, i) => sum + i.amount, 0),
+            status: "finalized",
+            paymentStatus: "unpaid",
+            paidAmount: 0,
+            balanceAmount: pathologyItems.reduce((sum, i) => sum + i.amount, 0),
+            createdBy: currentUser.uid,
+          };
+
+          console.log("SYNC STEP 2: Creating Pathology Billing record...");
+          const pathBillingId = await pathologyBillingService.createBilling(pathBillingData);
+          console.log("SYNC SUCCESS: Pathology Billing ID:", pathBillingId);
+
+          // 3. Create the Lab Order linked to this billing
+          const orderData: Omit<PathologyOrder, "id" | "createdAt" | "updatedAt"> = {
+            clinicId,
+            branchId: targetBranchId,
+            patientId: formData.patientId,
+            patientName: formData.patientName.trim(),
+            patientAge: Number(pathBillingData.patientAge) || 0,
+            patientGender: (pathBillingData.patientGender as any) || "other",
+            testTemplateIds: testTemplateIds.filter(id => !!id),
+            testNames: testNames.filter(name => !!name),
+            status: "ordered",
+            orderNumber: pathInvoiceNumber.replace("INV", "LAB"),
+            billingId: pathBillingId,
+            isActive: true,
+            createdBy: currentUser.uid,
+            results: [],
+            labTechnicianIds: [],
+            labTechnicianNames: [],
+            labTechnicianSignatureUrls: [],
+          };
+
+          console.log("SYNC STEP 3: Creating Lab Order...", orderData.orderNumber);
+          console.log("[Diagnostic] Order Data to be created:", JSON.stringify(orderData, null, 2));
+          await pathologyService.createOrder(orderData);
+          console.log("SYNC SUCCESS: Lab Order created in worklist");
+          
+          addToast({ 
+            title: "Lab Order Created", 
+            description: `Order ${orderData.orderNumber} added to worklist.`,
+            color: "success" 
+          });
+        } catch (e) {
+          console.error("Error creating pathology order:", e);
+          addToast({ 
+            title: "Warning", 
+            description: "Invoice created but failed to push tests to lab worklist.",
+            color: "warning" 
+          });
+        }
+      }
 
       try {
         await doctorCommissionService.createCommission(
@@ -1190,20 +1284,51 @@ export default function AppointmentBillingPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   {formData.items.map((item, i) => (
-                    <div
-                      key={item.id}
-                      className="grid grid-cols-1 md:grid-cols-12 gap-3 p-3 border border-mountain-200 rounded items-end bg-white shadow-sm"
-                    >
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 bg-white border border-mountain-100 rounded-lg shadow-sm relative group animate-in fade-in slide-in-from-top-2 duration-300" key={item.id}>
+                      <div className="md:col-span-2">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[12px] font-medium text-mountain-700">
+                            Type
+                          </label>
+                          <select
+                            className="h-9 px-2 text-[12.5px] border border-mountain-200 rounded bg-white shadow-sm focus:border-teal-600 transition-all"
+                            value={item.itemType || "appointment"}
+                            onChange={(e) =>
+                              updateInvoiceItem(i, { 
+                                itemType: e.target.value as any,
+                                appointmentTypeId: "",
+                                appointmentTypeName: "",
+                                price: 0
+                              })
+                            }
+                          >
+                            <option value="appointment">Appointment</option>
+                            <option value="pathology">Lab</option>
+                          </select>
+                        </div>
+                      </div>
                       <div className="md:col-span-3">
                         <SearchSelect
-                          items={appointmentTypes.map((t) => ({
-                            id: t.id,
-                            primary: t.name,
-                            secondary: fmtCur(t.price),
-                          }))}
-                          label="Appointment Type"
+                          items={
+                            item.itemType === "pathology"
+                              ? pathologyTemplates.map((t) => ({
+                                  id: t.id,
+                                  primary: t.name,
+                                  secondary: fmtCur(t.price),
+                                }))
+                              : appointmentTypes.map((t) => ({
+                                  id: t.id,
+                                  primary: t.name,
+                                  secondary: fmtCur(t.price),
+                                }))
+                          }
+                          label={
+                            item.itemType === "pathology"
+                              ? "Lab Test"
+                              : "Appointment Type"
+                          }
                           value={item.appointmentTypeId}
                           onChange={(id) =>
                             updateInvoiceItem(i, { appointmentTypeId: id })

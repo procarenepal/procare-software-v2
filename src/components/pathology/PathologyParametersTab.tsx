@@ -128,6 +128,7 @@ export default function PathologyParametersTab({
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Type</th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Reference Range(s)</th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Unit</th>
+                <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500">Price (NPR)</th>
                 <th className="px-4 py-2.5 text-[12px] font-medium text-mountain-500 text-right">Actions</th>
               </tr>
             </thead>
@@ -213,6 +214,11 @@ export default function PathologyParametersTab({
                               <span className="inline-flex items-center px-2 py-0.5 rounded border border-teal-100 bg-teal-50 text-teal-700 text-[11px] font-medium">
                                 {unitObj?.name || parameter.unit || "—"}
                               </span>
+                            </td>
+                            <td className="px-4 py-4">
+                              <p className="text-[13px] font-semibold text-mountain-900">
+                                {parameter.price ? `NPR ${parameter.price.toLocaleString()}` : "—"}
+                              </p>
                             </td>
                             <td className="px-4 py-4 text-right">
                               <div className="flex gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">

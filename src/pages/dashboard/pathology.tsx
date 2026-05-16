@@ -13,6 +13,9 @@ import {
   IoOptionsOutline,
   IoMedkitOutline,
   IoShieldCheckmarkOutline,
+  IoReceiptOutline,
+  IoBarChartOutline,
+  IoSettingsOutline,
 } from "react-icons/io5";
 
 import { title } from "@/components/primitives";
@@ -27,6 +30,7 @@ import { pathologyService } from "@/services/pathologyService";
 import { labTechnicianService } from "@/services/labTechnicianService";
 import { pathologySignatoryService } from "@/services/pathologySignatoryService";
 import { pathologyBillingService } from "@/services/pathologyBillingService";
+import { branchService } from "@/services/branchService";
 import { clinicService } from "@/services/clinicService";
 import { pathologySeederData } from "@/services/pathologySeederData";
 import LabTechnicianManagement from "@/components/pathology/LabTechnicianManagement";
@@ -64,14 +68,18 @@ import {
 import { generatePathologyReportHTML } from "@/utils/invoicePrinting";
 
 const TAB_KEYS = [
-  "worklist",
-  "billing",
-  "catalog",
-  "technicians",
-  "signatories",
-  "dailyReport",
-  "legacy",
+  "reception",     // Order creation & Billing
+  "laboratory",    // Processing & Result Entry
+  "reports",       // Finalized reports & Daily summary
+  "settings",      // Catalog & Admin
 ] as const;
+
+const TABS = [
+  { id: "reception", label: "Reception & Billing", icon: IoReceiptOutline },
+  { id: "laboratory", label: "Laboratory (Worklist)", icon: IoFlaskOutline },
+  { id: "reports", label: "Reports & Summaries", icon: IoBarChartOutline },
+  { id: "settings", label: "Lab Management", icon: IoSettingsOutline },
+];
 
 
 
@@ -85,6 +93,7 @@ function PathologySearchSelect({
   required,
   placeholder,
   defaultDisplay,
+  direction = "down", // Added direction prop
 }: {
   label: string;
   items: { id: string; primary: string; secondary?: string }[];
@@ -95,6 +104,7 @@ function PathologySearchSelect({
   required?: boolean;
   placeholder?: string;
   defaultDisplay?: string;
+  direction?: "up" | "down";
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -170,7 +180,7 @@ function PathologySearchSelect({
               setOpen(false);
             }}
           />
-          <div className="absolute z-20 top-full mt-1 left-0 right-0 bg-white border border-mountain-200 rounded shadow-lg max-h-64 overflow-y-auto">
+          <div className={`absolute z-20 ${direction === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 bg-white border border-mountain-200 rounded shadow-lg max-h-64 overflow-y-auto`}>
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-3 py-4 text-center">
                 <p className="text-[13px] text-mountain-500">
@@ -224,18 +234,16 @@ function PathologySearchSelect({
   );
 }
 
-
 export default function PathologyPage() {
   const { clinicId, currentUser, userData } = useAuthContext();
   const branchId = userData?.branchId || userData?.clinicId || clinicId;
 
   // Active tab state
   const [activeTab, setActiveTab] = useState<(typeof TAB_KEYS)[number]>(
-    "worklist",
+    "reception",
   );
 
 
-  // Loading state
   // Loading state
   const [loading, setLoading] = useState(true);
 
@@ -268,6 +276,7 @@ export default function PathologyPage() {
   const quickPatientModalState = useModalState(false);
   const deleteConfirmModalState = useModalState(false);
   const seederModalState = useModalState(false);
+  const [seedProgress, setSeedProgress] = useState<{ current: number; total: number; name: string } | null>(null);
   const [seederSelectedIds, setSeederSelectedIds] = useState<string[]>([]);
 
   // Form states
@@ -310,20 +319,32 @@ export default function PathologyPage() {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0],
   );
-
   const [testsSearchQuery, setTestsSearchQuery] = useState("");
 
   const [testTypeForm, setTestTypeForm] = useState({
     id: "",
     name: "",
     targetType: "category" as "category" | "parameter",
-    categoryId: "",
+    categoryIds: [] as string[],
+    excludedParameterIds: [] as string[],
     newCategoryName: "", // For inline creation
     price: "",
     reportDays: "1", // Turnaround time
     isMicrobiology: false,
     // Unified Parameters (for 'parameter' targetType)
-    selectedParameters: [] as { id?: string; name: string; unit: string; range: string; resultType: string; tiers?: any[]; showTiers?: boolean }[]
+    selectedParameters: [] as { 
+      id?: string; 
+      name: string; 
+      unit: string; 
+      range: string; 
+      maleRange?: string;
+      femaleRange?: string;
+      isGenderSensitive?: boolean;
+      resultType: string; 
+      price: string; 
+      tiers?: any[]; 
+      showTiers?: boolean 
+    }[]
   });
 
   const [categoryForm, setCategoryForm] = useState({
@@ -344,7 +365,8 @@ export default function PathologyPage() {
     unit: "",
     resultType: "numeric" as "numeric" | "text" | "qualitative",
     isGenderSensitive: false,
-    tiers: [] as any[] // [{ label, min, max, status }]
+    tiers: [] as any[], // [{ label, min, max, status }]
+    price: "", // Price in NPR
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -679,8 +701,8 @@ export default function PathologyPage() {
 
   const resetCategoryForm = () => { setCategoryForm({ id: "", name: "" }); setIsEditing(false); };
   const resetUnitForm = () => { setUnitForm({ id: "", name: "" }); setIsEditing(false); };
-  const resetParameterForm = () => { setParameterForm({ id: "", categoryId: "", name: "", referenceRange: "", unit: "", resultType: "numeric", isGenderSensitive: false, tiers: [] }); setIsEditing(false); };
-  const resetTestTypeForm = () => { setTestTypeForm({ id: "", name: "", targetType: "category", categoryId: "", newCategoryName: "", price: "", reportDays: "1", isMicrobiology: false, selectedParameters: [] }); setIsEditing(false); };
+  const resetParameterForm = () => { setParameterForm({ id: "", categoryId: "", name: "", referenceRange: "", unit: "", resultType: "numeric", isGenderSensitive: false, tiers: [], price: "" }); setIsEditing(false); };
+  const resetTestTypeForm = () => { setTestTypeForm({ id: "", name: "", targetType: "category", categoryIds: [], excludedParameterIds: [], newCategoryName: "", price: "", reportDays: "1", isMicrobiology: false, selectedParameters: [] }); setIsEditing(false); };
 
   const handleSaveCategory = async () => {
     if (!categoryForm.name.trim()) return;
@@ -712,6 +734,7 @@ export default function PathologyPage() {
       setLoading(true);
       const data = {
         ...parameterForm,
+        price: parseFloat(parameterForm.price) || 0,
         clinicId: clinicId!,
         branchId: branchId!,
         isActive: true,
@@ -746,12 +769,27 @@ export default function PathologyPage() {
     }
   };
 
+  // Auto-calculate Total Price based on parameters
+  useEffect(() => {
+    if (testTypeForm.targetType === 'category') {
+      const catParams = parameters.filter(p => 
+        testTypeForm.categoryIds.includes(p.categoryId) && 
+        !testTypeForm.excludedParameterIds.includes(p.id)
+      );
+      const total = catParams.reduce((sum, p) => sum + (p.price || 0), 0);
+      setTestTypeForm(prev => ({ ...prev, price: total.toString() }));
+    } else {
+      const total = testTypeForm.selectedParameters.reduce((sum, p) => sum + parseFloat(p.price || "0"), 0);
+      setTestTypeForm(prev => ({ ...prev, price: total.toString() }));
+    }
+  }, [testTypeForm.selectedParameters, testTypeForm.targetType, testTypeForm.categoryIds, testTypeForm.excludedParameterIds, parameters]);
+
   const handleSaveTestType = async () => {
     if (!testTypeForm.name.trim()) {
       addToast({ title: "Required", description: "Please enter a Test Name.", color: "warning" });
       return;
     }
-    if (!testTypeForm.categoryId && !testTypeForm.newCategoryName.trim()) {
+    if (testTypeForm.categoryIds.length === 0 && !testTypeForm.newCategoryName.trim()) {
       addToast({ title: "Required", description: "Please select or create a Category.", color: "warning" });
       return;
     }
@@ -764,11 +802,11 @@ export default function PathologyPage() {
       setLoading(true);
       const batch = writeBatch(db);
 
-      let finalCategoryId = testTypeForm.categoryId;
-      let finalCategoryName = categories.find(c => c.id === testTypeForm.categoryId)?.name || "General";
+      let finalCategoryIds = testTypeForm.categoryIds;
+      let finalCategoryNames = testTypeForm.categoryIds.map(cid => categories.find(c => c.id === cid)?.name || "General");
 
       // 1. Handle Inline Category Creation
-      if (!finalCategoryId && testTypeForm.newCategoryName) {
+      if (testTypeForm.newCategoryName) {
         const newCatRef = doc(collection(db, "pathologyCategories"));
         const newCatData = {
           name: testTypeForm.newCategoryName,
@@ -780,15 +818,15 @@ export default function PathologyPage() {
           createdBy: currentUser?.uid || ""
         };
         batch.set(newCatRef, newCatData);
-        finalCategoryId = newCatRef.id;
-        finalCategoryName = testTypeForm.newCategoryName;
+        finalCategoryIds.push(newCatRef.id);
+        finalCategoryNames.push(testTypeForm.newCategoryName);
       }
 
       let finalParameterIds: string[] = [];
 
       if (testTypeForm.targetType === 'category') {
         finalParameterIds = parameters
-          .filter(p => p.categoryId === finalCategoryId)
+          .filter(p => finalCategoryIds.includes(p.categoryId) && !testTypeForm.excludedParameterIds.includes(p.id))
           .map(p => p.id);
       } else {
         // 2. Unified flow: Create any new parameters defined inline
@@ -820,7 +858,7 @@ export default function PathologyPage() {
               maleRange: { description: p.range, tiers: p.tiers || [], ...parsedRange },
               femaleRange: { description: p.range, tiers: p.tiers || [], ...parsedRange },
               resultType: p.resultType,
-              categoryId: finalCategoryId,
+              categoryId: finalCategoryIds[0] || "",
               clinicId: clinicId!,
               branchId: branchId!,
               isActive: true,
@@ -850,14 +888,42 @@ export default function PathologyPage() {
         }
       }
 
-      // 3. Create/Update Template
+      // 3. Calculate Price based on parameters
+      let totalPrice = 0;
+      if (testTypeForm.targetType === 'category') {
+        totalPrice = parameters
+          .filter(p => finalCategoryIds.includes(p.categoryId) && !testTypeForm.excludedParameterIds.includes(p.id))
+          .reduce((sum, p) => sum + (p.price || 0), 0);
+      } else {
+        // Sum up prices: use inline price if it's a new parameter, otherwise use the stored parameter price
+        totalPrice = testTypeForm.selectedParameters.reduce((sum, p) => {
+          if (p.id) {
+            const existing = parameters.find(param => param.id === p.id);
+            return sum + (existing?.price || 0);
+          }
+          // For inline new parameters
+          return sum + (parseFloat(p.price) || 0);
+        }, 0);
+      }
+
+      // 4. Create/Update Template
       const templateData: Omit<PathologyTestTemplate, "id" | "createdAt" | "updatedAt"> = {
         name: testTypeForm.name.trim(),
-        categoryId: finalCategoryId,
-        categoryName: finalCategoryName,
+        categoryIds: finalCategoryIds,
+        categoryNames: finalCategoryNames,
+        excludedParameterIds: testTypeForm.excludedParameterIds,
         targetType: testTypeForm.targetType,
         parameters: finalParameterIds,
-        price: parseFloat(testTypeForm.price) || 0,
+        parameterOverrides: testTypeForm.selectedParameters.map(p => ({
+          id: p.id || "new_" + Math.random().toString(36).substr(2, 9),
+          name: p.name || "",
+          unit: p.unit || "",
+          maleRange: p.maleRange || "",
+          femaleRange: p.femaleRange || "",
+          allRange: p.range || "",
+          price: parseFloat(p.price || "0")
+        })),
+        price: totalPrice,
         reportDays: parseInt(testTypeForm.reportDays) || 1,
         clinicId: clinicId!,
         branchId: branchId!,
@@ -1035,7 +1101,8 @@ export default function PathologyPage() {
       unit: p.unit,
       resultType: p.resultType || "numeric",
       isGenderSensitive: p.isGenderSensitive || false,
-      tiers: p.allRange?.tiers || []
+      tiers: p.allRange?.tiers || [],
+      price: p.price?.toString() || ""
     });
     setIsEditing(true);
     parameterModalState.open();
@@ -1049,6 +1116,7 @@ export default function PathologyPage() {
         unit: p?.unit || "",
         range: p?.allRange?.description || "",
         resultType: p?.resultType || "numeric",
+        price: p?.price?.toString() || "0",
         tiers: p?.allRange?.tiers || []
       };
     });
@@ -1056,13 +1124,14 @@ export default function PathologyPage() {
     setTestTypeForm({
       id: t.id,
       name: t.name,
-      targetType: t.targetType || 'parameter',
-      categoryId: t.categoryId,
-      newCategoryName: "",
       price: t.price.toString(),
       reportDays: t.reportDays?.toString() || "1",
+      selectedParameters: mappedParameters,
+      targetType: t.targetType || "category",
+      categoryIds: t.categoryIds || (t.categoryId ? [t.categoryId] : []),
+      excludedParameterIds: t.excludedParameterIds || [],
+      newCategoryName: "",
       isMicrobiology: t.isMicrobiology || false,
-      selectedParameters: mappedParameters
     });
     setIsEditing(true);
     testTypeModalState.open();
@@ -1082,39 +1151,23 @@ export default function PathologyPage() {
     }
   };
 
-  async function reloadAllData() {
-    if (!clinicId || !branchId) return;
-    const [
-      ordersData, templatesData, categoriesData, unitsData, parametersData, techniciansData, billingsData, patientsData, testsData, signatoriesData
-    ] = await Promise.all([
-      pathologyService.getOrdersByClinic(clinicId, branchId),
-      pathologyService.getTestTemplatesByClinic(clinicId, branchId),
-      pathologyService.getCategoriesByClinic(clinicId, branchId),
-      pathologyService.getUnitsByClinic(clinicId, branchId),
-      pathologyService.getParametersByClinic(clinicId, branchId),
-      labTechnicianService.getTechniciansByClinic(clinicId, branchId),
-      pathologyBillingService.getBillingByClinic(clinicId, branchId),
-      patientService.getPatientsByClinic(clinicId, branchId),
-      pathologyService.getTestsByClinic(clinicId, branchId),
-      pathologySignatoryService.getSignatoriesByClinic(clinicId, branchId),
-    ]);
-    setOrders(ordersData);
-    setTemplates(templatesData);
-    setCategories(categoriesData);
-    setUnits(unitsData);
-    setParameters(parametersData);
-    setLabTechnicians(techniciansData);
-    setBillings(billingsData);
-    setPatients(patientsData);
-    setTests(testsData);
-    setPathologySignatories(signatoriesData);
-  };
 
   const handleBulkSeed = async () => {
     if (!clinicId || !branchId || !currentUser || seederSelectedIds.length === 0) return;
     try {
       setLoading(true);
-      await pathologyService.seedSelectedTests(seederSelectedIds, clinicId, branchId, currentUser.uid);
+      setSeedProgress({ current: 0, total: seederSelectedIds.length, name: "Initializing..." });
+      
+      await pathologyService.seedSelectedTests(
+        seederSelectedIds, 
+        clinicId, 
+        branchId, 
+        currentUser.uid,
+        (current, total, name) => {
+          setSeedProgress({ current, total, name });
+        }
+      );
+
       addToast({ title: "Success", description: "Selected Diagnostics deployed successfully!", color: "success" });
       seederModalState.close();
       setSeederSelectedIds([]);
@@ -1124,6 +1177,7 @@ export default function PathologyPage() {
       addToast({ title: "Error", description: "Failed to deploy diagnostics", color: "danger" });
     } finally {
       setLoading(false);
+      setSeedProgress(null);
     }
   };
 
@@ -1300,68 +1354,98 @@ export default function PathologyPage() {
 
 
   // Load all data
-  useEffect(() => {
-    const loadData = async () => {
-      if (!clinicId || !branchId) return;
+  async function reloadAllData() {
+    if (!clinicId) return;
 
-      try {
-        setLoading(true);
-        const [
-          ordersData,
-          templatesData,
-          categoriesData,
-          unitsData,
-          parametersData,
-          techniciansData,
-          billingsData,
-          clinicData,
-          layoutConfigData,
-          patientsData,
-          testsData,
-          signatoriesData,
-        ] = await Promise.all([
-          pathologyService.getOrdersByClinic(clinicId, branchId),
-          pathologyService.getTestTemplatesByClinic(clinicId, branchId),
-          pathologyService.getCategoriesByClinic(clinicId, branchId),
-          pathologyService.getUnitsByClinic(clinicId, branchId),
-          pathologyService.getParametersByClinic(clinicId, branchId),
-          labTechnicianService.getTechniciansByClinic(clinicId, branchId),
-          pathologyBillingService.getBillingByClinic(clinicId, branchId),
-          clinicService.getClinicById(clinicId),
-          clinicService.getPrintLayoutConfig(clinicId),
-          patientService.getPatientsByClinic(clinicId, branchId),
-          pathologyService.getTestsByClinic(clinicId, branchId),
-          pathologySignatoryService.getSignatoriesByClinic(clinicId, branchId),
-        ]);
+    try {
+      setLoading(true);
+      const isAdmin = userData?.role?.toLowerCase().includes('admin');
+      console.log("[Diagnostic] reloadAllData starting", { clinicId, branchId, isAdmin, role: userData?.role });
+      
+      // Force clinic-wide for admins if no specific branch is selected
+      let queryBranchId = (isAdmin && (branchId === clinicId || !branchId)) ? null : branchId;
+      
+      console.log("[Diagnostic] Final queryBranchId:", queryBranchId);
+
+      console.log("[Diagnostic] Fetching data for branch:", queryBranchId);
+
+      const [
+        ordersData,
+        templatesData,
+        categoriesData,
+        unitsData,
+        parametersData,
+        techniciansData,
+        billingsData,
+        clinicData,
+        layoutConfigData,
+        patientsData,
+        testsData,
+        signatoriesData,
+      ] = await Promise.all([
+        pathologyService.getOrdersByClinic(clinicId, queryBranchId),
+        pathologyService.getTestTemplatesByClinic(clinicId, null as any),
+        pathologyService.getCategoriesByClinic(clinicId, null as any),
+        pathologyService.getUnitsByClinic(clinicId, null as any),
+        pathologyService.getParametersByClinic(clinicId, null as any),
+        labTechnicianService.getTechniciansByClinic(clinicId, queryBranchId),
+        pathologyBillingService.getBillingByClinic(clinicId, queryBranchId),
+        clinicService.getClinicById(clinicId),
+        clinicService.getPrintLayoutConfig(clinicId),
+        patientService.getPatientsByClinic(clinicId, queryBranchId),
+        pathologyService.getTestsByClinic(clinicId, queryBranchId),
+        pathologySignatoryService.getSignatoriesByClinic(clinicId, queryBranchId),
+      ]);
 
 
-        setOrders(ordersData);
-        setTemplates(templatesData);
-        setCategories(categoriesData);
-        setUnits(unitsData);
-        setParameters(parametersData);
-        setLabTechnicians(techniciansData);
-        setBillings(billingsData);
-        setClinic(clinicData);
-        setLayoutConfig(layoutConfigData);
-        setPatients(patientsData);
-        setTests(testsData);
-        setPathologySignatories(signatoriesData);
+      let finalOrders = ordersData;
+      console.log(`[Diagnostic] Initial fetch found ${ordersData.length} orders`);
 
-      } catch (error) {
-        console.error("Error loading pathology data:", error);
-        addToast({
-          title: "Error",
-          description: "Failed to load pathology data. Please try again.",
-          color: "danger",
-        });
-      } finally {
-        setLoading(false);
+      if (isAdmin && (finalOrders.length === 0 || !queryBranchId)) {
+         console.log("[Diagnostic] Ensuring clinic-wide visibility for admin...");
+         const clinicWideOrders = await pathologyService.getOrdersByClinic(clinicId, null as any);
+         console.log(`[Diagnostic] Clinic-wide search found ${clinicWideOrders.length} orders`);
+         if (clinicWideOrders.length > 0) {
+           console.log("[Diagnostic] Sample order from clinic-wide search:", {
+             id: clinicWideOrders[0].id,
+             orderNumber: clinicWideOrders[0].orderNumber,
+             branchId: clinicWideOrders[0].branchId,
+             clinicId: clinicWideOrders[0].clinicId
+           });
+         }
+         finalOrders = clinicWideOrders;
       }
-    };
 
-    loadData();
+      setOrders(finalOrders);
+      setTemplates(templatesData);
+      setCategories(categoriesData);
+      setUnits(unitsData);
+      setParameters(parametersData);
+      setLabTechnicians(techniciansData);
+      setBillings(billingsData);
+      setClinic(clinicData);
+      setLayoutConfig(layoutConfigData);
+      setPatients(patientsData);
+      setTests(testsData);
+      setPathologySignatories(signatoriesData);
+
+    } catch (error) {
+      console.error("Error loading pathology data:", error);
+      addToast({
+        title: "Error",
+        description: "Failed to load pathology data. Please try again.",
+        color: "danger",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    reloadAllData();
   }, [clinicId, branchId]);
+
+
 
   const editTest = (order: PathologyOrder) => {
     setSelectedOrder(order);
@@ -1474,11 +1558,7 @@ export default function PathologyPage() {
       });
 
       // Reload orders
-      const ordersData = await pathologyService.getOrdersByClinic(
-        clinicId!,
-        branchId!,
-      );
-      setOrders(ordersData);
+      await reloadAllData();
       resultEntryModalState.close();
     } catch (error) {
       console.error("Error updating order results:", error);
@@ -1501,22 +1581,20 @@ export default function PathologyPage() {
   }
 
   const tabLabels: Record<(typeof TAB_KEYS)[number], string> = {
-    worklist: "Lab Worklist",
-    billing: "Billing & Invoicing",
-    catalog: "Lab Catalog",
-    technicians: "Lab Technicians",
-    signatories: "Authorized Signatories",
-    dailyReport: "Daily Summary",
-    legacy: "Legacy Tests",
+    reception: "Reception & Billing",
+    laboratory: "Laboratory (Worklist)",
+    reports: "Reports & Summaries",
+    settings: "Lab Management",
   };
 
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className={title()}>Pathology</h1>
+          <h1 className="text-2xl font-bold text-mountain-900">Pathology</h1>
           <p className="text-mountain-500 mt-2 text-[13.5px]">
             Manage pathology tests, categories, units, and parameters
           </p>
@@ -1544,7 +1622,34 @@ export default function PathologyPage() {
         </div>
 
         <div className="p-4">
-          {activeTab === "worklist" && (
+          {activeTab === "reception" && (
+            <div className="space-y-8">
+              <section>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-mountain-900">Patient Registration & Billing</h3>
+                  <Button 
+                    color="primary" 
+                    startContent={<IoAddOutline />} 
+                    onClick={() => {
+                      resetTestForm();
+                      testModalState.open();
+                    }}
+                  >
+                    New Order
+                  </Button>
+                </div>
+                <PathologyBillingTab
+                  branchId={branchId!}
+                  clinicId={clinicId!}
+                  patients={patients}
+                  templates={templates}
+                  onRefresh={reloadAllData}
+                />
+              </section>
+            </div>
+          )}
+
+          {activeTab === "laboratory" && (
             <PathologyTestsTab
               filteredTests={filteredOrders}
               searchQuery={testsSearchQuery}
@@ -1564,152 +1669,136 @@ export default function PathologyPage() {
               onSearchChange={setTestsSearchQuery}
             />
           )}
-          {activeTab === "catalog" && (
-            <PathologyCatalogTab
-              templates={templates}
-              parameters={parameters}
-              categories={categories}
-              units={units}
-              searchQuery={testsSearchQuery} // Using same search query state for simplicity or could separate
-              onSearchChange={setTestsSearchQuery}
-              // Templates
-              onAddTemplate={() => {
-                resetTestTypeForm();
-                testTypeModalState.open();
-              }}
-              onEditTemplate={editTestType}
-              onDeleteTemplate={(t) => openDeleteModal("testType", t.id, t.name)}
-              // Parameters
-              onAddParameter={() => {
-                resetParameterForm();
-                parameterModalState.open();
-              }}
-              onEditParameter={editParameter}
-              onDeleteParameter={(p) => openDeleteModal("parameter", p.id, p.name)}
-              onBulkDeleteParameter={handleBulkDeleteParameters}
-              // Categories
-              onAddCategory={() => {
-                resetCategoryForm();
-                categoryModalState.open();
-              }}
-              onEditCategory={editCategory}
-              onDeleteCategory={(c) => openDeleteModal("category", c.id, c.name)}
-              onAddSubCategory={addParameterToCategory}
 
-              // Units
-              onAddUnit={() => {
-                resetUnitForm();
-                unitModalState.open();
-              }}
-              onEditUnit={editUnit}
-              onDeleteUnit={(u) => openDeleteModal("unit", u.id, u.name)}
-              onOpenSeeder={seederModalState.open}
-              onBackfillRanges={handleRunMigrations}
-            />
+          {activeTab === "reports" && (
+            <div className="space-y-12">
+              <section>
+                <h3 className="text-lg font-bold text-mountain-900 mb-4">Daily Operational Summary</h3>
+                <PathologyDailyReportTab
+                  categories={categories}
+                  dailyReportData={dailyReportData}
+                  selectedDate={selectedDate}
+                  onDateChange={setSelectedDate}
+                  onPrintReport={() => {
+                    const printWindow = window.open("", "_blank", "width=900,height=1200");
+                    if (printWindow) {
+                      const reportHtml = buildDailyReportHtml(dailyReportData, selectedDate, clinic, layoutConfig);
+                      printWindow.document.write(reportHtml);
+                      printWindow.document.close();
+                    }
+                  }}
+                />
+              </section>
+
+              <section className="pt-8 border-t border-mountain-100">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-mountain-900">Legacy Records</h3>
+                  <Button variant="flat" size="sm" onClick={handleMigrateAll} isLoading={isMigrating}>
+                    Unify Records
+                  </Button>
+                </div>
+                <LegacyTestsTab
+                  categories={categories}
+                  patients={patients}
+                  parameters={parameters}
+                  technicians={labTechnicians}
+                  tests={tests}
+                  onAddTest={() => {
+                    resetTestForm();
+                    testModalState.open();
+                  }}
+                  onDeleteTest={(id, name) => openDeleteModal('test', id, name)}
+                  onEditTest={(t) => {
+                    setTestForm({
+                      id: t.id,
+                      isWalkIn: false,
+                      walkInPhone: "",
+                      patientId: t.patientId,
+                      patientName: t.patientName,
+                      patientAge: "",
+                      patientGender: "",
+                      selectedTemplates: [] as string[],
+                      testType: "",
+                      selectedCategories: [],
+                      reportDays: "",
+                      chargeCategory: "",
+                      standardCharge: "",
+                      labTechnicianId: t.technicianId || "",
+                      verifiedById: (t as any).verifiedById || "",
+                      parameters: t.parameters.map((p: any) => ({
+                        categoryId: p.categoryId,
+                        parameterId: p.parameterId,
+                        parameterName: p.parameterName || "",
+                        patientResult: p.result,
+                        referenceRange: p.referenceRange,
+                        unit: p.unit
+                      }))
+                    });
+                    setIsEditing(true);
+                    testModalState.open();
+                  }}
+                  onPrintTest={handlePrintTest}
+                  onMigrateAll={handleMigrateAll}
+                  isMigrating={isMigrating}
+                />
+              </section>
+            </div>
           )}
 
-          {activeTab === "technicians" && (
-            <LabTechnicianManagement
-              branchId={branchId!}
-              clinicId={clinicId!}
-              onRefresh={reloadAllData}
-            />
-          )}
-          {activeTab === "signatories" && (
-            <PathologySignatoryManagement
-              branchId={branchId!}
-              clinicId={clinicId!}
-              onRefresh={reloadAllData}
-            />
-          )}
-          {activeTab === "dailyReport" && (
-            <PathologyDailyReportTab
-              categories={categories}
-              dailyReportData={dailyReportData}
-              selectedDate={selectedDate}
-              onDateChange={setSelectedDate}
-              onPrintReport={() => {
-                const printWindow = window.open(
-                  "",
-                  "_blank",
-                  "width=900,height=1200",
-                );
-
-                if (printWindow) {
-                  const reportHtml = buildDailyReportHtml(
-                    dailyReportData,
-                    selectedDate,
-                    clinic,
-                    layoutConfig,
-                  );
-
-                  printWindow.document.write(reportHtml);
-                  printWindow.document.close();
-                }
-              }}
-            />
-          )}
-          {activeTab === "billing" && (
-            <PathologyBillingTab
-              branchId={branchId!}
-              clinicId={clinicId!}
-              patients={patients}
-              templates={templates}
-              onRefresh={reloadAllData}
-            />
-          )}
-
-          {activeTab === "legacy" && (
-            <LegacyTestsTab
-              categories={categories}
-              patients={patients}
-              parameters={parameters}
-              technicians={labTechnicians}
-              tests={tests}
-              onAddTest={() => {
-                resetTestForm();
-                testModalState.open();
-              }}
-              onDeleteTest={(id, name) => openDeleteModal('test', id, name)}
-              onEditTest={(t) => {
-                setTestForm({
-                  id: t.id,
-                  isWalkIn: false,
-                  walkInPhone: "",
-                  patientId: t.patientId,
-                  patientName: t.patientName,
-                  patientAge: "",
-                  patientGender: "",
-                  selectedTemplates: [] as string[],
-                  testType: "",
-                  selectedCategories: [],
-                  reportDays: "",
-                  chargeCategory: "",
-                  standardCharge: "",
-                  labTechnicianId: t.technicianId || "",
-                  verifiedById: (t as any).verifiedById || "",
-                  parameters: t.parameters.map((p: any) => ({
-                    categoryId: p.categoryId,
-                    parameterId: p.parameterId,
-                    parameterName: p.parameterName || "",
-                    patientResult: p.result,
-                    referenceRange: p.referenceRange,
-                    unit: p.unit
-                  }))
-                });
-                setIsEditing(true);
-                testModalState.open();
-              }}
-              onPrintTest={handlePrintTest}
-              onMigrateAll={handleMigrateAll}
-              isMigrating={isMigrating}
-            />
+          {activeTab === "settings" && (
+            <div className="space-y-6">
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-mountain-900">Lab Management Dashboard</h3>
+                  <div className="flex gap-2">
+                    <Button variant="flat" size="sm" onClick={seederModalState.open}>Master Seeder</Button>
+                    <Button variant="flat" size="sm" onClick={handleRunMigrations}>Health Check</Button>
+                  </div>
+                </div>
+                <PathologyCatalogTab
+                  templates={templates.filter(t => 
+                    t.name.toLowerCase().includes(testsSearchQuery.toLowerCase()) || 
+                    t.shortName?.toLowerCase().includes(testsSearchQuery.toLowerCase())
+                  )}
+                  parameters={parameters.filter(p => 
+                    p.name.toLowerCase().includes(testsSearchQuery.toLowerCase())
+                  )}
+                  categories={categories.filter(c => 
+                    c.name.toLowerCase().includes(testsSearchQuery.toLowerCase())
+                  )}
+                  units={units.filter(u => 
+                    u.name.toLowerCase().includes(testsSearchQuery.toLowerCase())
+                  )}
+                  searchQuery={testsSearchQuery}
+                  onSearchChange={setTestsSearchQuery}
+                  onAddTemplate={() => { resetTestTypeForm(); testTypeModalState.open(); }}
+                  onEditTemplate={editTestType}
+                  onDeleteTemplate={(t) => openDeleteModal("testType", t.id, t.name)}
+                  onAddParameter={() => { resetParameterForm(); parameterModalState.open(); }}
+                  onEditParameter={editParameter}
+                  onDeleteParameter={(p) => openDeleteModal("parameter", p.id, p.name)}
+                  onBulkDeleteParameter={handleBulkDeleteParameters}
+                  onAddCategory={() => { resetCategoryForm(); categoryModalState.open(); }}
+                  onEditCategory={editCategory}
+                  onDeleteCategory={(c) => openDeleteModal("category", c.id, c.name)}
+                  onAddSubCategory={addParameterToCategory}
+                  onAddUnit={() => { resetUnitForm(); unitModalState.open(); }}
+                  onEditUnit={editUnit}
+                  onDeleteUnit={(u) => openDeleteModal("unit", u.id, u.name)}
+                  onOpenSeeder={seederModalState.open}
+                  onBackfillRanges={handleRunMigrations}
+                  branchId={branchId!}
+                  clinicId={clinicId!}
+                  onRefreshData={reloadAllData}
+                />
+              </section>
+            </div>
           )}
 
 
         </div>
-
       </div>
+
 
       {/* Test Form Modal - custom overlay */}
       {
@@ -1733,10 +1822,18 @@ export default function PathologyPage() {
                   <IoArrowBackOutline className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-5 overflow-y-auto flex-1">
-                <div className="space-y-6">
-                  {/* Test Details Section */}
-                  <h3 className="text-lg font-semibold mb-4">Test Details</h3>
+              <div className="p-0 flex-1 flex flex-col min-h-0 bg-mountain-50/30">
+                <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                  {/* Step 1: Patient Identity */}
+                  <div className="bg-white rounded-xl border border-mountain-200 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 bg-mountain-50/50 border-b border-mountain-100 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">
+                        <IoMedkitOutline className="w-5 h-5" />
+                      </div>
+                      <h3 className="text-[14px] font-bold text-mountain-900">Step 1: Patient Identity</h3>
+                    </div>
+                    
+                    <div className="p-5 space-y-6">
 
                   {/* Walk-in vs Existing Patient Toggle */}
                   <div className="flex bg-mountain-100 p-1 rounded-md w-max mb-4">
@@ -1860,6 +1957,21 @@ export default function PathologyPage() {
                         <option value="other">Other</option>
                       </select>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+                {/* Step 2: Diagnostic Selection */}
+                <div className="bg-white rounded-xl border border-mountain-200 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 bg-mountain-50/50 border-b border-mountain-100 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">
+                      <IoFlaskOutline className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-[14px] font-bold text-mountain-900">Step 2: Diagnostic Selection</h3>
+                  </div>
+                  
+                  <div className="p-5 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
 
                     <div className="flex flex-col gap-2">
@@ -2066,90 +2178,96 @@ export default function PathologyPage() {
                     </div>
 
 
-                    <Input
-                      label="Report Days"
-                      placeholder="Report Days"
-                      type="number"
-                      value={testForm.reportDays}
-                      onValueChange={(v) =>
-                        setTestForm((prev) => ({ ...prev, reportDays: v }))
-                      }
-                    />
-
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[13px] font-medium text-mountain-700">
-                        Charge Category
-                      </label>
-                      <select
-                        className="h-[32px] border border-mountain-200 rounded px-3 text-[13.5px] text-mountain-800 bg-white focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-100"
-                        value={testForm.chargeCategory}
-                        onChange={(e) =>
-                          setTestForm((prev) => ({
-                            ...prev,
-                            chargeCategory: e.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Select Charge Category</option>
-                        <option value="lab">Lab</option>
-                        <option value="fee">Fee</option>
-                        <option value="other">Other</option>
-                      </select>
                     </div>
-
-                    <Input
-                      label="Standard Charge (NPR)"
-                      placeholder="Standard Charge"
-                      type="number"
-                      value={testForm.standardCharge}
-                      onValueChange={(v) =>
-                        setTestForm((prev) => ({ ...prev, standardCharge: v }))
-                      }
-                    />
-
-                    <PathologySearchSelect
-                      items={labTechnicians.map((t) => ({
-                        id: t.id,
-                        primary: t.name,
-                        secondary: t.employeeId
-                          ? `(${t.employeeId})`
-                          : undefined,
-                      }))}
-                      label="Lab Technician (Optional)"
-                      placeholder="Search and select lab technician"
-                      value={testForm.labTechnicianId}
-                      onChange={(id) =>
-                        setTestForm((prev) => ({
-                          ...prev,
-                          labTechnicianId: id,
-                        }))
-                      }
-                    />
-
-                    <PathologySearchSelect
-                      items={pathologySignatories.map((s) => ({
-                        id: s.id,
-                        primary: s.name,
-                        secondary: s.designation,
-                      }))}
-                      label="Authorized Signatory (Optional)"
-                      placeholder="Search and select pathologist"
-                      value={testForm.verifiedById}
-                      onChange={(id) =>
-                        setTestForm((prev) => ({
-                          ...prev,
-                          verifiedById: id,
-                        }))
-                      }
-                    />
                   </div>
                 </div>
 
-                {/* Parameters Section */}
-                <div>
-                  <h3 className="text-[14px] font-bold mb-4 text-teal-700">
-                    Parameter Fields
-                  </h3>
+                {/* Step 3: Logistics & Assignment */}
+                <div className="bg-white rounded-xl border border-mountain-200 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 bg-mountain-50/50 border-b border-mountain-100 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-600">
+                      <IoShieldCheckmarkOutline className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-[14px] font-bold text-mountain-900">Step 3: Logistics & Assignment</h3>
+                  </div>
+                  
+                  <div className="p-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <Input
+                        label="Report Lead Time (Days)"
+                        placeholder="Days"
+                        type="number"
+                        value={testForm.reportDays}
+                        onValueChange={(v) =>
+                          setTestForm((prev) => ({ ...prev, reportDays: v }))
+                        }
+                      />
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[13px] font-medium text-mountain-700">
+                          Billing Category
+                        </label>
+                        <select
+                          className="h-[32px] border border-mountain-200 rounded px-3 text-[13.5px] text-mountain-800 bg-white focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-100"
+                          value={testForm.chargeCategory}
+                          onChange={(e) =>
+                            setTestForm((prev) => ({
+                              ...prev,
+                              chargeCategory: e.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Select Category</option>
+                          <option value="lab">Pathology</option>
+                          <option value="fee">Clinical Fee</option>
+                          <option value="other">Miscellaneous</option>
+                        </select>
+                      </div>
+
+                      <Input
+                        label="Final Amount (NPR)"
+                        placeholder="0.00"
+                        type="number"
+                        value={testForm.standardCharge}
+                        onValueChange={(v) =>
+                          setTestForm((prev) => ({ ...prev, standardCharge: v }))
+                        }
+                      />
+
+                      <PathologySearchSelect
+                        items={labTechnicians.map((t) => ({
+                          id: t.id,
+                          primary: t.name,
+                          secondary: t.employeeId ? `(${t.employeeId})` : undefined,
+                        }))}
+                        label="Lab Tech"
+                        placeholder="Assign technician..."
+                        value={testForm.labTechnicianId}
+                        onChange={(id) =>
+                          setTestForm((prev) => ({
+                            ...prev,
+                            labTechnicianId: id,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Optional: Advanced Findings (Only for Edits or Manual Lab Entries) */}
+                {(isEditing || testForm.selectedTemplates.length === 0) && (
+                  <div className="bg-white rounded-xl border border-mountain-200 shadow-sm overflow-hidden">
+                    <div className="px-5 py-3 bg-mountain-50/50 border-b border-mountain-100 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                          <IoOptionsOutline className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-[14px] font-bold text-mountain-900">Advanced: Parameter Matrix</h3>
+                      </div>
+                      <p className="text-[11px] text-mountain-500 italic">Usually filled by technicians during result entry</p>
+                    </div>
+                    
+                    <div className="p-5">
                   {testForm.parameters.map((param, index) => {
                     const paramMeta = parameters.find(p => p.id === param.parameterId);
                     const isHeader = paramMeta?.isHeader;
@@ -2275,6 +2393,9 @@ export default function PathologyPage() {
                   </div>
                 </div>
               </div>
+                )}
+              </div>
+            </div>
               <div className="px-5 py-3 border-t border-mountain-100 bg-mountain-50/60 flex justify-end gap-2 shrink-0">
                 <Button variant="light" onClick={testModalState.close}>
                   Cancel
@@ -2399,7 +2520,7 @@ export default function PathologyPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[12px] font-medium text-mountain-500 uppercase tracking-tight">Category *</label>
+                      <label className="text-[12px] font-medium text-mountain-500 ml-1">Category</label>
                       <select
                         className="h-[32px] border border-mountain-200 rounded px-2 text-[13.5px] text-mountain-800 bg-white focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-100"
                         value={parameterForm.categoryId}
@@ -2416,6 +2537,13 @@ export default function PathologyPage() {
                       placeholder="e.g. LDL Cholesterol"
                       value={parameterForm.name}
                       onValueChange={(v) => setParameterForm(prev => ({ ...prev, name: v }))}
+                    />
+                    <Input
+                      type="number"
+                      label="Price (NPR)"
+                      placeholder="0.00"
+                      value={parameterForm.price}
+                      onValueChange={(v) => setParameterForm(prev => ({ ...prev, price: v }))}
                     />
                   </div>
 
@@ -2590,122 +2718,170 @@ export default function PathologyPage() {
               className="absolute inset-0 bg-mountain-900/70 backdrop-blur-2xl"
               onClick={testTypeModalState.close}
             />
-            <div className="relative z-10 bg-white border border-mountain-200 rounded-md w-full max-w-4xl h-[90vh] shadow-2xl flex flex-col overflow-hidden">
+            <div className="relative z-10 bg-white border border-mountain-200 rounded-md w-full max-w-6xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
               {/* Standard Header */}
               <div className="px-5 py-3 border-b border-mountain-100 bg-mountain-50/60 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-                  <h2 className="text-[14px] font-semibold text-mountain-900">
-                    {isEditing ? "Edit Test Configuration" : "Master Test Architect"}
-                  </h2>
-                </div>
+                <h2 className="text-[14px] font-semibold text-mountain-900">
+                  {isEditing ? "Edit Test Template" : "Add New Test Template"}
+                </h2>
                 <button onClick={testTypeModalState.close} className="text-mountain-400 hover:text-mountain-700 transition-colors">
                   <IoCloseOutline className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Content */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-white">
-                {/* Core Test Info */}
-                <div className="grid grid-cols-12 gap-5">
-                  <div className="col-span-8 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[12px] font-medium text-mountain-500 ml-1">Official Test Name</label>
-                        <input
-                          className="w-full h-10 px-3 bg-white border border-mountain-200 rounded-md focus:outline-none focus:border-teal-500 text-[13.5px] font-medium"
-                          placeholder="e.g. Lipid Profile"
-                          value={testTypeForm.name}
-                          onChange={(e) => setTestTypeForm(prev => ({ ...prev, name: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[12px] font-medium text-mountain-500 ml-1">Category</label>
-                        <PathologySearchSelect
-                          label=""
-                          items={categories.map(c => ({ id: c.id, primary: c.name }))}
-                          placeholder="Search or add category..."
-                          value={testTypeForm.categoryId}
-                          onChange={(id, primary) => setTestTypeForm(prev => ({ ...prev, categoryId: id, newCategoryName: id ? "" : primary }))}
-                          onAddNew={(q) => setTestTypeForm(prev => ({ ...prev, categoryId: "", newCategoryName: q }))}
-                        />
-                        {testTypeForm.newCategoryName && (
-                          <div className="flex items-center gap-1.5 mt-1 px-2 py-1 bg-teal-50 border border-teal-200 rounded text-[11px] text-teal-700 font-medium">
-                            <IoAddOutline className="w-3 h-3 shrink-0" />
-                            New category "{testTypeForm.newCategoryName}" will be created on save
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-white">
+                {/* Section 1: Test Identity */}
+                <div className="space-y-4">
+                  <h3 className="text-[14px] font-bold text-mountain-900 border-b border-mountain-100 pb-2">1. Test Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <Input
+                        label="Test Name"
+                        placeholder="e.g. Lipid Profile"
+                        value={testTypeForm.name}
+                        onValueChange={(v) => setTestTypeForm(prev => ({ ...prev, name: v }))}
+                      />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[13px] font-semibold text-mountain-700">Categories (Select Multiple)</label>
+                          <div className="flex flex-wrap gap-2 p-2 border border-mountain-200 rounded min-h-[40px] bg-white">
+                            {categories.map(c => (
+                              <button
+                                key={c.id}
+                                className={`px-2 py-1 rounded text-[11px] font-bold transition-all border ${
+                                  testTypeForm.categoryIds.includes(c.id)
+                                    ? "bg-teal-600 text-white border-teal-700 shadow-sm"
+                                    : "bg-mountain-50 text-mountain-500 border-mountain-200 hover:bg-mountain-100"
+                                }`}
+                                onClick={() => {
+                                  const updated = testTypeForm.categoryIds.includes(c.id)
+                                    ? testTypeForm.categoryIds.filter(id => id !== c.id)
+                                    : [...testTypeForm.categoryIds, c.id];
+                                  setTestTypeForm(prev => ({ ...prev, categoryIds: updated }));
+                                }}
+                              >
+                                {c.name}
+                              </button>
+                            ))}
                           </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[12px] font-medium text-mountain-500 ml-1">Price (NPR)</label>
-                        <input
+                        </div>
+                        <Input
                           type="number"
-                          className="w-full h-10 px-3 bg-white border border-mountain-200 rounded-md focus:outline-none focus:border-teal-500 text-[13.5px] font-bold"
-                          placeholder="0.00"
-                          value={testTypeForm.price}
-                          onChange={(e) => setTestTypeForm(prev => ({ ...prev, price: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[12px] font-medium text-mountain-500 ml-1">TAT (Days)</label>
-                        <input
-                          type="number"
-                          className="w-full h-10 px-3 bg-white border border-mountain-200 rounded-md focus:outline-none focus:border-teal-500 text-[13.5px] font-medium"
+                          label="TAT (Days)"
                           placeholder="1"
                           value={testTypeForm.reportDays}
-                          onChange={(e) => setTestTypeForm(prev => ({ ...prev, reportDays: e.target.value }))}
+                          onValueChange={(v) => setTestTypeForm(prev => ({ ...prev, reportDays: v }))}
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[12px] font-medium text-mountain-500 ml-1">Strategy</label>
-                        <div className="flex bg-mountain-50 border border-mountain-200 rounded-md p-1 h-10">
-                          <button
-                            className={`flex-1 px-1 rounded text-[10px] font-bold transition-all ${testTypeForm.targetType === 'category' ? 'bg-white shadow-sm border border-mountain-200 text-teal-600' : 'text-mountain-400 hover:text-mountain-600'}`}
+                    </div>
+
+                    <div className="p-4 bg-mountain-50 rounded border border-mountain-100 space-y-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[12px] font-semibold text-mountain-600 tracking-tight">Pricing Strategy</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button 
+                            size="sm" 
+                            variant={testTypeForm.targetType === 'category' ? "solid" : "bordered"}
+                            color={testTypeForm.targetType === 'category' ? "primary" : "default"}
                             onClick={() => setTestTypeForm(prev => ({ ...prev, targetType: 'category' }))}
                           >
-                            Auto
-                          </button>
-                          <button
-                            className={`flex-1 px-1 rounded text-[10px] font-bold transition-all ${testTypeForm.targetType === 'parameter' ? 'bg-white shadow-sm border border-mountain-200 text-teal-600' : 'text-mountain-400 hover:text-mountain-600'}`}
+                            Auto-Sync
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant={testTypeForm.targetType === 'parameter' ? "solid" : "bordered"}
+                            color={testTypeForm.targetType === 'parameter' ? "primary" : "default"}
                             onClick={() => setTestTypeForm(prev => ({ ...prev, targetType: 'parameter' }))}
                           >
-                            Custom
-                          </button>
+                            Custom Build
+                          </Button>
                         </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[12px] font-medium text-mountain-500 ml-1">Microbiology</label>
-                        <button
-                          className={`w-full h-10 px-2 flex items-center justify-center gap-1.5 rounded-md border transition-all ${testTypeForm.isMicrobiology ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-mountain-200 text-mountain-400 hover:border-mountain-300'}`}
-                          onClick={() => setTestTypeForm(prev => ({ ...prev, isMicrobiology: !prev.isMicrobiology }))}
-                        >
-                          <IoShieldCheckmarkOutline className={testTypeForm.isMicrobiology ? "text-indigo-600 w-3.5 h-3.5" : "text-mountain-300 w-3.5 h-3.5"} />
-                          <span className="text-[10px] font-bold uppercase tracking-tight">
-                            {testTypeForm.isMicrobiology ? "Enabled" : "Disabled"}
-                          </span>
-                        </button>
+                      <div className="pt-2 border-t border-mountain-200">
+                        <p className="text-[12px] text-mountain-500">Total billable amount</p>
+                        <p className="text-[20px] font-bold text-teal-700">NPR {testTypeForm.price.toLocaleString()}</p>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="col-span-4 bg-mountain-50/50 rounded-md border border-mountain-100 p-4 flex flex-col justify-center text-center">
-                    <IoFlaskOutline className="w-6 h-6 text-teal-500 mx-auto mb-2" />
-                    <h3 className="text-[12px] font-bold text-mountain-800">Architect Guide</h3>
-                    <p className="text-[11px] text-mountain-500 mt-1 leading-relaxed">
-                      {testTypeForm.targetType === 'category' 
-                        ? "Test will automatically include all parameters within the selected category."
-                        : "Test will only include the specific parameters you manually define below."
-                      }
-                    </p>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-mountain-100">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-[13px] font-semibold text-mountain-700">Parameter Configuration</h3>
+                {/* Section 2: Quick Selection Library */}
+                {testTypeForm.categoryIds.length > 0 && (
+                  <div className="space-y-4 pt-4 border-t border-mountain-100">
+                    <h3 className="text-[14px] font-bold text-mountain-900 border-b border-mountain-100 pb-2">2. Quick Selection Library</h3>
+                    <div className="bg-mountain-50/50 p-4 rounded-md border border-mountain-100">
+                      <p className="text-[11px] text-mountain-500 mb-3 italic">Click to add/remove parameters from your selected departments:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {parameters
+                          .filter(p => testTypeForm.categoryIds.includes(p.categoryId))
+                          .map(p => {
+                            const isSelectedInCustom = testTypeForm.targetType === 'parameter' && testTypeForm.selectedParameters.some(sp => sp.id === p.id);
+                            const isExcludedInAuto = testTypeForm.targetType === 'category' && testTypeForm.excludedParameterIds.includes(p.id);
+                            
+                            // In Auto-Sync mode, it's selected if NOT excluded
+                            const isActive = testTypeForm.targetType === 'category' ? !isExcludedInAuto : isSelectedInCustom;
+
+                            return (
+                              <button
+                                key={p.id}
+                                className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-all border flex items-center gap-2 ${
+                                  isActive
+                                    ? "bg-teal-600 text-white border-teal-700 shadow-sm"
+                                    : "bg-white text-mountain-600 border-mountain-200 hover:border-teal-400 hover:text-teal-600"
+                                }`}
+                                onClick={() => {
+                                  if (testTypeForm.targetType === 'category') {
+                                    // Toggle exclusion for Auto-Sync
+                                    const updatedExclusions = isExcludedInAuto
+                                      ? testTypeForm.excludedParameterIds.filter(id => id !== p.id)
+                                      : [...testTypeForm.excludedParameterIds, p.id];
+                                    setTestTypeForm(prev => ({ ...prev, excludedParameterIds: updatedExclusions }));
+                                  } else {
+                                    // Toggle inclusion for Custom Build
+                                    if (isSelectedInCustom) {
+                                      setTestTypeForm(prev => ({
+                                        ...prev,
+                                        selectedParameters: prev.selectedParameters.filter(sp => sp.id !== p.id)
+                                      }));
+                                    } else {
+                                      setTestTypeForm(prev => ({
+                                        ...prev,
+                                        selectedParameters: [
+                                          ...prev.selectedParameters,
+                                          {
+                                            id: p.id,
+                                            name: p.name,
+                                            unit: p.unit || "",
+                                            range: p.allRange?.description || "",
+                                            maleRange: p.maleRange?.description || p.allRange?.description || "",
+                                            femaleRange: p.femaleRange?.description || p.allRange?.description || "",
+                                            isGenderSensitive: p.isGenderSensitive || false,
+                                            resultType: p.resultType || "numeric",
+                                            price: p.price?.toString() || "0",
+                                            tiers: p.allRange?.tiers || [],
+                                            showTiers: false
+                                          }
+                                        ].filter(sp => sp.id || sp.name)
+                                      }));
+                                    }
+                                  }
+                                }}
+                              >
+                                {isActive ? <IoShieldCheckmarkOutline className="w-3.5 h-3.5" /> : <IoAddOutline className="w-3.5 h-3.5" />}
+                                {p.name}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Section 3: Parameter Configuration */}
+                <div className="space-y-4 pt-4 border-t border-mountain-100">
+                  <div className="flex items-center justify-between mb-3 border-b border-mountain-100 pb-2">
+                    <h3 className="text-[14px] font-bold text-mountain-900">3. Parameter Configuration</h3>
                     {testTypeForm.targetType === 'parameter' && (
                       <Button
                         size="sm"
@@ -2715,7 +2891,7 @@ export default function PathologyPage() {
                         startContent={<IoAddOutline />}
                         onClick={() => setTestTypeForm(prev => ({
                           ...prev,
-                          selectedParameters: [...prev.selectedParameters, { name: "", unit: "", range: "", resultType: "numeric", tiers: [] }]
+                          selectedParameters: [...prev.selectedParameters, { name: "", unit: "", range: "", maleRange: "", femaleRange: "", isGenderSensitive: false, resultType: "numeric", price: "0", tiers: [] }]
                         }))}
                       >
                         Add Row
@@ -2725,24 +2901,43 @@ export default function PathologyPage() {
 
                   {testTypeForm.targetType === 'category' ? (
                     <div className="bg-mountain-50/50 rounded-md border border-mountain-200 overflow-hidden">
-                      {parameters.filter(p => p.categoryId === testTypeForm.categoryId).length > 0 ? (
+                      {parameters.filter(p => testTypeForm.categoryIds.includes(p.categoryId) && !testTypeForm.excludedParameterIds.includes(p.id)).length > 0 ? (
                         <table className="w-full text-left">
                           <thead className="bg-mountain-100/50 text-[11px] font-semibold text-mountain-600">
                             <tr>
                               <th className="px-4 py-2 border-b border-mountain-200">Parameter</th>
                               <th className="px-4 py-2 border-b border-mountain-200 w-24">Unit</th>
                               <th className="px-4 py-2 border-b border-mountain-200 w-32">Range</th>
+                              <th className="px-4 py-2 border-b border-mountain-200 w-24 text-right">Price</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-mountain-100">
-                            {parameters.filter(p => p.categoryId === testTypeForm.categoryId).map((p, idx) => (
+                            {parameters.filter(p => testTypeForm.categoryIds.includes(p.categoryId) && !testTypeForm.excludedParameterIds.includes(p.id)).map((p, idx) => (
                               <tr key={idx} className="hover:bg-white/50">
                                 <td className="px-4 py-2 text-[12.5px] text-mountain-800 font-medium">
                                   {p.indentationLevel ? <span className="ml-4 text-mountain-400">↳ </span> : null}
                                   {p.name}
                                 </td>
                                 <td className="px-4 py-2 text-[12px] text-mountain-500">{p.unit || "—"}</td>
-                                <td className="px-4 py-2 text-[12px] text-mountain-500">{p.allRange?.description || "—"}</td>
+                                <td className="px-4 py-2 text-[12px] text-mountain-500">
+                                  {p.isGenderSensitive ? (
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded">M</span>
+                                        <span>{typeof p.maleRange === 'string' ? p.maleRange : (p.maleRange?.description || p.allRange?.description || "—")}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-1 rounded">F</span>
+                                        <span>{typeof p.femaleRange === 'string' ? p.femaleRange : (p.femaleRange?.description || p.allRange?.description || "—")}</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    p.allRange?.description || "—"
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-[12px] text-mountain-700 font-bold text-right">
+                                  {p.price ? `NPR ${p.price.toLocaleString()}` : "—"}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -2751,7 +2946,7 @@ export default function PathologyPage() {
                         <div className="py-8 flex flex-col items-center justify-center space-y-2">
                           <IoOptionsOutline className="w-8 h-8 text-mountain-300" />
                           <p className="text-[13px] text-mountain-500 font-medium italic">
-                            {testTypeForm.categoryId ? "No parameters found in this category." : "Select a category to view parameters."}
+                            {testTypeForm.categoryIds.length > 0 ? "No parameters included from selected categories." : "Select one or more categories to view parameters."}
                           </p>
                         </div>
                       )}
@@ -2763,13 +2958,14 @@ export default function PathologyPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="border border-mountain-200 rounded-md overflow-hidden">
+                    <div className="border border-mountain-200 rounded-md">
                       <table className="w-full text-left">
                         <thead className="bg-mountain-50/80 text-[11px] font-semibold text-mountain-500">
                           <tr>
                             <th className="px-4 py-2.5 border-b border-mountain-100">Parameter</th>
                             <th className="px-4 py-2.5 border-b border-mountain-100 w-24">Unit</th>
                             <th className="px-4 py-2.5 border-b border-mountain-100 w-32">Range</th>
+                            <th className="px-4 py-2.5 border-b border-mountain-100 w-24">Price</th>
                             <th className="px-4 py-2.5 border-b border-mountain-100 w-32">Logic</th>
                             <th className="px-4 py-2.5 border-b border-mountain-100 w-10"></th>
                           </tr>
@@ -2781,9 +2977,12 @@ export default function PathologyPage() {
                                 <td className="px-2 py-2">
                                   <PathologySearchSelect
                                     label=""
-                                    items={parameters
-                                      .filter(param => !testTypeForm.categoryId || param.categoryId === testTypeForm.categoryId)
-                                      .map(param => ({ id: param.id, primary: param.name, secondary: param.unit }))}
+                                    direction={idx > (testTypeForm.selectedParameters.length - 3) ? "up" : "down"}
+                                    items={parameters.map(param => ({ 
+                                      id: param.id, 
+                                      primary: param.name, 
+                                      secondary: `${param.unit || ''} ${categories.find(c => c.id === param.categoryId)?.name ? `(${categories.find(c => c.id === param.categoryId)?.name})` : ''}`
+                                    }))}
                                     placeholder="Select parameter..."
                                     value={p.id || ""}
                                     defaultDisplay={!p.id ? p.name : undefined}
@@ -2795,7 +2994,11 @@ export default function PathologyPage() {
                                         name: primary || "",
                                         unit: existing?.unit || "",
                                         range: existing?.allRange?.description || "",
+                                        maleRange: existing?.maleRange?.description || existing?.allRange?.description || "",
+                                        femaleRange: existing?.femaleRange?.description || existing?.allRange?.description || "",
+                                        isGenderSensitive: existing?.isGenderSensitive || false,
                                         resultType: existing?.resultType || "numeric",
+                                        price: existing?.price?.toString() || "0",
                                         tiers: existing?.allRange?.tiers || [],
                                         showTiers: false
                                       };
@@ -2826,12 +3029,59 @@ export default function PathologyPage() {
                                   />
                                 </td>
                                 <td className="px-2 py-2">
+                                  {p.isGenderSensitive ? (
+                                    <div className="space-y-1">
+                                      <div className="relative">
+                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-blue-600">M</span>
+                                        <input
+                                          className="w-full h-8 pl-5 pr-2 border border-mountain-200 rounded text-[12px] text-mountain-700 bg-white"
+                                          value={p.maleRange || ""}
+                                          onChange={(e) => {
+                                            const updated = [...testTypeForm.selectedParameters];
+                                            updated[idx] = { ...updated[idx], maleRange: e.target.value };
+                                            setTestTypeForm(prev => ({ ...prev, selectedParameters: updated }));
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="relative">
+                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-pink-600">F</span>
+                                        <input
+                                          className="w-full h-8 pl-5 pr-2 border border-mountain-200 rounded text-[12px] text-mountain-700 bg-white"
+                                          value={p.femaleRange || ""}
+                                          onChange={(e) => {
+                                            const updated = [...testTypeForm.selectedParameters];
+                                            updated[idx] = { ...updated[idx], femaleRange: e.target.value };
+                                            setTestTypeForm(prev => ({ ...prev, selectedParameters: updated }));
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <input
+                                      className="w-full h-9 px-2 text-[12.5px] border border-mountain-200 rounded focus:border-teal-500 focus:outline-none"
+                                      value={p.range || ""}
+                                      onChange={(e) => {
+                                        const updated = [...testTypeForm.selectedParameters];
+                                        updated[idx].range = e.target.value;
+                                        setTestTypeForm(prev => ({ ...prev, selectedParameters: updated }));
+                                      }}
+                                    />
+                                  )}
+                                </td>
+                                <td className="px-2 py-2">
                                   <input
-                                    className="w-full h-9 px-2 text-[12.5px] border border-mountain-200 rounded focus:border-teal-500 focus:outline-none"
-                                    value={p.range}
+                                    type="number"
+                                    className={`w-full h-9 px-2 text-[12.5px] border rounded focus:outline-none transition-all ${
+                                      p.id 
+                                        ? "bg-mountain-50 border-mountain-200 text-mountain-500 cursor-not-allowed" 
+                                        : "bg-white border-teal-200 focus:border-teal-500 text-mountain-800"
+                                    }`}
+                                    placeholder="0.00"
+                                    readOnly={!!p.id}
+                                    value={p.price}
                                     onChange={(e) => {
                                       const updated = [...testTypeForm.selectedParameters];
-                                      updated[idx].range = e.target.value;
+                                      updated[idx].price = e.target.value;
                                       setTestTypeForm(prev => ({ ...prev, selectedParameters: updated }));
                                     }}
                                   />
@@ -3145,7 +3395,42 @@ export default function PathologyPage() {
               </button>
             </div>
             
-            <div className="flex-1 overflow-auto bg-mountain-50/50 p-6">
+            <div className="flex-1 overflow-auto bg-mountain-50/50 p-6 relative">
+              {seedProgress && (
+                <div className="absolute inset-0 z-20 bg-mountain-900/40 backdrop-blur-sm flex items-center justify-center p-8">
+                  <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md border border-mountain-200">
+                    <div className="flex flex-col gap-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-[14px] font-bold text-mountain-900">Deploying Diagnostics</span>
+                          <span className="text-[11px] text-mountain-500">Synchronizing master catalog with clinic...</span>
+                        </div>
+                        <span className="text-[18px] font-black text-teal-600 tabular-nums">
+                          {Math.round((seedProgress.current / seedProgress.total) * 100)}%
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="w-full h-3 bg-mountain-100 rounded-full overflow-hidden border border-mountain-200">
+                          <div 
+                            className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(20,184,166,0.3)]"
+                            style={{ width: `${(seedProgress.current / seedProgress.total) * 100}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="font-bold text-mountain-600">
+                            Step {seedProgress.current} of {seedProgress.total}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-teal-500 animate-ping" />
+                            <span className="text-mountain-400 italic">Processing {seedProgress.name}...</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-6">
                 {Array.from(new Set(pathologySeederData.map(t => t.categoryName))).map(categoryName => (
                   <div key={categoryName} className="bg-white rounded border border-mountain-200 p-4 shadow-sm">
@@ -3194,8 +3479,8 @@ export default function PathologyPage() {
         </div>,
         document.body
       )}
-    </div >
-
+    </div>
+    </>
   );
 }
 

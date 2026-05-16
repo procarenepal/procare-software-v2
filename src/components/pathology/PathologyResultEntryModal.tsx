@@ -66,15 +66,22 @@ export default function PathologyResultEntryModal({
         if (template) {
           template.parameters.forEach(paramId => {
             const param = parameters.find(p => p.id === paramId);
+            const override = template.parameterOverrides?.find(o => o.id === paramId);
+            
             if (param) {
+              // Priority: Override string -> Master parameter object description -> Master parameter allRange description
+              const maleR = override?.maleRange || param.maleRange?.description || param.allRange?.description;
+              const femaleR = override?.femaleRange || param.femaleRange?.description || param.allRange?.description;
+              const allR = override?.allRange || param.allRange?.description;
+
               initialResults.push({
                 parameterId: param.id,
-                parameterName: param.name,
+                parameterName: override?.name || param.name,
                 value: "",
-                unit: param.unit,
+                unit: override?.unit || param.unit,
                 referenceRange: param.isGenderSensitive 
-                  ? (order.patientGender === 'female' ? formatRange(param.femaleRange) : formatRange(param.maleRange))
-                  : formatRange(param.allRange),
+                  ? (order.patientGender === 'female' ? (femaleR || "—") : (maleR || "—"))
+                  : (allR || "—"),
                 status: "normal",
                 isHeader: param.isHeader,
                 indentationLevel: param.indentationLevel
@@ -335,14 +342,16 @@ export default function PathologyResultEntryModal({
                       ) : (
                         <>
                           <div className="col-span-4">
-                            <p className={`text-[13px] font-medium ${
-                              result.status === 'critical' ? 'text-red-700 font-bold' : 
-                              result.status === 'abnormal' ? 'text-amber-700 font-bold' : 
-                              'text-mountain-700'
+                            <p className={`text-[13px] font-bold ${
+                              result.status === 'critical' ? 'text-red-600' : 
+                              result.status === 'abnormal' ? 'text-amber-600' : 
+                              'text-mountain-800'
                             }`}>
                               {result.parameterName}
                               {result.flag && (result.status === 'abnormal' || result.status === 'critical') && (
-                                <span className="ml-2 px-1 rounded bg-white border border-current text-[9px] font-black">
+                                <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-black border ${
+                                  result.status === 'critical' ? 'bg-red-600 text-white border-red-700' : 'bg-amber-500 text-white border-amber-600'
+                                }`}>
                                   {result.flag}
                                 </span>
                               )}
@@ -405,11 +414,25 @@ export default function PathologyResultEntryModal({
             {/* Microbiology Specialized Section */}
             {isMicrobiology && (
               <div className="mt-8 border-t-2 border-indigo-100 pt-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <IoShieldCheckmarkOutline className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-[14px] font-bold text-indigo-900 uppercase tracking-wider">
-                    Microbiology Culture & Sensitivity
-                  </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <IoShieldCheckmarkOutline className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-[14px] font-bold text-indigo-900 uppercase tracking-wider">
+                      Microbiology Culture & Sensitivity
+                    </h3>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="flat" 
+                    color="secondary" 
+                    onClick={() => {
+                      setOrganismIsolated("No Growth after 48 hours of aerobic incubation");
+                      setColonyCount("N/A");
+                      setSensitivities([]);
+                    }}
+                  >
+                    No Growth Shortcut
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6 mb-6">
