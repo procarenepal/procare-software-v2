@@ -66,7 +66,7 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
       min-height: ${isThermal ? "auto" : "100vh"};
       box-sizing: border-box;
       padding: 0;
-      box-shadow: ${isThermal ? "0 0 20px rgba(0,0,0,0.05)" : "none"};
+      box-shadow: none !important;
     }
 
     @media print {
@@ -244,7 +244,7 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
       flex-direction: column;
       align-items: center;
       justify-content: center; /* Matches PrintLayoutTemplate.tsx */
-      padding: 0 15mm;
+      padding: ${isThermal ? "0" : "8mm 15mm 0 15mm"};
     }
 
     /* Identity Stack Styling */

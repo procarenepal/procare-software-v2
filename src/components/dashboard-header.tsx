@@ -68,6 +68,7 @@ export const DashboardHeader = ({
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [clinicData, setClinicData] = useState<Clinic | null>(null);
+  const [logoError, setLogoError] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -99,6 +100,7 @@ export const DashboardHeader = ({
 
       startTransition(() => {
         setClinicData(data);
+        setLogoError(false);
       });
     } catch (err) {
       console.error("Failed to fetch clinic branding:", err);
@@ -286,13 +288,15 @@ export const DashboardHeader = ({
           className="flex items-center gap-1.5 text-mountain-900 dark:text-zinc-100 no-underline font-bold transition-colors"
           to="/"
         >
-          <div className="w-8 h-8 rounded bg-teal-600 flex items-center justify-center shrink-0 overflow-hidden shadow-sm shadow-teal-600/20">
-            {clinicData?.logo ? (
+          <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0 overflow-hidden transition-all ${
+            (clinicData?.logo && !logoError) ? "bg-transparent" : "bg-teal-600 shadow-sm shadow-teal-600/20"
+          }`}>
+            {clinicData?.logo && !logoError ? (
               <img
                 alt="logo"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
                 src={getLogoUrl(clinicData.logo) || ""}
-                onError={(e) => (e.currentTarget.style.display = "none")}
+                onError={() => setLogoError(true)}
               />
             ) : (
               <span className="text-white text-[15px] font-bold">

@@ -109,6 +109,7 @@ export default function PathologyResultEntryModal({
 
     if (!value) return { status, flag };
 
+    const isNumericType = param.resultType === 'numeric' || param.resultType === 'calculated';
     const numValue = parseFloat(value);
     const isNumericValue = !isNaN(numValue) && isFinite(numValue);
 
@@ -118,11 +119,11 @@ export default function PathologyResultEntryModal({
 
     if (!range) return { status, flag };
 
-    if (isNumericValue) {
+    if (isNumericType && isNumericValue) {
       if (range.tiers && range.tiers.length > 0) {
         const matchedTier = range.tiers.find(tier => {
-          const min = tier.min ?? -Infinity;
-          const max = tier.max ?? Infinity;
+          const min = (tier.min !== undefined && tier.min !== null) ? tier.min : -Infinity;
+          const max = (tier.max !== undefined && tier.max !== null) ? tier.max : Infinity;
           return numValue >= min && numValue <= max;
         });
 
@@ -134,14 +135,14 @@ export default function PathologyResultEntryModal({
           status = matchedTier.status === 'normal' ? 'normal' : 
                    matchedTier.status === 'critical' ? 'critical' : 'abnormal';
         }
-      } else if (range.min !== undefined && numValue < range.min) {
+      } else if (range.min !== undefined && range.min !== null && numValue < range.min) {
         status = "abnormal";
         flag = "L";
-      } else if (range.max !== undefined && numValue > range.max) {
+      } else if (range.max !== undefined && range.max !== null && numValue > range.max) {
         status = "abnormal";
         flag = "H";
       }
-    } else if (param.resultType === 'qualitative' || param.resultType === 'text') {
+    } else {
       const expectedValue = (range.description || "").toLowerCase();
       const inputValue = value.trim().toLowerCase();
       
@@ -151,8 +152,14 @@ export default function PathologyResultEntryModal({
       // If the input is empty, it's normal by default
       if (inputValue === "") return { status, flag };
 
-      // Exact match with expected description is always normal
-      const isExactMatch = inputValue === expectedValue;
+      // Parse expected value into multiple options if it contains commas or slashes
+      const expectedOptions = expectedValue
+        .split(/[,\/]/)
+        .map(opt => opt.trim())
+        .filter(Boolean);
+
+      // Exact match with expected description or any of the expected options is always normal
+      const isExactMatch = inputValue === expectedValue || expectedOptions.includes(inputValue);
       
       // If not an exact match, check if it's a known 'normal' synonym
       const isKnownNormal = normalSynonyms.includes(inputValue);
@@ -199,16 +206,18 @@ export default function PathologyResultEntryModal({
           try {
             // eslint-disable-next-line no-eval
             const computed = eval(formula);
-            const computedStr = Number.isInteger(computed) ? computed.toString() : computed.toFixed(2);
-            
-            if (res.value !== computedStr) {
-              res.value = computedStr;
-              res.isCalculated = true;
+            if (typeof computed === 'number' && !isNaN(computed) && isFinite(computed)) {
+              const computedStr = Number.isInteger(computed) ? computed.toString() : computed.toFixed(2);
               
-              // Apply the same unified flagging logic to calculated results
-              const evalRes = evaluateResult(p, computedStr);
-              res.status = evalRes.status;
-              res.flag = evalRes.flag;
+              if (res.value !== computedStr) {
+                res.value = computedStr;
+                res.isCalculated = true;
+                
+                // Apply the same unified flagging logic to calculated results
+                const evalRes = evaluateResult(p, computedStr);
+                res.status = evalRes.status;
+                res.flag = evalRes.flag;
+              }
             }
           } catch (e) { console.error(e); }
         }

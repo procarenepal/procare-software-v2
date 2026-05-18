@@ -113,7 +113,9 @@ export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
         )}
         {activeSubTab === "parameters" && (
           <PathologyParametersTab
-            filteredParameters={props.parameters}
+            filteredParameters={props.parameters.filter(p => 
+              p.name.toLowerCase().includes(props.searchQuery.toLowerCase())
+            )}
             categories={props.categories}
             units={props.units}
             searchQuery={props.searchQuery}
@@ -127,7 +129,9 @@ export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
         )}
         {activeSubTab === "categories" && (
           <PathologyCategoriesTab
-            filteredCategories={props.categories}
+            filteredCategories={props.categories.filter(c => 
+              c.name.toLowerCase().includes(props.searchQuery.toLowerCase())
+            )}
             searchQuery={props.searchQuery}
             onSearchChange={props.onSearchChange}
             onAdd={props.onAddCategory}
@@ -138,7 +142,9 @@ export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
         )}
         {activeSubTab === "units" && (
           <PathologyUnitsTab
-            filteredUnits={props.units}
+            filteredUnits={props.units.filter(u => 
+              u.name.toLowerCase().includes(props.searchQuery.toLowerCase())
+            )}
             searchQuery={props.searchQuery}
             onSearchChange={props.onSearchChange}
             onAdd={props.onAddUnit}

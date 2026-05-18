@@ -28,9 +28,11 @@ export const generateInvoiceHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
-  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
-  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const hideLetterhead = layoutConfig?.defaultPathologyPrintWithoutLetterhead || false;
+  const brandingCSS = getPrintBrandingCSS(layoutConfig || ({} as PrintLayoutConfig), isThermal, thermalWidth);
+  const headerHTML = !hideLetterhead && layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = !hideLetterhead && layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const topMargin = hideLetterhead ? `${layoutConfig?.contentTopMarginWithoutLetterheadMm ?? 20}mm` : "0";
 
   const itemsHtml = billing.items
     .map(
@@ -58,6 +60,7 @@ export const generateInvoiceHTML = (
     /* Ensure table wrap doesn't show borders */
     .report-wrap { width: 100%; height: 100%; border-collapse: collapse; border: none; }
     .report-wrap td { padding: 0; border: none; }
+    .content { padding-top: ${topMargin}; }
   </style>
 </head>
 <body class="print-window-body">
@@ -127,12 +130,12 @@ export const generateInvoiceHTML = (
       <tfoot>
         <tr>
           <td>
-            ${footerHTML || `
+            ${layoutConfig && !layoutConfig.showFooter ? "" : (footerHTML || `
               <footer class="footer-section">
                 <p class="footer-text">Thank you for choosing us</p>
                 ${isThermal ? `<p class="footer-text" style="margin-top: 4px; font-size: 7px; text-transform: none;">${new Date().toLocaleString()}</p>` : ""}
               </footer>
-            `}
+            `)}
           </td>
         </tr>
       </tfoot>
@@ -169,9 +172,11 @@ export const generateAppointmentInvoiceHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
-  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
-  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const hideLetterhead = layoutConfig?.defaultPathologyPrintWithoutLetterhead || false;
+  const brandingCSS = getPrintBrandingCSS(layoutConfig || ({} as PrintLayoutConfig), isThermal, thermalWidth);
+  const headerHTML = !hideLetterhead && layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = !hideLetterhead && layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const topMargin = hideLetterhead ? `${layoutConfig?.contentTopMarginWithoutLetterheadMm ?? 20}mm` : "0";
 
   // Helper to format currency
   const formatCurrency = (amount: number) => `NPR ${amount.toLocaleString()}`;
@@ -220,6 +225,7 @@ export const generateAppointmentInvoiceHTML = (
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
     ${brandingCSS}
+    .content { padding-top: ${topMargin}; }
   </style>
 </head>
 <body class="print-window-body">
@@ -290,12 +296,12 @@ export const generateAppointmentInvoiceHTML = (
       </div>` : ""}
     </div>
     
-    ${footerHTML || `
+    ${layoutConfig && !layoutConfig.showFooter ? "" : (footerHTML || `
     <footer class="footer-section">
       <p class="footer-text">Thank you for choosing us</p>
       ${isThermal ? `<p class="footer-text" style="margin-top: 4px; font-size: 7px; text-transform: none;">${new Date().toLocaleString()}</p>` : ""}
     </footer>
-    `}
+    `)}
   </div>
   
   <script>
@@ -327,7 +333,7 @@ export const generatePatientSlipHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
+  const brandingCSS = getPrintBrandingCSS(layoutConfig || ({} as PrintLayoutConfig), isThermal, thermalWidth);
 
   const calculateAge = (dob: Date | string): number => {
     const today = new Date();
@@ -350,29 +356,29 @@ export const generatePatientSlipHTML = (
 
   const slipDate = new Date().toLocaleDateString();
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <title>Patient Slip - ${patient.name}</title>
-  <style>
-    @page {
-      ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
-    }
-    ${brandingCSS}
-  </style>
-</head>
-<body class="print-window-body">
-  <div class="print-container">
-    <div class="content" style="padding-top: 10px;">
-      <div class="document-title">
-        <h2>Patient Registration Slip</h2>
-        <div class="document-subtitle">Confidential Patient Record</div>
-      </div>
-      
-      <div class="info-section">
-        <h3>Patient Identification:</h3>
-        <table class="print-table" style="margin-bottom: 0; border: none;">
-          <tbody>
+  const tableRows = isThermal ? `
+            <tr>
+              <td class="font-bold" style="width: 30%; background: #f8fafc;">Reg#:</td><td>${patient.regNumber || ""}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Date:</td><td>${slipDate}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Name:</td><td><strong>${patient.name}</strong></td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Age/Gen:</td><td>${ageGender}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Contact:</td><td>${patient.mobile || ""}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Address:</td><td>${patient.address || ""}</td>
+            </tr>
+            <tr>
+              <td class="font-bold" style="background: #f8fafc;">Ref By:</td><td>${patient.referredBy || ""}</td>
+            </tr>
+  ` : `
             <tr>
               <td class="font-bold" style="width: 20%; background: #f8fafc;">Reg#:</td><td>${patient.regNumber || ""}</td>
               <td class="font-bold" style="width: 20%; background: #f8fafc;">Date:</td><td>${slipDate}</td>
@@ -390,28 +396,31 @@ export const generatePatientSlipHTML = (
             <tr>
               <td class="font-bold" style="background: #f8fafc;">Ref By:</td><td colspan="3">${patient.referredBy || ""}</td>
             </tr>
+  `;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <title>Patient Slip - ${patient.name}</title>
+  <style>
+    @page {
+      ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
+    }
+    ${brandingCSS}
+  </style>
+</head>
+<body class="print-window-body">
+  <div class="print-container">
+    <div class="content" style="padding-top: 10px;">
+      <div class="info-section">
+        <h3>Patient Identification:</h3>
+        <table class="print-table" style="margin-bottom: 0; border: none;">
+          <tbody>
+            ${tableRows}
           </tbody>
         </table>
       </div>
-
-      <div style="margin-top: 40px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
-        <div style="display: flex; justify-content: space-between;">
-          <div style="text-align: center; width: 150px;">
-            <div style="border-top: 1px solid #64748b; margin-top: 40px;"></div>
-            <p style="font-size: 10px; color: #64748b; margin-top: 5px;">Receptionist</p>
-          </div>
-          <div style="text-align: center; width: 150px;">
-            <div style="border-top: 1px solid #64748b; margin-top: 40px;"></div>
-            <p style="font-size: 10px; color: #64748b; margin-top: 5px;">Patient Signature</p>
-          </div>
-        </div>
-      </div>
     </div>
-    
-    <footer class="footer-section">
-      <p class="footer-text">This is a system generated document</p>
-      <p class="footer-text" style="text-transform: none; font-size: 7px; margin-top: 2px;">Printed on ${new Date().toLocaleString()}</p>
-    </footer>
   </div>
   
   <script>
@@ -443,9 +452,11 @@ export const generatePrescriptionHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
-  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
-  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const hideLetterhead = layoutConfig?.defaultPathologyPrintWithoutLetterhead || false;
+  const brandingCSS = getPrintBrandingCSS(layoutConfig || ({} as PrintLayoutConfig), isThermal, thermalWidth);
+  const headerHTML = !hideLetterhead && layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = !hideLetterhead && layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const topMargin = hideLetterhead ? `${layoutConfig?.contentTopMarginWithoutLetterheadMm ?? 20}mm` : "0";
 
   const itemsHtml = (prescription.items || [])
     .map(
@@ -469,6 +480,7 @@ export const generatePrescriptionHTML = (
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
     ${brandingCSS}
+    .content { padding-top: ${topMargin}; }
     
     .signature-section { margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-end; }
     .signature-box { text-align: center; width: 180px; }
@@ -546,11 +558,11 @@ export const generatePrescriptionHTML = (
       </div>` : ""}
     </div>
     
-    ${footerHTML || `
+    ${layoutConfig && !layoutConfig.showFooter ? "" : (footerHTML || `
     <footer class="footer-section">
       <p class="footer-text">Thank you for choosing us</p>
     </footer>
-    `}
+    `)}
   </div>
   
   <script>
@@ -583,9 +595,11 @@ export const generatePharmacyPurchaseHTML = (
     thermalWidth = `${layoutConfig.thermalPaperWidthMm}mm`;
   }
 
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig, isThermal, thermalWidth) : "";
-  const headerHTML = layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
-  const footerHTML = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const hideLetterhead = layoutConfig?.defaultPathologyPrintWithoutLetterhead || false;
+  const brandingCSS = getPrintBrandingCSS(layoutConfig || ({} as PrintLayoutConfig), isThermal, thermalWidth);
+  const headerHTML = !hideLetterhead && layoutConfig ? getPrintHeaderHTML(layoutConfig, clinic, isThermal) : "";
+  const footerHTML = !hideLetterhead && layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+  const topMargin = hideLetterhead ? `${layoutConfig?.contentTopMarginWithoutLetterheadMm ?? 20}mm` : "0";
 
   const itemsHtml = purchase.items
     .map((item: any, index: number) => {
@@ -639,6 +653,7 @@ export const generatePharmacyPurchaseHTML = (
     /* Ensure table wrap doesn't show borders */
     .report-wrap { width: 100%; border-collapse: collapse; border: none; }
     .report-wrap td { padding: 0; border: none; }
+    .content { padding-top: ${topMargin}; }
   </style>
 </head>
 <body class="print-window-body">
@@ -719,11 +734,11 @@ export const generatePharmacyPurchaseHTML = (
       <tfoot>
         <tr>
           <td>
-            ${footerHTML || `
+            ${layoutConfig && !layoutConfig.showFooter ? "" : (footerHTML || `
               <footer class="footer-section">
                 <p class="footer-text">Get Well Soon</p>
               </footer>
-            `}
+            `)}
           </td>
         </tr>
       </tfoot>
@@ -750,11 +765,17 @@ export const generatePathologyReportHTML = (
   allParameters: any[],
   options: { hideLetterhead?: boolean } = {},
 ): string => {
-  const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
-  const headerHtml = !options.hideLetterhead && layoutConfig
+  const brandingCSS = getPrintBrandingCSS(layoutConfig || ({} as PrintLayoutConfig));
+
+  const hideLetterhead = options.hideLetterhead || layoutConfig?.defaultPathologyPrintWithoutLetterhead || false;
+  const topMargin = hideLetterhead
+    ? `${layoutConfig?.contentTopMarginWithoutLetterheadMm ?? 20}mm`
+    : "0";
+
+  const headerHtml = !hideLetterhead && layoutConfig
     ? getPrintHeaderHTML(layoutConfig, clinic)
     : "";
-  const footerHtml = !options.hideLetterhead && layoutConfig
+  const footerHtml = !hideLetterhead && layoutConfig
     ? getPrintFooterHTML(layoutConfig)
     : "";
 
@@ -786,7 +807,7 @@ export const generatePathologyReportHTML = (
     });
   }
 
-  const pagesHtml = pages.map((page, pageIndex) => {
+  const sectionsHtml = pages.map((page) => {
     const parametersRows = page.results
       .filter((res: any) => {
         const paramMeta = allParameters.find((p) => p.id === res.parameterId);
@@ -820,8 +841,18 @@ export const generatePathologyReportHTML = (
         return `<tr>
           <td class="${isAbnormal ? "font-bold" : ""}" style="${indentStyle} font-weight: 600; color: #1e293b;">${res.parameterName || ""}</td>
           <td class="${isLongText ? "" : "text-center"}" style="font-size: 14px; ${isAbnormal ? "font-weight: 900;" : "font-weight: 700;"} color: #000000; ${isLongText ? "text-align: left; white-space: pre-wrap; padding: 8px;" : ""}">
-            ${res.value || ""}
-            ${res.flag && isAbnormal ? `<span style="font-size: 10px; margin-left: 4px; font-weight: 900;">(${res.flag})</span>` : ""}
+            ${isAbnormal && res.flag ? (() => {
+            const isHigh = String(res.flag).toUpperCase().includes("H");
+            const pillBg = isHigh ? "#fef2f2" : "#fffbeb";
+            const pillColor = isHigh ? "#dc2626" : "#d97706";
+            const pillBorder = isHigh ? "#fee2e2" : "#fef3c7";
+            return `
+                <span style="background: ${pillBg}; color: ${pillColor}; border: 1px solid ${pillBorder}; padding: 3px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; font-weight: 900; font-size: 13px;">
+                  ${res.value || ""}
+                  <span style="font-size: 9px; background: ${pillColor}; color: white; border-radius: 3px; padding: 1px 4px; font-weight: 900; line-height: 1; text-transform: uppercase;">${res.flag}</span>
+                </span>
+              `;
+          })() : (res.value || "")}
           </td>
           <td class="text-center" style="font-weight: 600; color: #1e293b;">${res.referenceRange || ""}</td>
           <td class="text-center" style="color: #334155; font-size: 11px; font-weight: 600;">${res.unit || ""}</td>
@@ -830,164 +861,198 @@ export const generatePathologyReportHTML = (
       .join("");
 
     return `
-    <div class="page-container" style="${pageIndex < pages.length - 1 ? "page-break-after: always;" : ""}">
-      ${headerHtml}
-      
-      <div class="content">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
-          <div class="document-title" style="margin-bottom: 0; text-align: left;">
-            <h2 style="font-size: 16px; color: #000000; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">Clinical Investigation Report</h2>
-            <div class="document-subtitle" style="font-size: 9px; color: #334155; margin-top: 1px; font-weight: 700;">CERTIFIED LABORATORY DIAGNOSTICS</div>
-          </div>
-          <div style="background: #f1f5f9; padding: 4px 12px; border-radius: 4px; border: 1px solid #94a3b8; text-align: right; min-width: 120px;">
-            <p style="margin: 0; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; color: #334155; font-weight: 800;">Department</p>
-            <p style="margin: 0; font-size: 12px; color: #000000; font-weight: 800;">${page.categoryName || "General Diagnostics"}</p>
-          </div>
+      <div class="test-section" style="margin-top: 15px; margin-bottom: 25px; page-break-inside: avoid;">
+        <div style="background-color: #f1f5f9; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; page-break-inside: avoid;">
+          <span style="font-size: 12px; font-weight: 900; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;">${page.title}</span>
+          <span style="font-size: 8px; font-weight: 800; color: #475569; text-transform: uppercase; background: #e2e8f0; padding: 2px 8px; border-radius: 2px;">${page.categoryName || "General Diagnostics"}</span>
         </div>
+        
+        <table class="print-table" style="margin-bottom: 0;">
+          <thead>
+            <tr>
+              <th style="width: 40%;">Parameter</th>
+              <th class="text-center" style="width: 25%;">Observation / Result</th>
+              <th class="text-center" style="width: 20%;">Reference Range</th>
+              <th class="text-center" style="width: 15%;">Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${parametersRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join("");
 
-        <div class="info-grid" style="gap: 8px; margin-bottom: 8px;">
-          <div class="info-section" style="padding: 6px 10px;">
-            <h3 style="font-size: 8px; margin-bottom: 4px;">Patient Information:</h3>
-            <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Name:</span><span class="info-value" style="font-size: 11px;"><strong>${test.patientName}</strong></span></div>
-            ${(() => {
-        const parts = [];
-        if (test.patientAge) parts.push(`${test.patientAge} yrs`);
-        if (test.patientGender && test.patientGender !== "N/A") parts.push(test.patientGender);
-        return `<div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Age/Gen:</span><span class="info-value" style="font-size: 11px;">${parts.join(" / ") || "N/A"}</span></div>`;
-      })()}
-            ${test.patientId ? `<div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Patient ID:</span><span class="info-value" style="font-size: 11px;">${test.patientId}</span></div>` : ""}
-          </div>
-          <div class="info-section" style="padding: 6px 10px;">
-            <h3 style="font-size: 8px; margin-bottom: 4px;">Report Detail:</h3>
-            <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Investigation:</span><span class="info-value" style="font-size: 11px;"><strong>${page.title}</strong></span></div>
-            <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Collected On:</span><span class="info-value" style="font-size: 11px;">${new Date(test.createdAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span></div>
-            <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Reported On:</span><span class="info-value" style="font-size: 11px;">${new Date(test.updatedAt || test.createdAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span></div>
-            <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Lab ID:</span><span class="info-value" style="font-size: 11px;">${test.orderNumber || "N/A"}</span></div>
-          </div>
-        </div>
+  const investigationTitle = pages.map(p => p.title).join(", ") || "Investigation Report";
+  const sharedCategoryName = pages[0]?.categoryName || "General Diagnostics";
 
-        <div class="info-section" style="margin-top: 10px; padding: 0; background: transparent; border: none;">
-          <h3 style="border-bottom: 2px solid #94a3b8; padding-bottom: 5px; margin-bottom: 10px; font-size: 10px; color: #1e293b; font-weight: 800;">Test Results & Observations</h3>
-          <table class="print-table">
-            <thead>
-              <tr>
-                <th>Parameter</th>
-                <th class="text-center">Observation / Result</th>
-                <th class="text-center">Reference Range</th>
-                <th class="text-center">Unit</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${parametersRows}
-            </tbody>
-          </table>
-        </div>
-
-        ${test.isMicrobiology ? `
-          <div style="margin-top: 20px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; page-break-inside: avoid;">
-            <div style="background-color: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">
-              <h3 style="margin: 0; font-size: 11px; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 800;">Microbiology Culture & Sensitivity Findings</h3>
-            </div>
-            <div style="padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #fff;">
-              <div>
-                <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; font-weight: 700;">Organism Isolated</p>
-                <p style="margin: 4px 0 0 0; font-size: 14px; color: #0f172a; font-weight: 800; letter-spacing: -0.2px;">${test.organismIsolated || "No growth detected after 48 hours of incubation"}</p>
-              </div>
-              <div>
-                <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; font-weight: 700;">Colony Count</p>
-                <p style="margin: 4px 0 0 0; font-size: 14px; color: #0f172a; font-weight: 800;">${test.colonyCount || "N/A"}</p>
-              </div>
-            </div>
-            
-            ${test.sensitivities && test.sensitivities.length > 0 ? `
-              <div style="padding: 12px; border-top: 1px solid #e2e8f0; background: #fff;">
-                <p style="margin: 0 0 10px 0; font-size: 10px; color: #334155; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
-                  <span style="width: 10px; height: 10px; background: #0d9488; border-radius: 2px;"></span>
-                  Antibiotic Sensitivity Matrix
-                </p>
-                <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0;">
-                  <thead>
-                    <tr style="background-color: #f8fafc;">
-                      <th style="padding: 8px 12px; text-align: left; border: 1px solid #e2e8f0; width: 45%; color: #475569; font-weight: 800; text-transform: uppercase; font-size: 9px;">Antibiotic</th>
-                      <th style="padding: 8px 12px; text-align: center; border: 1px solid #e2e8f0; width: 30%; color: #475569; font-weight: 800; text-transform: uppercase; font-size: 9px;">Sensitivity</th>
-                      <th style="padding: 8px 12px; text-align: center; border: 1px solid #e2e8f0; width: 25%; color: #475569; font-weight: 800; text-transform: uppercase; font-size: 9px;">Zone (mm)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${test.sensitivities.map((s: any) => `
-                      <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 700; color: #1e293b;">${s.antibiotic}</td>
-                        <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-align: center; font-weight: 900;">
-                          ${s.sensitivity === 'S' ? '<span style="color: #059669; background: #ecfdf5; padding: 2px 6px; rounded: 4px;">S (Sensitive)</span>' :
-          s.sensitivity === 'I' ? '<span style="color: #d97706; background: #fffbeb; padding: 2px 6px; rounded: 4px;">I (Intermediate)</span>' :
-            s.sensitivity === 'R' ? '<span style="color: #dc2626; background: #fef2f2; padding: 2px 6px; rounded: 4px;">R (Resistant)</span>' : '-'}
-                        </td>
-                        <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-align: center; color: #64748b; font-weight: 600;">${s.zoneOfInhibition || "—"}</td>
-                      </tr>
-                    `).join("")}
-                  </tbody>
-                </table>
-                <div style="margin-top: 12px; display: flex; gap: 15px; font-size: 8px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
-                  <span style="display: flex; align-items: center; gap: 4px;"><div style="width: 6px; height: 6px; background: #059669; border-radius: 1px;"></div> S: Sensitive</span>
-                  <span style="display: flex; align-items: center; gap: 4px;"><div style="width: 6px; height: 6px; background: #d97706; border-radius: 1px;"></div> I: Intermediate</span>
-                  <span style="display: flex; align-items: center; gap: 4px;"><div style="width: 6px; height: 6px; background: #dc2626; border-radius: 1px;"></div> R: Resistant</span>
-                </div>
-              </div>
-            ` : ""}
-          </div>
-        ` : ""}
-
-        <table class="signature-table" style="position: absolute; bottom: 60px; left: 40px; right: 40px; width: calc(100% - 80px); border: none; border-collapse: collapse; background: white; z-index: 10;">
+  const reportHtml = `
+    <div class="page-container">
+      <table class="report-wrap">
+        <thead>
+          <tr><td>${headerHtml}</td></tr>
+        </thead>
+        <tbody>
           <tr>
-            <td style="width: 60%; vertical-align: bottom; text-align: left; padding: 0;">
-              <div style="display: flex; flex-wrap: wrap; gap: 30px; margin-bottom: 10px;">
-                ${(() => {
-        const names = test.labTechnicianNames && test.labTechnicianNames.length > 0
-          ? test.labTechnicianNames
-          : test.labTechnicianName
-            ? [test.labTechnicianName]
-            : [];
-        const sigs = test.labTechnicianSignatureUrls || [];
-
-        return names.map((name, i) => `
-                    <div style="display: inline-block; min-width: 130px; margin-right: 20px; opacity: 0.9;">
-                      ${sigs[i] ? `<img src="${sigs[i]}" style="height: 50px; width: auto; max-width: 130px; object-fit: contain; margin-bottom: 4px; mix-blend-mode: multiply;" />` : '<div style="height: 50px; margin-bottom: 4px;"></div>'}
-                      <p style="margin: 0; font-weight: 700; font-size: 11px; color: #1e293b; position: relative; z-index: 1;">${name}</p>
-                      <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px;">Laboratory Technician</p>
-                    </div>
-                  `).join("");
-      })()}
-              </div>
-              <div style="border-top: 1px solid #e2e8f0; width: 200px; padding-top: 5px;">
-                <p style="margin: 0; font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Performed By</p>
-              </div>
-            </td>
-            <td style="width: 40%; vertical-align: bottom; text-align: center; padding: 0;">
-              ${test.verifiedByName ? `
-                <div style="margin-bottom: 8px; text-align: center;">
-                  ${test.verifiedBySignatureUrl ? `<img src="${test.verifiedBySignatureUrl}" style="height: 60px; width: auto; max-width: 180px; object-fit: contain; margin-bottom: 4px; mix-blend-mode: multiply; display: block; margin-left: auto; margin-right: auto;" />` : '<div style="height: 60px; margin-bottom: 4px;"></div>'}
-                  <p style="margin: 0; font-weight: 700; font-size: 12px; color: #1e293b; position: relative; z-index: 1;">${test.verifiedByName}</p>
-                  <p style="margin: 0; font-size: 9px; color: #64748b; text-transform: uppercase;">${test.verifiedByDesignation || "Consultant Pathologist"}</p>
-                  <p style="margin: 0; font-size: 8px; color: #94a3b8;">Reg No: ${test.verifiedByRegNo || "--------"}</p>
+            <td style="vertical-align: top; padding: 0;">
+              <div class="content" style="padding: ${topMargin} 40px 0 40px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
+                  <div class="document-title" style="margin-bottom: 0; text-align: left;">
+                    <h2 style="font-size: 16px; color: #000000; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">Clinical Investigation Report</h2>
+                    <div class="document-subtitle" style="font-size: 9px; color: #334155; margin-top: 1px; font-weight: 700;">CERTIFIED LABORATORY DIAGNOSTICS</div>
+                  </div>
+                  <div style="background: #f1f5f9; padding: 4px 12px; border-radius: 4px; border: 1px solid #94a3b8; text-align: right; min-width: 120px;">
+                    <p style="margin: 0; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; color: #334155; font-weight: 800;">Department</p>
+                    <p style="margin: 0; font-size: 12px; color: #000000; font-weight: 800;">${sharedCategoryName}</p>
+                  </div>
                 </div>
-              ` : ""}
-              <div style="border-top: 2px solid #1e293b; width: 100%; padding-top: 5px; text-align: center;">
-                <p style="margin: 0; font-size: 10px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 1px;">Authorized Signatory</p>
+
+                <div class="info-grid" style="gap: 8px; margin-bottom: 8px;">
+                  <div class="info-section" style="padding: 6px 10px;">
+                    <h3 style="font-size: 8px; margin-bottom: 4px;">Patient Information:</h3>
+                    <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Name:</span><span class="info-value" style="font-size: 11px;"><strong>${test.patientName}</strong></span></div>
+                    ${(() => {
+      const parts = [];
+      if (test.patientAge) parts.push(`${test.patientAge} yrs`);
+      if (test.patientGender && test.patientGender !== "N/A") parts.push(test.patientGender);
+      return `<div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Age/Gen:</span><span class="info-value" style="font-size: 11px;">${parts.join(" / ") || "N/A"}</span></div>`;
+    })()}
+                    ${test.patientId ? `<div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Patient ID:</span><span class="info-value" style="font-size: 11px;">${test.patientId}</span></div>` : ""}
+                  </div>
+                  <div class="info-section" style="padding: 6px 10px;">
+                    <h3 style="font-size: 8px; margin-bottom: 4px;">Report Detail:</h3>
+                    <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Investigation:</span><span class="info-value" style="font-size: 11px;"><strong>${investigationTitle}</strong></span></div>
+                    <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Collected On:</span><span class="info-value" style="font-size: 11px;">${new Date(test.createdAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span></div>
+                    <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Reported On:</span><span class="info-value" style="font-size: 11px;">${new Date(test.updatedAt || test.createdAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span></div>
+                    <div class="info-item" style="margin-bottom: 2px;"><span class="info-label" style="font-size: 11px;">Lab ID:</span><span class="info-value" style="font-size: 11px;">${test.orderNumber || "N/A"}</span></div>
+                  </div>
+                </div>
+
+                <div class="results-container" style="margin-top: 10px; padding: 0; background: transparent; border: none;">
+                  <h3 style="border-bottom: 2px solid #94a3b8; padding-bottom: 5px; margin-bottom: 10px; font-size: 10px; color: #1e293b; font-weight: 800;">Test Results & Observations</h3>
+                  ${sectionsHtml}
+                </div>
+
+                ${test.isMicrobiology ? `
+                  <div style="margin-top: 20px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; page-break-inside: avoid;">
+                    <div style="background-color: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">
+                      <h3 style="margin: 0; font-size: 11px; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 800;">Microbiology Culture & Sensitivity Findings</h3>
+                    </div>
+                    <div style="padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #fff;">
+                      <div>
+                        <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; font-weight: 700;">Organism Isolated</p>
+                        <p style="margin: 4px 0 0 0; font-size: 14px; color: #0f172a; font-weight: 800; letter-spacing: -0.2px;">${test.organismIsolated || "No growth detected after 48 hours of incubation"}</p>
+                      </div>
+                      <div>
+                        <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; font-weight: 700;">Colony Count</p>
+                        <p style="margin: 4px 0 0 0; font-size: 14px; color: #0f172a; font-weight: 800;">${test.colonyCount || "N/A"}</p>
+                      </div>
+                    </div>
+                    
+                    ${test.sensitivities && test.sensitivities.length > 0 ? `
+                      <div style="padding: 12px; border-top: 1px solid #e2e8f0; background: #fff;">
+                        <p style="margin: 0 0 10px 0; font-size: 10px; color: #334155; font-weight: 800; text-transform: uppercase; display: flex; align-items: center; gap: 6px;">
+                          <span style="width: 10px; height: 10px; background: #0d9488; border-radius: 2px;"></span>
+                          Antibiotic Sensitivity Matrix
+                        </p>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0;">
+                          <thead>
+                            <tr style="background-color: #f8fafc;">
+                              <th style="padding: 8px 12px; text-align: left; border: 1px solid #e2e8f0; width: 45%; color: #475569; font-weight: 800; text-transform: uppercase; font-size: 9px;">Antibiotic</th>
+                              <th style="padding: 8px 12px; text-align: center; border: 1px solid #e2e8f0; width: 30%; color: #475569; font-weight: 800; text-transform: uppercase; font-size: 9px;">Sensitivity</th>
+                              <th style="padding: 8px 12px; text-align: center; border: 1px solid #e2e8f0; width: 25%; color: #475569; font-weight: 800; text-transform: uppercase; font-size: 9px;">Zone (mm)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${test.sensitivities.map((s: any) => `
+                              <tr style="border-bottom: 1px solid #f1f5f9;">
+                                <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 700; color: #1e293b;">${s.antibiotic}</td>
+                                <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-align: center; font-weight: 900;">
+                                   ${s.sensitivity === 'S' ? '<span style="color: #059669; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 3px 8px; border-radius: 4px; font-size: 10px; display: inline-block;">S (Sensitive)</span>' :
+        s.sensitivity === 'I' ? '<span style="color: #d97706; background: #fffbeb; border: 1px solid #fde68a; padding: 3px 8px; border-radius: 4px; font-size: 10px; display: inline-block;">I (Intermediate)</span>' :
+          s.sensitivity === 'R' ? '<span style="color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; padding: 3px 8px; border-radius: 4px; font-size: 10px; display: inline-block;">R (Resistant)</span>' : '-'}
+                                </td>
+                                <td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-align: center; color: #64748b; font-weight: 600;">${s.zoneOfInhibition || "—"}</td>
+                              </tr>
+                            `).join("")}
+                          </tbody>
+                        </table>
+                        <div style="margin-top: 12px; display: flex; gap: 15px; font-size: 8px; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+                          <span style="display: flex; align-items: center; gap: 4px;"><div style="width: 6px; height: 6px; background: #059669; border-radius: 1px;"></div> S: Sensitive</span>
+                          <span style="display: flex; align-items: center; gap: 4px;"><div style="width: 6px; height: 6px; background: #d97706; border-radius: 1px;"></div> I: Intermediate</span>
+                          <span style="display: flex; align-items: center; gap: 4px;"><div style="width: 6px; height: 6px; background: #dc2626; border-radius: 1px;"></div> R: Resistant</span>
+                        </div>
+                      </div>
+                    ` : ""}
+                  </div>
+                ` : ""}
+
+                <div id="print-signature-spacer" style="height: 0px;"></div>
+                <table class="signature-table" style="border: none; border-collapse: collapse; background: white; z-index: 10; width: 100%; page-break-inside: avoid; margin-top: 40px;">
+                  <tr>
+                    <td style="width: 60%; vertical-align: bottom; text-align: left; padding: 0;">
+                      <div style="display: flex; flex-wrap: wrap; gap: 30px; margin-bottom: 10px;">
+                        ${(() => {
+      const names = test.labTechnicianNames && test.labTechnicianNames.length > 0
+        ? test.labTechnicianNames
+        : test.labTechnicianName
+          ? [test.labTechnicianName]
+          : [];
+      const sigs = test.labTechnicianSignatureUrls || [];
+      const regNos = test.labTechnicianRegNos && test.labTechnicianRegNos.length > 0
+        ? test.labTechnicianRegNos
+        : test.labTechnicianRegNo
+          ? [test.labTechnicianRegNo]
+          : [];
+
+      return names.map((name, i) => `
+                            <div style="display: inline-block; min-width: 130px; margin-right: 20px; opacity: 0.9;">
+                              ${sigs[i] ? `<img src="${sigs[i]}" style="height: 50px; width: auto; max-width: 130px; object-fit: contain; margin-bottom: 4px; mix-blend-mode: multiply;" />` : '<div style="height: 50px; margin-bottom: 4px;"></div>'}
+                              <p style="margin: 0; font-weight: 700; font-size: 11px; color: #1e293b; position: relative; z-index: 1;">${name}</p>
+                              <p style="margin: 0; font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600;">Laboratory Technician</p>
+                              ${regNos[i] ? `<p style="margin: 1px 0 0 0; font-size: 8px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">NHPC No: ${regNos[i]}</p>` : ""}
+                            </div>
+                          `).join("");
+    })()}
+                      </div>
+                      <div style="border-top: 1px solid #e2e8f0; width: 200px; padding-top: 5px;">
+                        <p style="margin: 0; font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Performed By</p>
+                      </div>
+                    </td>
+                    <td style="width: 40%; vertical-align: bottom; text-align: center; padding: 0;">
+                      ${test.verifiedByName ? `
+                        <div style="margin-bottom: 8px; text-align: center;">
+                          ${test.verifiedBySignatureUrl ? `<img src="${test.verifiedBySignatureUrl}" style="height: 60px; width: auto; max-width: 180px; object-fit: contain; margin-bottom: 4px; mix-blend-mode: multiply; display: block; margin-left: auto; margin-right: auto;" />` : '<div style="height: 60px; margin-bottom: 4px;"></div>'}
+                          <p style="margin: 0; font-weight: 700; font-size: 12px; color: #1e293b; position: relative; z-index: 1;">${test.verifiedByName}</p>
+                          <p style="margin: 0; font-size: 9px; color: #64748b; text-transform: uppercase;">${test.verifiedByDesignation || "Consultant Pathologist"}</p>
+                          <p style="margin: 0; font-size: 8px; color: #94a3b8;">Reg No: ${test.verifiedByRegNo || "--------"}</p>
+                        </div>
+                      ` : ""}
+                      <div style="border-top: 2px solid #1e293b; width: 100%; padding-top: 5px; text-align: center;">
+                        <p style="margin: 0; font-size: 10px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 1px;">Authorized Signatory</p>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
               </div>
             </td>
           </tr>
-        </table>
-      </div>
-      
-      <div style="position: absolute; bottom: 0; left: 0; right: 0;">
-        ${footerHtml || `
-        <footer class="footer-section" style="padding: 10px 0; border-top: 1px solid #f1f5f9;">
-          <p class="footer-text" style="font-size: 10px; text-align: center; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Thank you for choosing us</p>
-        </footer>
-        `}
-      </div>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>
+              ${layoutConfig && !layoutConfig.showFooter ? "" : (footerHtml || `
+              <footer class="footer-section" style="padding: 10px 0; border-top: 1px solid #f1f5f9;">
+                <p class="footer-text" style="font-size: 10px; text-align: center; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Thank you for choosing us</p>
+              </footer>
+              `)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>`;
-  }).join("");
+
 
   return `<!DOCTYPE html>
 <html>
@@ -996,15 +1061,16 @@ export const generatePathologyReportHTML = (
   <style>
     @page { size: A4; margin: 0; }
     ${brandingCSS}
-    .page-container { height: 297mm; position: relative; overflow: hidden; box-sizing: border-box; }
-    .content { padding: 0 40px 240px 40px; }
-    .signature-table { border-collapse: collapse; border: none; width: 100%; }
+    .page-container { min-height: 297mm; display: flex; flex-direction: column; position: relative; box-sizing: border-box; }
+    .report-wrap { width: 100%; border-collapse: collapse; border: none; }
+    .content { padding: 0; display: flex; flex-direction: column; }
+    .signature-table { border-collapse: collapse; border: none; width: 100%; page-break-inside: avoid; }
     .sign-line { border-top: 1px solid #1e293b; width: 200px; padding-top: 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; text-align: center; color: #475569; }
   </style>
 </head>
 <body class="print-window-body">
   <div class="print-container">
-    ${pagesHtml}
+    ${reportHtml}
   </div>
   
   <script>

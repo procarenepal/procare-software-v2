@@ -26,6 +26,31 @@ import { referralCommissionService } from "./referralCommissionService";
 const PATHOLOGY_BILLING_COLLECTION = "pathologyBilling";
 const PATHOLOGY_BILLING_SETTINGS_COLLECTION = "pathologyBillingSettings";
 
+// Helper to strip out undefined values before sending data to Firestore
+function removeUndefinedFields<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object" || obj instanceof Date) {
+    return obj;
+  }
+
+  // Handle Firebase Timestamps specifically if they exist
+  if ((obj as any).toDate && typeof (obj as any).toDate === "function") {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => removeUndefinedFields(item)) as any;
+  }
+
+  const cleaned: Record<string, any> = {};
+  Object.entries(obj as any).forEach(([key, value]) => {
+    if (value !== undefined) {
+      cleaned[key] = removeUndefinedFields(value);
+    }
+  });
+
+  return cleaned as T;
+}
+
 /**
  * Service for managing pathology billing operations including invoices and settings
  */
@@ -283,16 +308,7 @@ export const pathologyBillingService = {
     try {
       const billingRef = collection(db, PATHOLOGY_BILLING_COLLECTION);
 
-      // Filter out undefined values to prevent Firestore errors
-      const cleanedData: any = {};
-
-      Object.keys(billingData).forEach((key) => {
-        const value = (billingData as any)[key];
-
-        if (value !== undefined) {
-          cleanedData[key] = value;
-        }
-      });
+      const cleanedData = removeUndefinedFields(billingData);
 
       const now = Timestamp.now();
       const data = {
@@ -329,16 +345,7 @@ export const pathologyBillingService = {
     try {
       const billingRef = doc(db, PATHOLOGY_BILLING_COLLECTION, id);
 
-      // Filter out undefined values to prevent Firestore errors
-      const cleanedData: any = {};
-
-      Object.keys(billingData).forEach((key) => {
-        const value = (billingData as any)[key];
-
-        if (value !== undefined) {
-          cleanedData[key] = value;
-        }
-      });
+      const cleanedData = removeUndefinedFields(billingData);
 
       const data: any = {
         ...cleanedData,
@@ -513,8 +520,8 @@ export const pathologyBillingService = {
         throw new Error("Billing record not found");
       }
 
-      const newPaidAmount = billing.paidAmount + paymentAmount;
-      const newBalanceAmount = billing.totalAmount - newPaidAmount;
+      const newPaidAmount = Number((billing.paidAmount + paymentAmount).toFixed(2));
+      const newBalanceAmount = Number((billing.totalAmount - newPaidAmount).toFixed(2));
 
       let paymentStatus: "unpaid" | "partial" | "paid" = "unpaid";
 
@@ -553,9 +560,6 @@ export const pathologyBillingService = {
 
   // =================== UTILITY FUNCTIONS ===================
 
-  /**
-   * Calculate invoice totals from items
-   */
   calculateInvoiceTotals(
     items: PathologyBillingItem[],
     discountType: "flat" | "percent",
@@ -567,7 +571,7 @@ export const pathologyBillingService = {
     taxAmount: number;
     totalAmount: number;
   } {
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+    const subtotal = Number(items.reduce((sum, item) => sum + item.amount, 0).toFixed(2));
 
     let discountAmount = 0;
 
@@ -576,10 +580,11 @@ export const pathologyBillingService = {
     } else if (discountType === "percent") {
       discountAmount = (subtotal * discountValue) / 100;
     }
+    discountAmount = Number(discountAmount.toFixed(2));
 
-    const amountAfterDiscount = subtotal - discountAmount;
-    const taxAmount = (amountAfterDiscount * taxPercentage) / 100;
-    const totalAmount = amountAfterDiscount + taxAmount;
+    const amountAfterDiscount = Number((subtotal - discountAmount).toFixed(2));
+    const taxAmount = Number(((amountAfterDiscount * taxPercentage) / 100).toFixed(2));
+    const totalAmount = Number((amountAfterDiscount + taxAmount).toFixed(2));
 
     return {
       subtotal,

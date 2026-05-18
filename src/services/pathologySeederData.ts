@@ -15,7 +15,8 @@ export interface RangeConfig {
 export interface ParameterSeed {
   name: string;
   unit?: string;
-  resultType?: "numeric" | "text" | "qualitative";
+  resultType?: "numeric" | "text" | "qualitative" | "calculated";
+  formula?: string;
   isGenderSensitive?: boolean;
   isHeader?: boolean;
   indentationLevel?: number;
@@ -149,14 +150,14 @@ export const pathologySeederData: TestSeed[] = [
     parameters: [
       { name: "Bilirubin Total", unit: "mg/dL", resultType: "numeric", allRange: { min: 0.1, max: 1.2, description: "0.1-1.2 mg/dL" }, price: 150 },
       { name: "Bilirubin Direct", unit: "mg/dL", resultType: "numeric", allRange: { min: 0.0, max: 0.3, description: "0.0-0.3 mg/dL" }, price: 150 },
-      { name: "Bilirubin Indirect", unit: "mg/dL", resultType: "numeric", allRange: { min: 0.1, max: 0.9, description: "0.1-0.9 mg/dL" }, price: 100 },
+      { name: "Bilirubin Indirect", unit: "mg/dL", resultType: "calculated", formula: "{Bilirubin Total} - {Bilirubin Direct}", allRange: { min: 0.1, max: 0.9, description: "0.1-0.9 mg/dL" }, price: 100 },
       { name: "SGOT (AST)", unit: "U/L", resultType: "numeric", allRange: { min: 0, max: 40, description: "Up to 40 U/L" }, price: 150 },
       { name: "SGPT (ALT)", unit: "U/L", resultType: "numeric", allRange: { min: 0, max: 40, description: "Up to 40 U/L" }, price: 150 },
       { name: "Alkaline Phosphatase (ALP)", unit: "U/L", resultType: "numeric", allRange: { min: 44, max: 147, description: "44-147 U/L" }, price: 150 },
       { name: "Total Protein", unit: "g/dL", resultType: "numeric", allRange: { min: 6.0, max: 8.3, description: "6.0-8.3 g/dL" }, price: 150 },
       { name: "Albumin", unit: "g/dL", resultType: "numeric", allRange: { min: 3.5, max: 5.0, description: "3.5-5.0 g/dL" }, price: 150 },
-      { name: "Globulin", unit: "g/dL", resultType: "numeric", allRange: { min: 2.3, max: 3.5, description: "2.3-3.5 g/dL" }, price: 100 },
-      { name: "A/G Ratio", unit: "", resultType: "numeric", allRange: { min: 1.2, max: 2.2, description: "1.2-2.2" }, price: 50 }
+      { name: "Globulin", unit: "g/dL", resultType: "calculated", formula: "{Total Protein} - {Albumin}", allRange: { min: 2.3, max: 3.5, description: "2.3-3.5 g/dL" }, price: 100 },
+      { name: "A/G Ratio", unit: "", resultType: "calculated", formula: "{Albumin} / {Globulin}", allRange: { min: 1.2, max: 2.2, description: "1.2-2.2" }, price: 50 }
     ]
   },
   {
@@ -183,8 +184,8 @@ export const pathologySeederData: TestSeed[] = [
       { name: "Total Cholesterol", unit: "mg/dL", resultType: "numeric", allRange: { min: 0, max: 200, description: "< 200 mg/dL" }, price: 250 },
       { name: "Triglycerides", unit: "mg/dL", resultType: "numeric", allRange: { min: 0, max: 150, description: "< 150 mg/dL" }, price: 250 },
       { name: "HDL Cholesterol", unit: "mg/dL", resultType: "numeric", allRange: { min: 40, max: 60, description: "40 - 60 mg/dL" }, price: 250 },
-      { name: "LDL Cholesterol", unit: "mg/dL", resultType: "numeric", allRange: { min: 0, max: 100, description: "< 100 mg/dL" }, price: 250 },
-      { name: "VLDL Cholesterol", unit: "mg/dL", resultType: "numeric", allRange: { min: 5, max: 40, description: "5 - 40 mg/dL" }, price: 200 }
+      { name: "LDL Cholesterol", unit: "mg/dL", resultType: "calculated", formula: "{Total Cholesterol} - {HDL Cholesterol} - {VLDL Cholesterol}", allRange: { min: 0, max: 100, description: "< 100 mg/dL" }, price: 250 },
+      { name: "VLDL Cholesterol", unit: "mg/dL", resultType: "calculated", formula: "{Triglycerides} / 5", allRange: { min: 5, max: 40, description: "5 - 40 mg/dL" }, price: 200 }
     ]
   },
   {
@@ -231,7 +232,7 @@ export const pathologySeederData: TestSeed[] = [
     targetType: "parameter",
     parameters: [
       { name: "HbA1c", unit: "%", resultType: "numeric", allRange: { min: 4.0, max: 5.6, description: "4.0 - 5.6 %", tiers: [{ label: "Normal", min: 4.0, max: 5.6, status: "normal" }, { label: "Prediabetes", min: 5.7, max: 6.4, status: "borderline" }, { label: "Diabetes", min: 6.5, max: 20, status: "high" }] }, price: 800 },
-      { name: "Estimated Average Glucose (eAG)", unit: "mg/dL", resultType: "numeric", allRange: { description: "Calculated based on HbA1c" }, price: 0 }
+      { name: "Estimated Average Glucose (eAG)", unit: "mg/dL", resultType: "calculated", formula: "(28.7 * {HbA1c}) - 46.7", allRange: { min: 70, max: 126, description: "Calculated based on HbA1c" }, price: 0 }
     ]
   },
   {
@@ -543,6 +544,76 @@ export const pathologySeederData: TestSeed[] = [
     parameters: [
       { name: "Gram Stain", unit: "", resultType: "text", allRange: { description: "No Organism Seen" }, price: 400 },
       { name: "Culture Result", unit: "", resultType: "text", allRange: { description: "No Pathogenic Growth" }, price: 500 }
+    ]
+  },
+  {
+    id: "koh_mount",
+    name: "KOH Mount for Fungi",
+    categoryName: "Dermatology & Skin Diagnostics",
+    price: 300,
+    targetType: "parameter",
+    parameters: [
+      { name: "Fungal Elements (KOH Mount)", unit: "", resultType: "qualitative", allRange: { description: "Not Seen / Negative" }, price: 300 }
+    ]
+  },
+  {
+    id: "scabies_scraping",
+    name: "Skin Scraping for Scabies",
+    categoryName: "Dermatology & Skin Diagnostics",
+    price: 300,
+    targetType: "parameter",
+    parameters: [
+      { name: "Sarcoptes scabiei / Ova", unit: "", resultType: "qualitative", allRange: { description: "Not Seen / Negative" }, price: 300 }
+    ]
+  },
+  {
+    id: "tzanck_smear",
+    name: "Tzanck Smear",
+    categoryName: "Dermatology & Skin Diagnostics",
+    price: 450,
+    targetType: "parameter",
+    parameters: [
+      { name: "Multinucleated Giant Cells", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 450 }
+    ]
+  },
+  {
+    id: "skin_patch_test",
+    name: "Skin Patch Test (Standard Contact Allergens)",
+    categoryName: "Dermatology & Skin Diagnostics",
+    price: 2500,
+    targetType: "parameter",
+    parameters: [
+      { name: "Nickel Sulfate", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 400 },
+      { name: "Fragrance Mix", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 400 },
+      { name: "Cobalt Chloride", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 400 },
+      { name: "Formaldehyde", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 400 },
+      { name: "Neomycin Sulfate", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 400 },
+      { name: "Paraben Mix", unit: "", resultType: "qualitative", allRange: { description: "Negative" }, price: 500 }
+    ]
+  },
+  {
+    id: "dermatology_hormone",
+    name: "Dermatology Hormonal Panel (Acne & Hair Loss)",
+    categoryName: "Dermatology & Skin Diagnostics",
+    price: 3200,
+    targetType: "parameter",
+    parameters: [
+      { name: "Testosterone (Total)", unit: "ng/dL", resultType: "numeric", isGenderSensitive: true, maleRange: { min: 280, max: 1100, description: "280 - 1100 ng/dL" }, femaleRange: { min: 15, max: 70, description: "15 - 70 ng/dL" }, price: 1000 },
+      { name: "DHEA-S", unit: "µg/dL", resultType: "numeric", isGenderSensitive: true, maleRange: { min: 80, max: 560, description: "80 - 560 µg/dL" }, femaleRange: { min: 35, max: 430, description: "35 - 430 µg/dL" }, price: 1200 },
+      { name: "SHBG", unit: "nmol/L", resultType: "numeric", isGenderSensitive: true, maleRange: { min: 10, max: 57, description: "10 - 57 nmol/L" }, femaleRange: { min: 18, max: 144, description: "18 - 144 nmol/L" }, price: 1000 }
+    ]
+  },
+  {
+    id: "skin_biopsy",
+    name: "Skin Biopsy & Histopathology",
+    categoryName: "Dermatology & Skin Diagnostics",
+    price: 3500,
+    targetType: "parameter",
+    parameters: [
+      { name: "Clinical History & Details", unit: "", resultType: "text", allRange: { description: "Provided by Dermatologist" }, price: 500 },
+      { name: "Gross Examination", unit: "", resultType: "text", allRange: { description: "Specimen description" }, price: 1000 },
+      { name: "Microscopic Description", unit: "", resultType: "text", allRange: { description: "Tissue structure details" }, price: 1000 },
+      { name: "Diagnostic Impression", unit: "", resultType: "text", allRange: { description: "Final Histopathological Diagnosis" }, price: 1000 }
     ]
   }
 ];

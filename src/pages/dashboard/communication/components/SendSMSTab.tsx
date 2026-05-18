@@ -281,12 +281,15 @@ const SendSMSTab: React.FC = () => {
 
     try {
       const response = await smsTestService.sendTestSMS(phoneNumber, message);
+      // Defensive check: Appwrite function returns success: true on completed execution,
+      // but we must check response.data?.sent to verify actual SMS gateway delivery.
+      const actualSent = response.success && response.data?.sent;
       const finalLogData = {
         ...logData,
-        status: (response.success ? "sent" : "failed") as "sent" | "failed",
-        ...(response.success
+        status: (actualSent ? "sent" : "failed") as "sent" | "failed",
+        ...(actualSent
           ? {}
-          : { errorMessage: response.error || "Unknown error" }),
+          : { errorMessage: response.error || response.data?.response?.error || "SMS API gateway delivery failed" }),
       };
 
       try {
@@ -294,11 +297,11 @@ const SendSMSTab: React.FC = () => {
       } catch (logError) {
         addToast({
           title: "Log Error",
-          description: `SMS sent but failed to create log: ${logError instanceof Error ? logError.message : "Unknown error"}`,
+          description: `SMS status updated but failed to create log: ${logError instanceof Error ? logError.message : "Unknown error"}`,
           color: "warning",
         });
       }
-      if (response.success) {
+      if (actualSent) {
         addToast({
           title: "Success",
           description: `SMS sent successfully to ${recipientName}`,
@@ -312,7 +315,7 @@ const SendSMSTab: React.FC = () => {
         addToast({
           title: "SMS Failed",
           description:
-            response.error || "Failed to send SMS. Please try again.",
+            response.error || response.data?.response?.error || "Failed to send SMS. Please verify your SMS gateway API settings or Appwrite function variables.",
           color: "danger",
         });
       }

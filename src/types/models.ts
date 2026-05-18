@@ -1535,8 +1535,10 @@ export interface PathologyOrder {
   
   labTechnicianIds?: string[];
   labTechnicianNames?: string[];
+  labTechnicianRegNos?: string[];
   labTechnicianId?: string;
   labTechnicianName?: string;
+  labTechnicianRegNo?: string;
   labTechnicianSignatureUrls?: string[]; // Array of signature URLs for multiple technicians
   
   verifiedById?: string;

@@ -571,6 +571,14 @@ export const pathologyService = {
       });
 
       await updateDoc(docRef, data);
+
+      const cDoc = await getDoc(docRef);
+      if (cDoc.exists()) {
+        const cData = cDoc.data();
+        if (cData && cData.clinicId) {
+          await this.syncAllTemplatesPriceAndDetails(cData.clinicId);
+        }
+      }
     } catch (error) {
       console.error("Error updating pathology category:", error);
       throw error;
@@ -891,6 +899,10 @@ export const pathologyService = {
         }
       }
 
+      if (parameterData.clinicId) {
+        await this.syncAllTemplatesPriceAndDetails(parameterData.clinicId);
+      }
+
       return docRef.id;
     } catch (error) {
       console.error("Error creating pathology parameter:", error);
@@ -917,6 +929,14 @@ export const pathologyService = {
       });
 
       await updateDoc(docRef, data);
+
+      const pDoc = await getDoc(docRef);
+      if (pDoc.exists()) {
+        const pData = pDoc.data();
+        if (pData && pData.clinicId) {
+          await this.syncAllTemplatesPriceAndDetails(pData.clinicId);
+        }
+      }
     } catch (error) {
       console.error("Error updating pathology parameter:", error);
       throw error;
@@ -935,6 +955,14 @@ export const pathologyService = {
         isActive: false,
         updatedAt: now,
       });
+
+      const pDoc = await getDoc(docRef);
+      if (pDoc.exists()) {
+        const pData = pDoc.data();
+        if (pData && pData.clinicId) {
+          await this.syncAllTemplatesPriceAndDetails(pData.clinicId);
+        }
+      }
     } catch (error) {
       console.error("Error deleting pathology parameter:", error);
       throw error;
@@ -958,9 +986,157 @@ export const pathologyService = {
       });
 
       await batch.commit();
+
+      if (ids.length > 0) {
+        const docRef = doc(db, PATHOLOGY_PARAMETERS_COLLECTION, ids[0]);
+        const pDoc = await getDoc(docRef);
+        if (pDoc.exists()) {
+          const pData = pDoc.data();
+          if (pData && pData.clinicId) {
+            await this.syncAllTemplatesPriceAndDetails(pData.clinicId);
+          }
+        }
+      }
     } catch (error) {
       console.error("Error bulk deleting pathology parameters:", error);
       throw error;
+    }
+  },
+
+  /**
+   * Synchronization helper to automatically propagate parameter price, unit, and name updates 
+   * to all active test templates for the clinic.
+   */
+  async syncAllTemplatesPriceAndDetails(clinicId: string): Promise<void> {
+    try {
+      const now = Timestamp.now();
+      
+      // 1. Fetch all active parameters for this clinic
+      const paramsRef = collection(db, PATHOLOGY_PARAMETERS_COLLECTION);
+      const qParams = query(paramsRef, where("clinicId", "==", clinicId), where("isActive", "==", true));
+      const paramsSnap = await getDocs(qParams);
+      const allParams: PathologyParameter[] = [];
+      paramsSnap.forEach((doc) => {
+        allParams.push({ id: doc.id, ...doc.data() } as PathologyParameter);
+      });
+
+      // 2. Fetch all active categories for this clinic
+      const categoriesRef = collection(db, PATHOLOGY_CATEGORIES_COLLECTION);
+      const qCategories = query(categoriesRef, where("clinicId", "==", clinicId), where("isActive", "==", true));
+      const categoriesSnap = await getDocs(qCategories);
+      const allCategories: PathologyCategory[] = [];
+      categoriesSnap.forEach((doc) => {
+        allCategories.push({ id: doc.id, ...doc.data() } as PathologyCategory);
+      });
+
+      // 3. Fetch all active templates for this clinic
+      const templatesRef = collection(db, PATHOLOGY_TEST_TEMPLATES_COLLECTION);
+      const qTemplates = query(templatesRef, where("clinicId", "==", clinicId), where("isActive", "==", true));
+      const templatesSnap = await getDocs(qTemplates);
+
+      const batch = writeBatch(db);
+      let hasChanges = false;
+
+      templatesSnap.forEach((tempDoc) => {
+        const template = { id: tempDoc.id, ...tempDoc.data() } as PathologyTestTemplate;
+        let finalParameterIds: string[] = [];
+        let finalCategoryIds = template.categoryIds || [];
+        if (template.categoryId && !finalCategoryIds.includes(template.categoryId)) {
+          finalCategoryIds.push(template.categoryId);
+        }
+
+        // A. Map Category names dynamically
+        const finalCategoryNames = finalCategoryIds.map(cid => {
+          const matchedCat = allCategories.find(c => c.id === cid);
+          return matchedCat ? matchedCat.name : "General";
+        });
+
+        // B. Determine the parameters that belong to this template
+        if (template.targetType === 'category') {
+          finalParameterIds = allParams
+            .filter(p => finalCategoryIds.includes(p.categoryId) && !(template.excludedParameterIds || []).includes(p.id))
+            .map(p => p.id);
+        } else {
+          finalParameterIds = template.parameters || [];
+        }
+
+        // C. Calculate new total price
+        let totalPrice = 0;
+        if (template.targetType === 'category') {
+          totalPrice = allParams
+            .filter(p => finalCategoryIds.includes(p.categoryId) && !(template.excludedParameterIds || []).includes(p.id))
+            .reduce((sum, p) => sum + (p.price || 0), 0);
+        } else {
+          totalPrice = finalParameterIds.reduce((sum, pid) => {
+            const existing = allParams.find(p => p.id === pid);
+            return sum + (existing?.price || 0);
+          }, 0);
+        }
+
+        // D. Update parameter overrides details (name, unit, ranges, price)
+        const updatedOverrides = (template.parameterOverrides || []).map(override => {
+          const matchedParam = allParams.find(p => p.id === override.id);
+          if (matchedParam) {
+            return {
+              ...override,
+              name: matchedParam.name || override.name || "",
+              unit: matchedParam.unit || override.unit || "",
+              price: matchedParam.price || 0,
+              allRange: matchedParam.allRange?.description || override.allRange || "",
+              maleRange: matchedParam.maleRange?.description || override.maleRange || "",
+              femaleRange: matchedParam.femaleRange?.description || override.femaleRange || "",
+            };
+          }
+          return override;
+        });
+
+        // Also add any parameters that might be in parameters list but missing in overrides
+        finalParameterIds.forEach(pid => {
+          if (!updatedOverrides.some(o => o.id === pid)) {
+            const matchedParam = allParams.find(p => p.id === pid);
+            if (matchedParam) {
+              updatedOverrides.push({
+                id: pid,
+                name: matchedParam.name || "",
+                unit: matchedParam.unit || "",
+                price: matchedParam.price || 0,
+                allRange: matchedParam.allRange?.description || "",
+                maleRange: matchedParam.maleRange?.description || "",
+                femaleRange: matchedParam.femaleRange?.description || "",
+              });
+            }
+          }
+        });
+
+        // Remove any overrides that are no longer in finalParameterIds (for parameter targetType)
+        const cleanedOverrides = updatedOverrides.filter(o => finalParameterIds.includes(o.id));
+
+        // E. Check if anything has changed to avoid unnecessary writes
+        const priceChanged = template.price !== totalPrice;
+        const overridesChanged = JSON.stringify(template.parameterOverrides) !== JSON.stringify(cleanedOverrides);
+        const paramsListChanged = JSON.stringify(template.parameters) !== JSON.stringify(finalParameterIds);
+        const categoriesChanged = JSON.stringify(template.categoryNames) !== JSON.stringify(finalCategoryNames) || template.categoryName !== finalCategoryNames[0];
+
+        if (priceChanged || overridesChanged || paramsListChanged || categoriesChanged) {
+          batch.update(tempDoc.ref, {
+            price: totalPrice,
+            parameterOverrides: cleanedOverrides,
+            parameters: finalParameterIds,
+            categoryIds: finalCategoryIds,
+            categoryNames: finalCategoryNames,
+            categoryName: finalCategoryNames[0] || "General",
+            updatedAt: now
+          });
+          hasChanges = true;
+        }
+      });
+
+      if (hasChanges) {
+        await batch.commit();
+        console.log("[Pathology Service] Successfully synced test templates price and details");
+      }
+    } catch (error) {
+      console.error("Error syncing pathology templates:", error);
     }
   },
 

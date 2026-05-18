@@ -154,7 +154,7 @@ async function handleTestSMS(smsService, databases, phoneNumber, message, res, l
     log(`SMS test result: ${result.success ? 'Success' : 'Failed'}`);
     
     return res.json({
-      success: true,
+      success: result.success,
       data: {
         sent: result.success,
         response: result,

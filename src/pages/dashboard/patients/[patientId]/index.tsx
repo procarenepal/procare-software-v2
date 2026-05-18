@@ -357,11 +357,17 @@ export default function PatientDetailPage() {
     } = data;
 
     // Global Branding Utility
+    const hideLetterhead = layoutConfig?.defaultPathologyPrintWithoutLetterhead || false;
     const brandingCSS = layoutConfig ? getPrintBrandingCSS(layoutConfig) : "";
-    const headerHtml = layoutConfig
+    const headerHtml = !hideLetterhead && layoutConfig
       ? getPrintHeaderHTML(layoutConfig, clinic)
       : "";
-    const footerHtml = layoutConfig ? getPrintFooterHTML(layoutConfig) : "";
+    const footerHtml = !hideLetterhead && layoutConfig && layoutConfig.showFooter !== false
+      ? getPrintFooterHTML(layoutConfig)
+      : "";
+    const topMargin = hideLetterhead
+      ? `${layoutConfig?.contentTopMarginWithoutLetterheadMm ?? 20}mm`
+      : "0";
 
     return `<!DOCTYPE html>
 <html>
@@ -391,7 +397,7 @@ export default function PatientDetailPage() {
     }
     
     .content { 
-      padding: 0 15mm; 
+      padding: ${topMargin} 15mm 0 15mm; 
       min-height: 0; 
     }
     

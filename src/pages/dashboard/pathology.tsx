@@ -650,8 +650,10 @@ export default function PathologyPage() {
         status: "ordered",
         labTechnicianId: testForm.labTechnicianId,
         labTechnicianName: selectedTech?.name || "",
+        labTechnicianRegNo: selectedTech?.registrationNumber || "",
         labTechnicianIds: testForm.labTechnicianId ? [testForm.labTechnicianId] : [],
         labTechnicianNames: selectedTech ? [selectedTech.name] : [],
+        labTechnicianRegNos: selectedTech ? [selectedTech.registrationNumber || ""] : [],
         labTechnicianSignatureUrls: selectedTech ? [selectedTech.signatureUrl || ""] : [],
         verifiedById: testForm.verifiedById,
         verifiedByName: selectedSignatory?.name || "",
@@ -711,7 +713,7 @@ export default function PathologyPage() {
       const data = { name: categoryForm.name.trim(), clinicId: clinicId!, branchId: branchId!, isActive: true, createdAt: new Date(), updatedAt: new Date(), createdBy: currentUser?.uid || "" };
       if (isEditing) { await pathologyService.updateCategory(categoryForm.id, data); }
       else { await pathologyService.createCategory(data); }
-      setCategories(await pathologyService.getCategoriesByClinic(clinicId!, branchId!));
+      await reloadAllData();
       categoryModalState.close();
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
@@ -751,8 +753,7 @@ export default function PathologyPage() {
       if (isEditing) { await pathologyService.updateParameter(parameterForm.id, data); }
       else { await pathologyService.createParameter(data); }
 
-      const updatedParams = await pathologyService.getParametersByClinic(clinicId!, branchId!);
-      setParameters(updatedParams);
+      await reloadAllData();
 
       if (keepOpen) {
         addToast({ title: "Success", description: "Parameter saved. Ready for next.", color: "success" });
@@ -1462,15 +1463,18 @@ export default function PathologyPage() {
 
     const selectedTechnicians = labTechnicians.filter(t => technicianIds.includes(t.id));
     const technicianNames = selectedTechnicians.map(t => t.name);
+    const technicianRegNos = selectedTechnicians.map(t => t.registrationNumber || "");
 
     try {
       await pathologyService.updateOrder(orderId, {
         labTechnicianIds: technicianIds,
         labTechnicianNames: technicianNames,
+        labTechnicianRegNos: technicianRegNos,
         labTechnicianSignatureUrls: selectedTechnicians.map(t => t.signatureUrl || ""),
         // Maintain backward compatibility for single technician field
         labTechnicianId: technicianIds[0] || "",
         labTechnicianName: technicianNames[0] || "",
+        labTechnicianRegNo: technicianRegNos[0] || "",
         updatedAt: new Date(),
       });
 
@@ -1485,9 +1489,11 @@ export default function PathologyPage() {
         ...o,
         labTechnicianIds: technicianIds,
         labTechnicianNames: technicianNames,
+        labTechnicianRegNos: technicianRegNos,
         labTechnicianSignatureUrls: selectedTechnicians.map(t => t.signatureUrl || ""),
         labTechnicianId: technicianIds[0] || "",
-        labTechnicianName: technicianNames[0] || ""
+        labTechnicianName: technicianNames[0] || "",
+        labTechnicianRegNo: technicianRegNos[0] || ""
       } : o));
     } catch (e) {
       console.error(e);
@@ -1760,15 +1766,9 @@ export default function PathologyPage() {
                     t.name.toLowerCase().includes(testsSearchQuery.toLowerCase()) || 
                     t.shortName?.toLowerCase().includes(testsSearchQuery.toLowerCase())
                   )}
-                  parameters={parameters.filter(p => 
-                    p.name.toLowerCase().includes(testsSearchQuery.toLowerCase())
-                  )}
-                  categories={categories.filter(c => 
-                    c.name.toLowerCase().includes(testsSearchQuery.toLowerCase())
-                  )}
-                  units={units.filter(u => 
-                    u.name.toLowerCase().includes(testsSearchQuery.toLowerCase())
-                  )}
+                  parameters={parameters}
+                  categories={categories}
+                  units={units}
                   searchQuery={testsSearchQuery}
                   onSearchChange={setTestsSearchQuery}
                   onAddTemplate={() => { resetTestTypeForm(); testTypeModalState.open(); }}
