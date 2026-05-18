@@ -90,8 +90,8 @@ export const pathologyService = {
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         templates.push({
-          id: doc.id,
           ...data,
+          id: doc.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyTestTemplate);
@@ -466,8 +466,8 @@ export const pathologyService = {
         const data = doc.data();
 
         categories.push({
-          id: doc.id,
           ...data,
+          id: doc.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyCategory);
@@ -493,8 +493,8 @@ export const pathologyService = {
         const data = docSnap.data();
 
         return {
-          id: docSnap.id,
           ...data,
+          id: docSnap.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyCategory;
@@ -665,8 +665,8 @@ export const pathologyService = {
         const data = doc.data();
 
         units.push({
-          id: doc.id,
           ...data,
+          id: doc.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyUnit);
@@ -692,8 +692,8 @@ export const pathologyService = {
         const data = docSnap.data();
 
         return {
-          id: docSnap.id,
           ...data,
+          id: docSnap.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyUnit;
@@ -807,8 +807,8 @@ export const pathologyService = {
         const data = doc.data();
 
         parameters.push({
-          id: doc.id,
           ...data,
+          id: doc.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyParameter);
@@ -834,8 +834,8 @@ export const pathologyService = {
         const data = docSnap.data();
 
         return {
-          id: docSnap.id,
           ...data,
+          id: docSnap.id,
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
         } as PathologyParameter;

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { 
-  IoFlaskOutline, 
-  IoCheckmarkCircleOutline, 
+import {
+  IoFlaskOutline,
+  IoCheckmarkCircleOutline,
   IoAlertCircleOutline,
   IoSaveOutline,
   IoCloseOutline,
@@ -15,9 +15,9 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  PathologyOrder, 
-  PathologyParameter, 
+import {
+  PathologyOrder,
+  PathologyParameter,
   PathologyTestTemplate,
   PathologyResult
 } from "@/types/models";
@@ -32,9 +32,9 @@ interface PathologyResultEntryModalProps {
 }
 
 const COMMON_ANTIBIOTICS = [
-  "Amikacin", "Amoxicillin", "Ampicillin", "Azithromycin", "Cefixime", 
-  "Ceftriaxone", "Ciprofloxacin", "Clarithromycin", "Cotrimoxazole", 
-  "Gentamicin", "Levofloxacin", "Meropenem", "Nitrofurantoin", "Norfloxacin", 
+  "Amikacin", "Amoxicillin", "Ampicillin", "Azithromycin", "Cefixime",
+  "Ceftriaxone", "Ciprofloxacin", "Clarithromycin", "Cotrimoxazole",
+  "Gentamicin", "Levofloxacin", "Meropenem", "Nitrofurantoin", "Norfloxacin",
   "Ofloxacin", "Piperacillin/Tazobactam", "Vancomycin", "Linezolid", "Imipenem"
 ];
 
@@ -48,7 +48,7 @@ export default function PathologyResultEntryModal({
 }: PathologyResultEntryModalProps) {
   const [results, setResults] = useState<PathologyResult[]>(order.results || []);
   const [loading, setLoading] = useState(false);
-  
+
   // Microbiology State
   const [organismIsolated, setOrganismIsolated] = useState(order.organismIsolated || "");
   const [colonyCount, setColonyCount] = useState(order.colonyCount || "");
@@ -60,14 +60,14 @@ export default function PathologyResultEntryModal({
   useEffect(() => {
     if ((!order.results || order.results.length === 0) && order.testTemplateIds) {
       const initialResults: PathologyResult[] = [];
-      
+
       order.testTemplateIds.forEach(templateId => {
         const template = templates.find(t => t.id === templateId);
         if (template) {
           template.parameters.forEach(paramId => {
             const param = parameters.find(p => p.id === paramId);
             const override = template.parameterOverrides?.find(o => o.id === paramId);
-            
+
             if (param) {
               // Priority: Override string -> Master parameter object description -> Master parameter allRange description
               const maleR = override?.maleRange || param.maleRange?.description || param.allRange?.description;
@@ -79,7 +79,7 @@ export default function PathologyResultEntryModal({
                 parameterName: override?.name || param.name,
                 value: "",
                 unit: override?.unit || param.unit,
-                referenceRange: param.isGenderSensitive 
+                referenceRange: param.isGenderSensitive
                   ? (order.patientGender === 'female' ? (femaleR || "—") : (maleR || "—"))
                   : (allR || "—"),
                 status: "normal",
@@ -113,13 +113,34 @@ export default function PathologyResultEntryModal({
     const numValue = parseFloat(value);
     const isNumericValue = !isNaN(numValue) && isFinite(numValue);
 
-    const range = param.isGenderSensitive 
+    const range = param.isGenderSensitive
       ? (order.patientGender === 'female' ? param.femaleRange : param.maleRange)
       : param.allRange;
 
     if (!range) return { status, flag };
 
-    if (isNumericType && isNumericValue) {
+    // Dynamically parse range description if min/max are not defined
+    let rangeMin = range.min;
+    let rangeMax = range.max;
+
+    if ((rangeMin === undefined || rangeMin === null) && (rangeMax === undefined || rangeMax === null)) {
+      const desc = range.description || "";
+      // Match formats like "30-400ng/ml" or "30 - 400" or "> 30" or "< 400"
+      const match = desc.trim().match(/^([\d.]+)\s*[-–]\s*([\d.]+)/);
+      if (match) {
+        rangeMin = parseFloat(match[1]);
+        rangeMax = parseFloat(match[2]);
+      } else {
+        const ltMatch = desc.trim().match(/^[<]\s*([\d.]+)/);
+        if (ltMatch) rangeMax = parseFloat(ltMatch[1]);
+        const gtMatch = desc.trim().match(/^[>]\s*([\d.]+)/);
+        if (gtMatch) rangeMin = parseFloat(gtMatch[1]);
+      }
+    }
+
+    const hasNumericRange = (rangeMin !== undefined && rangeMin !== null) || (rangeMax !== undefined && rangeMax !== null);
+
+    if ((isNumericType || hasNumericRange) && isNumericValue) {
       if (range.tiers && range.tiers.length > 0) {
         const matchedTier = range.tiers.find(tier => {
           const min = (tier.min !== undefined && tier.min !== null) ? tier.min : -Infinity;
@@ -128,24 +149,24 @@ export default function PathologyResultEntryModal({
         });
 
         if (matchedTier) {
-          flag = matchedTier.status === 'normal' ? 'N' : 
-                 matchedTier.status === 'low' ? 'L' :
-                 matchedTier.status === 'borderline' ? 'B' : 
-                 matchedTier.status === 'critical' ? 'C' : 'H';
-          status = matchedTier.status === 'normal' ? 'normal' : 
-                   matchedTier.status === 'critical' ? 'critical' : 'abnormal';
+          flag = matchedTier.status === 'normal' ? 'N' :
+            matchedTier.status === 'low' ? 'L' :
+              matchedTier.status === 'borderline' ? 'B' :
+                matchedTier.status === 'critical' ? 'C' : 'H';
+          status = matchedTier.status === 'normal' ? 'normal' :
+            matchedTier.status === 'critical' ? 'critical' : 'abnormal';
         }
-      } else if (range.min !== undefined && range.min !== null && numValue < range.min) {
+      } else if (rangeMin !== undefined && rangeMin !== null && numValue < rangeMin) {
         status = "abnormal";
         flag = "L";
-      } else if (range.max !== undefined && range.max !== null && numValue > range.max) {
+      } else if (rangeMax !== undefined && rangeMax !== null && numValue > rangeMax) {
         status = "abnormal";
         flag = "H";
       }
     } else {
       const expectedValue = (range.description || "").toLowerCase();
       const inputValue = value.trim().toLowerCase();
-      
+
       const normalSynonyms = ["negative", "absent", "nil", "normal", "non-reactive", "clear", "pale yellow", "sterile", "no growth"];
       const abnormalSynonyms = ["positive", "present", "reactive", "abnormal", "turbid", "blur", "found", "growth"];
 
@@ -160,7 +181,7 @@ export default function PathologyResultEntryModal({
 
       // Exact match with expected description or any of the expected options is always normal
       const isExactMatch = inputValue === expectedValue || expectedOptions.includes(inputValue);
-      
+
       // If not an exact match, check if it's a known 'normal' synonym
       const isKnownNormal = normalSynonyms.includes(inputValue);
       const isKnownAbnormal = abnormalSynonyms.includes(inputValue);
@@ -177,7 +198,7 @@ export default function PathologyResultEntryModal({
   const handleValueChange = (index: number, value: string) => {
     const newResults = [...results];
     const param = parameters.find(p => p.id === newResults[index].parameterId);
-    
+
     if (param) {
       const { status, flag } = evaluateResult(param, value);
       newResults[index] = { ...newResults[index], value, status, flag };
@@ -196,7 +217,7 @@ export default function PathologyResultEntryModal({
             const paramName = match.replace(/[{}]/g, "");
             const relatedRes = newResults.find(r => r.parameterName.toLowerCase() === paramName.toLowerCase());
             const val = parseFloat(relatedRes?.value || "NaN");
-            
+
             if (isNaN(val)) canCalculate = false;
             formula = formula.replace(match, val.toString());
           });
@@ -208,11 +229,11 @@ export default function PathologyResultEntryModal({
             const computed = eval(formula);
             if (typeof computed === 'number' && !isNaN(computed) && isFinite(computed)) {
               const computedStr = Number.isInteger(computed) ? computed.toString() : computed.toFixed(2);
-              
+
               if (res.value !== computedStr) {
                 res.value = computedStr;
                 res.isCalculated = true;
-                
+
                 // Apply the same unified flagging logic to calculated results
                 const evalRes = evaluateResult(p, computedStr);
                 res.status = evalRes.status;
@@ -228,10 +249,10 @@ export default function PathologyResultEntryModal({
   };
 
   const handleAddSensitivity = (antibiotic?: string) => {
-    setSensitivities([...sensitivities, { 
-      antibiotic: antibiotic || "", 
-      sensitivity: "None", 
-      zoneOfInhibition: "" 
+    setSensitivities([...sensitivities, {
+      antibiotic: antibiotic || "",
+      sensitivity: "None",
+      zoneOfInhibition: ""
     }]);
   };
 
@@ -254,7 +275,7 @@ export default function PathologyResultEntryModal({
         colonyCount,
         sensitivities
       } : {};
-      
+
       await onSave(results, status, microData);
     } finally {
       setLoading(false);
@@ -264,7 +285,7 @@ export default function PathologyResultEntryModal({
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-2">
       <div className="absolute inset-0 bg-mountain-900/70 backdrop-blur-2xl" onClick={onClose} />
-      
+
       <div className="relative z-10 bg-white w-[98vw] h-[98vh] rounded-md shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-5 py-3 border-b border-mountain-100 bg-mountain-50/60 flex items-center justify-between shrink-0">
@@ -315,7 +336,7 @@ export default function PathologyResultEntryModal({
                 const param = parameters.find(p => p.id === result.parameterId);
                 const templateName = paramToTemplateMap[result.parameterId];
                 const categoryObj = categories.find(c => c.id === param?.categoryId);
-                
+
                 const currentGroupHeader = templateName || categoryObj?.name || "";
                 const showGroupHeader = currentGroupHeader && currentGroupHeader !== lastGroupHeader;
                 if (showGroupHeader) {
@@ -332,12 +353,11 @@ export default function PathologyResultEntryModal({
                         </p>
                       </div>
                     )}
-                    
-                    <div 
-                      className={`grid grid-cols-12 gap-4 items-center px-4 py-1 transition-all border-l-4 duration-75 ${
-                        result.isHeader ? 'bg-mountain-100/20 border-teal-500 mt-2 py-1.5' : 
-                        'border-transparent hover:bg-teal-50/30 focus-within:border-teal-500 focus-within:bg-teal-50/50'
-                      }`}
+
+                    <div
+                      className={`grid grid-cols-12 gap-4 items-center px-4 py-1 transition-all border-l-4 duration-75 ${result.isHeader ? 'bg-mountain-100/20 border-teal-500 mt-2 py-1.5' :
+                          'border-transparent hover:bg-teal-50/30 focus-within:border-teal-500 focus-within:bg-teal-50/50'
+                        }`}
                       style={{
                         marginLeft: result.indentationLevel ? `${result.indentationLevel * 16}px` : '0px'
                       }}
@@ -351,45 +371,41 @@ export default function PathologyResultEntryModal({
                       ) : (
                         <>
                           <div className="col-span-4">
-                            <p className={`text-[13px] font-bold ${
-                              result.status === 'critical' ? 'text-red-600' : 
-                              result.status === 'abnormal' ? 'text-amber-600' : 
-                              'text-mountain-800'
-                            }`}>
+                            <p className={`text-[13px] font-bold ${result.status === 'critical' ? 'text-red-600' :
+                                result.status === 'abnormal' ? 'text-amber-600' :
+                                  'text-mountain-800'
+                              }`}>
                               {result.parameterName}
                               {result.flag && (result.status === 'abnormal' || result.status === 'critical') && (
-                                <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-black border ${
-                                  result.status === 'critical' ? 'bg-red-600 text-white border-red-700' : 'bg-amber-500 text-white border-amber-600'
-                                }`}>
+                                <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-black border ${result.status === 'critical' ? 'bg-red-600 text-white border-red-700' : 'bg-amber-500 text-white border-amber-600'
+                                  }`}>
                                   {result.flag}
                                 </span>
                               )}
                             </p>
                           </div>
-                          
+
                           <div className="col-span-3 relative">
                             {param?.resultType === 'text' ? (
-                              <textarea 
+                              <textarea
                                 id={`input-${index}`}
                                 autoFocus={index === 0}
-                                className={`w-full p-1.5 rounded border focus:outline-none transition-all font-medium text-[13px] min-h-[40px] ${
-                                  result.status === 'critical' ? 'bg-red-50 border-red-300 text-red-900 focus:border-red-500' :
-                                  result.status === 'abnormal' ? 'bg-amber-50 border-amber-300 text-amber-900 focus:border-amber-500' : 
-                                  'bg-white border-mountain-200 text-mountain-900 focus:border-teal-500'
-                                }`}
+                                className={`w-full p-1.5 rounded border focus:outline-none transition-all font-medium text-[13px] min-h-[40px] ${result.status === 'critical' ? 'bg-red-50 border-red-300 text-red-900 focus:border-red-500' :
+                                    result.status === 'abnormal' ? 'bg-amber-50 border-amber-300 text-amber-900 focus:border-amber-500' :
+                                      'bg-white border-mountain-200 text-mountain-900 focus:border-teal-500'
+                                  }`}
                                 value={result.value}
                                 onChange={(e) => handleValueChange(index, e.target.value)}
                                 placeholder="..."
                               />
                             ) : (
-                              <input 
+                              <input
                                 id={`input-${index}`}
                                 autoFocus={index === 0}
-                                className={`w-full h-[28px] px-2 rounded border focus:outline-none transition-all font-bold text-[13.5px] ${
-                                  result.status === 'critical' ? 'bg-red-50 border-red-300 text-red-900 focus:border-red-500' :
-                                  result.status === 'abnormal' ? 'bg-amber-50 border-amber-300 text-amber-900 focus:border-amber-500' : 
-                                  'bg-white border-mountain-200 text-mountain-900 focus:border-teal-500'
-                                }`}
+                                className={`w-full h-[28px] px-2 rounded border focus:outline-none transition-all font-bold text-[13.5px] ${result.status === 'critical' ? 'bg-red-50 border-red-300 text-red-900 focus:border-red-500' :
+                                    result.status === 'abnormal' ? 'bg-amber-50 border-amber-300 text-amber-900 focus:border-amber-500' :
+                                      'bg-white border-mountain-200 text-mountain-900 focus:border-teal-500'
+                                  }`}
                                 value={result.value}
                                 onChange={(e) => handleValueChange(index, e.target.value)}
                                 onKeyDown={(e) => {
@@ -402,11 +418,11 @@ export default function PathologyResultEntryModal({
                               />
                             )}
                           </div>
-                          
+
                           <div className="col-span-2 text-center text-mountain-400 font-medium text-[12px]">
                             {result.unit || "—"}
                           </div>
-                          
+
                           <div className="col-span-3">
                             <div className="px-2 py-0.5 bg-mountain-50/50 border border-mountain-100 rounded text-center text-[11px] text-mountain-500 font-medium">
                               {result.referenceRange || "—"}
@@ -430,10 +446,10 @@ export default function PathologyResultEntryModal({
                       Microbiology Culture & Sensitivity
                     </h3>
                   </div>
-                  <Button 
-                    size="sm" 
-                    variant="flat" 
-                    color="secondary" 
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    color="secondary"
                     onClick={() => {
                       setOrganismIsolated("No Growth after 48 hours of aerobic incubation");
                       setColonyCount("N/A");
@@ -445,14 +461,14 @@ export default function PathologyResultEntryModal({
                 </div>
 
                 <div className="grid grid-cols-2 gap-6 mb-6">
-                  <Input 
+                  <Input
                     label="Organism Isolated"
                     placeholder="e.g. Escherichia coli (E. coli)"
                     value={organismIsolated}
                     onValueChange={setOrganismIsolated}
                     className="bg-white"
                   />
-                  <Input 
+                  <Input
                     label="Colony Count"
                     placeholder="e.g. > 10^5 CFU/ml"
                     value={colonyCount}
@@ -465,7 +481,7 @@ export default function PathologyResultEntryModal({
                   <div className="bg-indigo-50/50 px-4 py-2 border-b border-indigo-100 flex justify-between items-center">
                     <p className="text-[12px] font-bold text-indigo-800">ANTIBIOTIC SENSITIVITY MATRIX</p>
                     <div className="flex gap-2">
-                      <select 
+                      <select
                         className="h-8 border border-indigo-200 rounded px-2 text-[11px] bg-white text-indigo-700 outline-none"
                         onChange={(e) => {
                           if (e.target.value) {
@@ -505,7 +521,7 @@ export default function PathologyResultEntryModal({
                         sensitivities.map((s, i) => (
                           <tr key={i} className="border-b border-mountain-50 hover:bg-mountain-50/30 transition-colors">
                             <td className="px-4 py-2">
-                              <input 
+                              <input
                                 className="w-full h-8 px-2 border-none bg-transparent text-[13px] font-medium text-mountain-800 focus:outline-none"
                                 value={s.antibiotic}
                                 onChange={(e) => updateSensitivity(i, "antibiotic", e.target.value)}
@@ -518,14 +534,13 @@ export default function PathologyResultEntryModal({
                                   <button
                                     key={val}
                                     onClick={() => updateSensitivity(i, "sensitivity", val)}
-                                    className={`w-8 h-8 rounded text-[11px] font-black transition-all ${
-                                      s.sensitivity === val 
-                                        ? (val === 'S' ? 'bg-emerald-500 text-white shadow-md scale-110' : 
-                                           val === 'I' ? 'bg-amber-500 text-white shadow-md scale-110' : 
-                                           val === 'R' ? 'bg-rose-500 text-white shadow-md scale-110' : 
-                                           'bg-slate-500 text-white shadow-md scale-110')
+                                    className={`w-8 h-8 rounded text-[11px] font-black transition-all ${s.sensitivity === val
+                                        ? (val === 'S' ? 'bg-emerald-500 text-white shadow-md scale-110' :
+                                          val === 'I' ? 'bg-amber-500 text-white shadow-md scale-110' :
+                                            val === 'R' ? 'bg-rose-500 text-white shadow-md scale-110' :
+                                              'bg-slate-500 text-white shadow-md scale-110')
                                         : 'bg-mountain-100 text-mountain-400 hover:bg-mountain-200'
-                                    }`}
+                                      }`}
                                   >
                                     {val}
                                   </button>
@@ -533,7 +548,7 @@ export default function PathologyResultEntryModal({
                               </div>
                             </td>
                             <td className="px-4 py-2 text-[13px] text-mountain-500">
-                              <input 
+                              <input
                                 className="w-full h-8 px-2 border-none bg-transparent text-[13px] focus:outline-none"
                                 value={s.zoneOfInhibition}
                                 onChange={(e) => updateSensitivity(i, "zoneOfInhibition", e.target.value)}
@@ -541,7 +556,7 @@ export default function PathologyResultEntryModal({
                               />
                             </td>
                             <td className="px-4 py-2 text-right">
-                              <button 
+                              <button
                                 onClick={() => handleRemoveSensitivity(i)}
                                 className="p-1.5 text-mountain-300 hover:text-red-500 transition-colors"
                               >

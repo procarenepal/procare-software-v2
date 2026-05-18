@@ -132,6 +132,7 @@ export default function PathologyCatalogTab(props: PathologyCatalogTabProps) {
             filteredCategories={props.categories.filter(c => 
               c.name.toLowerCase().includes(props.searchQuery.toLowerCase())
             )}
+            parameters={props.parameters}
             searchQuery={props.searchQuery}
             onSearchChange={props.onSearchChange}
             onAdd={props.onAddCategory}

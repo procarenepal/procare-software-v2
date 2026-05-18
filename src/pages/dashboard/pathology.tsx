@@ -734,8 +734,9 @@ export default function PathologyPage() {
     if (!parameterForm.name.trim()) return;
     try {
       setLoading(true);
+      const { id, ...paramFields } = parameterForm;
       const data = {
-        ...parameterForm,
+        ...paramFields,
         price: parseFloat(parameterForm.price) || 0,
         clinicId: clinicId!,
         branchId: branchId!,
@@ -824,6 +825,7 @@ export default function PathologyPage() {
       }
 
       let finalParameterIds: string[] = [];
+      let parameterIdsWithRealIds = [...testTypeForm.selectedParameters];
 
       if (testTypeForm.targetType === 'category') {
         finalParameterIds = parameters
@@ -834,9 +836,10 @@ export default function PathologyPage() {
         // Track units staged in this batch to avoid duplicates
         const stagedUnitNames = new Set(units.map(u => u.name.toLowerCase()));
 
-        for (const p of testTypeForm.selectedParameters) {
+        parameterIdsWithRealIds = testTypeForm.selectedParameters.map((p, idx) => {
           if (p.id) {
             finalParameterIds.push(p.id);
+            return p;
           } else {
             const newParamRef = doc(collection(db, "pathologyParameters"));
 
@@ -864,6 +867,7 @@ export default function PathologyPage() {
               branchId: branchId!,
               isActive: true,
               isGenderSensitive: false,
+              price: parseFloat(p.price || "0"),
               createdAt: new Date(),
               updatedAt: new Date(),
               createdBy: currentUser?.uid || ""
@@ -885,8 +889,10 @@ export default function PathologyPage() {
               });
               stagedUnitNames.add(p.unit.trim().toLowerCase());
             }
+
+            return { ...p, id: newParamRef.id };
           }
-        }
+        });
       }
 
       // 3. Calculate Price based on parameters
@@ -897,8 +903,8 @@ export default function PathologyPage() {
           .reduce((sum, p) => sum + (p.price || 0), 0);
       } else {
         // Sum up prices: use inline price if it's a new parameter, otherwise use the stored parameter price
-        totalPrice = testTypeForm.selectedParameters.reduce((sum, p) => {
-          if (p.id) {
+        totalPrice = parameterIdsWithRealIds.reduce((sum, p) => {
+          if (p.id && !p.id.startsWith("new_") && !p.id.includes("new_")) {
             const existing = parameters.find(param => param.id === p.id);
             return sum + (existing?.price || 0);
           }
@@ -915,7 +921,7 @@ export default function PathologyPage() {
         excludedParameterIds: testTypeForm.excludedParameterIds,
         targetType: testTypeForm.targetType,
         parameters: finalParameterIds,
-        parameterOverrides: testTypeForm.selectedParameters.map(p => ({
+        parameterOverrides: parameterIdsWithRealIds.map(p => ({
           id: p.id || "new_" + Math.random().toString(36).substr(2, 9),
           name: p.name || "",
           unit: p.unit || "",
@@ -1109,16 +1115,22 @@ export default function PathologyPage() {
     parameterModalState.open();
   };
   const editTestType = (t: any) => {
-    const mappedParameters = t.parameters.map((pid: string) => {
+    const mappedParameters = (t.parameters || []).map((pid: string) => {
       const p = parameters.find(param => param.id === pid);
+      const override = (t.parameterOverrides || []).find((o: any) => o.id === pid);
+      
       return {
         id: pid,
-        name: p?.name || "Unknown Parameter",
-        unit: p?.unit || "",
-        range: p?.allRange?.description || "",
+        name: override?.name || p?.name || "Unknown Parameter",
+        unit: override?.unit || p?.unit || "",
+        range: override?.allRange || p?.allRange?.description || "",
+        maleRange: override?.maleRange || p?.maleRange?.description || p?.allRange?.description || "",
+        femaleRange: override?.femaleRange || p?.femaleRange?.description || p?.allRange?.description || "",
+        isGenderSensitive: p?.isGenderSensitive || !!(override?.maleRange || override?.femaleRange),
         resultType: p?.resultType || "numeric",
-        price: p?.price?.toString() || "0",
-        tiers: p?.allRange?.tiers || []
+        price: override?.price !== undefined ? override.price.toString() : (p?.price?.toString() || "0"),
+        tiers: p?.allRange?.tiers || [],
+        showTiers: false
       };
     });
 
