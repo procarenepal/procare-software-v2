@@ -19,7 +19,7 @@ export const getPrintBrandingCSS = (config: PrintLayoutConfig, isThermal: boolea
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
     @page {
-      size: ${isThermal ? "80mm auto" : "A4"};
+      size: ${isThermal ? `${actualPaperWidth} auto` : "A4"};
       margin: 0;
     }
 

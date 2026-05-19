@@ -52,10 +52,10 @@ export const generateInvoiceHTML = (
 <head>
   <title>Invoice - ${billing.invoiceNumber}</title>
   <style>
+    ${brandingCSS}
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    ${brandingCSS}
     
     /* Ensure table wrap doesn't show borders */
     .report-wrap { width: 100%; height: 100%; border-collapse: collapse; border: none; }
@@ -221,10 +221,10 @@ export const generateAppointmentInvoiceHTML = (
 <head>
   <title>Invoice - ${invoice.invoiceNumber}</title>
   <style>
+    ${brandingCSS}
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    ${brandingCSS}
     .content { padding-top: ${topMargin}; }
   </style>
 </head>
@@ -403,10 +403,10 @@ export const generatePatientSlipHTML = (
 <head>
   <title>Patient Slip - ${patient.name}</title>
   <style>
+    ${brandingCSS}
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    ${brandingCSS}
   </style>
 </head>
 <body class="print-window-body">
@@ -476,10 +476,10 @@ export const generatePrescriptionHTML = (
 <head>
   <title>Prescription - ${prescription.prescriptionNo}</title>
   <style>
+    ${brandingCSS}
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    ${brandingCSS}
     .content { padding-top: ${topMargin}; }
     
     .signature-section { margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-end; }
@@ -645,10 +645,10 @@ export const generatePharmacyPurchaseHTML = (
 <head>
   <title>Purchase Receipt - ${purchase.purchaseNo}</title>
   <style>
+    ${brandingCSS}
     @page {
       ${format === "A4_HALF" ? "size: A5 landscape; margin: 0;" : format === "A4" ? "size: A4; margin: 0;" : `size: ${thermalWidth} auto; margin: 0;`}
     }
-    ${brandingCSS}
     
     /* Ensure table wrap doesn't show borders */
     .report-wrap { width: 100%; border-collapse: collapse; border: none; }

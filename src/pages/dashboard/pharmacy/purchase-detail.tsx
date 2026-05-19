@@ -902,6 +902,9 @@ export default function PurchaseDetailPage() {
 
   const currentPaymentStatus = getPaymentStatus();
 
+  const isThermalFormat = receiptFormat?.startsWith("THERMAL");
+  const thermalWidth = receiptFormat === "THERMAL_58MM" ? "58mm" : receiptFormat === "THERMAL_4INCH" ? "104mm" : "80mm";
+
   return (
     <>
       <style
@@ -914,21 +917,21 @@ export default function PurchaseDetailPage() {
           }
           @media print {
             @page {
-              size: ${receiptFormat === "Thermal" ? "80mm auto" : "A4 portrait"};
-              margin: ${receiptFormat === "Thermal" ? "0" : "15mm"};
+              size: ${isThermalFormat ? `${thermalWidth} auto` : "A4 portrait"};
+              margin: ${isThermalFormat ? "0" : "15mm"};
             }
             .no-print {
               display: none !important;
             }
             .print-only {
               display: block !important;
-              position: ${receiptFormat === "Thermal" ? "fixed" : "absolute"};
+              position: ${isThermalFormat ? "fixed" : "absolute"};
               top: 0;
               left: 0;
               right: 0;
               width: 100% !important;
               margin: 0 !important;
-              padding: ${receiptFormat === "Thermal" ? "2mm" : "0"} !important;
+              padding: ${isThermalFormat ? "2mm" : "0"} !important;
               border: none !important;
               border-radius: 0 !important;
               box-shadow: none !important;
